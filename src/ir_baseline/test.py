@@ -63,35 +63,28 @@ The reason for the ban was due to her impromptu performance of a " lyrical battl
 
 """
 
-def extract_diff(tok_seq):
-    out = []
-    island_size = 0 # tracks any "islands" of non-changed words in a changed region
-    for tok in tok_seq:
-        if tok[0] in '-+!':
-            out += [tok[2:]]
-            island_size = 0
-        else:
-            if len(out) > 0:
-                out += [tok]
-            island_size += 1
+def extract_diff_v1(pre, post):
+    def extract(tok_seq):
+        out = []
+        island_size = 0 # tracks any "islands" of non-changed words in a changed region
+        for tok in tok_seq:
+            if tok[0] in '-+!':
+                out += [tok[2:]]
+                island_size = 0
+            else:
+                if len(out) > 0:
+                    out += [tok]
+                island_size += 1
 
-    if island_size:
-        return out[:-island_size]
+        if island_size:
+            return out[:-island_size]
 
-    return out
+        return out
 
-# join as string
-# split by line
-# take things appropriately
-#   skip lines with empty preceeding bits?
-
-
-
-for l in open(sys.argv[1]):
-    [_, _, pre, post, _] = l.strip().split('\t')
     diff = difflib.context_diff(pre.split(), post.split())
     # skip header
-    for _ in range(4):
+    
+    for _ in range(4): 
         next(diff)
 
     diff = [x for x in diff if x != '***************\n'] # skip 
@@ -99,21 +92,64 @@ for l in open(sys.argv[1]):
     
     pre_diff = diff[: post_start_idx]
     post_diff = diff[post_start_idx + 1 :]
-    print(' '.join(diff))
 
-    print()
+    pre_out = extract(pre_diff)
+    post_out = extract(post_diff)
 
-    print(pre)
-    print(pre_diff)
-    print(extract_diff(pre_diff))
-
-    print()
-
-    print(post)
-    print(post_diff)
-    print(extract_diff(post_diff))
+    return pre_out, post_out
 
 
-#    print([x for x in difflib.context_diff(pre.split(), post.split())])
-    print('#' * 80)
+def extract_diff_v2(pre, post):
+    dif_toks = [x for x in difflib.ndiff(pre.split(), post.split())]
 
+    out = []
+    cur = None
+    for tok in dif_toks:
+
+        if tok.startswith('-'):
+            add_idx = 0
+        elif tok.startswith('+'):
+            add_idx = 1
+        elif tok.startswith('?'):
+            continue
+        else:
+            add_idx = -1
+
+        if add_idx < 0 and cur is not None:
+            out.append(cur)
+            cur = None
+        elif add_idx >= 0:
+            if cur is None:
+                cur = ([], [])
+            cur[add_idx].append( tok[2:] )
+
+    if cur is not None:
+        out.append(cur)
+
+    return out
+    print(dif_toks)
+    print(out)
+
+i = 0
+for l in open(sys.argv[1]):
+    [_, _, pre, post, _] = l.strip().split('\t')
+
+    diffs = extract_diff_v2(pre, post)
+
+    # TODO -- only take simplest case, things get messy w/multiple difs
+    if len(diffs) != 1: continue
+
+    i += 1
+ #   print(pre)
+#    print(post)
+#    print(diffs)
+    
+#    pre_v1, post_v1 = extract_diff_v1(pre, post)
+#    print(pre)
+#    print(pre_v1)
+#    print()
+#    print(post)
+#    print(post_v1)
+
+#    print('#' * 80)
+print(i)
