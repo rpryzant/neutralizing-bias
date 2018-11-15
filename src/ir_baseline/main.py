@@ -3,7 +3,7 @@ python main.py ../../data/TEST
 
 """
 import sys
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 import difflib
 from tqdm import tqdm
 import numpy as np
@@ -18,19 +18,56 @@ class TFIDF(object):
     def __init__(self, corpus):
         self.vectorizer = TfidfVectorizer()
         self.vectorizer.fit(corpus)
+        self.corpus = corpus
+        # rows = docs, cols = features
         self.tfidf_matrix = self.vectorizer.transform(corpus)
-        self.s2idx = {s: i for i, s in enumerate(corpus)}
 
         
     def most_similar(self, s, n=10):
- # use stuff from this:   
-#    https://github.com/snap-stanford/crisis/blob/master/reid/src/rankers/tfidf.py
-    
-        idx = self.s2idx[s]
-        
-        print(idx)
-        quit()
+        assert isinstance(s, str)
+        query_tfidf = self.vectorizer.transform([s])
+        scores = np.dot(self.tfidf_matrix, query_tfidf.T)
+        scores = np.squeeze(scores.toarray())
+        scores_indices = zip(scores, range(len(scores)))
+        selected = sorted(scores_indices, reverse=True)[:n]
+        selected = [(self.corpus[i], score) for (score, i) in selected]
 
+        return selected
+
+
+class SalienceCalculator(object):
+
+    def __init__(self, pre_corpus, post_corpus):
+        self.vectorizer = CountVectorizer()
+
+        pre_count_matrix = self.vectorizer.fit_transform(pre_corpus)
+        self.pre_vocab = self.vectorizer.vocabulary_
+        self.pre_counts = np.sum(pre_count_matrix, axis=0)
+        self.pre_counts = np.squeeze(np.asarray(self.pre_counts))
+
+        post_count_matrix = self.vectorizer.fit_transform(post_corpus)
+        self.post_vocab = self.vectorizer.vocabulary_
+        self.post_counts = np.sum(post_count_matrix, axis=0)
+        self.post_counts = np.squeeze(np.asarray(self.post_counts))
+
+
+    def salience(self, feature, attribute='pre', lmbda=1.0):
+        assert attribute in ['pre', 'post']
+
+        if feature not in self.pre_vocab:
+            pre_count = 0.0
+        else:
+            pre_count = self.pre_counts[self.pre_vocab[feature]]
+
+        if feature not in self.post_vocab:
+            post_count = 0.0
+        else:
+            post_count = self.post_counts[self.post_vocab[feature]]
+        
+        if attribute == 'pre':
+            return (pre_count + lmbda) / (post_count + lmbda)
+        else:
+            return (post_count + lmbda) / (pre_count + lmbda)
 
 
 def extract_diff(pre, post):
@@ -85,10 +122,20 @@ for l in tqdm(open(data_path)):
 import time
 
 start = time.time()
-tfidf = TFIDF(corpus=pre_c_corpus)
-print(time.time() - start)
+sc = SalienceCalculator(pre_raw_corpus, post_raw_corpus)
 
-print()
+for x in sc.pre_vocab:
+    start = time.time()
+    s = sc.salience(x, attribute='pre')
+#    print(x, s)
+    if s > 5.0:
+        print(x, s)
 
-print(tfidf.corpus_matrix.shape)
-print(tfidf2.tfidf.shape)
+#start = time.time()
+#tfidf = TFIDF(corpus=pre_c_corpus)
+#print(time.time() - start)
+
+#start = time.time()
+#print(tfidf.most_similar('and then i was in a bar and so drunk yeesh', n=10))
+#print(time.time() - start)
+
