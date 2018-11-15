@@ -5,7 +5,8 @@
     "max_norm": 3.0,
     "epochs": 70,
     "batches_per_report": 1,
-    "batches_per_sampling": 500
+    "batches_per_sampling": 500,
+    "random_seed": 123,
   },
   "data": {
     "src": "test_data/train.ja",
@@ -15,7 +16,6 @@
     "src_vocab": "test_data/vocab.12000.ja",
     "tgt_vocab": "test_data/vocab.12000.en",
     "working_dir": "sample_run",
-    "random_seed": 123,
     "batch_size": 32,
     "max_len": 50
   },

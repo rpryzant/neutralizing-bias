@@ -92,8 +92,8 @@ if CUDA:
     weight_mask = weight_mask.cuda()
     loss_criterion = loss_criterion.cuda()
 
-torch.manual_seed(config['data']['random_seed'])
-np.random.seed(config['data']['random_seed'])
+torch.manual_seed(config['training']['random_seed'])
+np.random.seed(config['training']['random_seed'])
 
 model = models.Seq2SeqAttention(
     src_vocab_size=src_vocab_size,

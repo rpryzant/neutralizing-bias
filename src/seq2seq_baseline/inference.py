@@ -73,9 +73,7 @@ loss_criterion = nn.CrossEntropyLoss(weight=weight_mask)
 if CUDA:
     loss_criterion = loss_criterion.cuda()
 
-torch.manual_seed(config['data']['random_seed'])
-# TODO - this isn't working? 
-os.environ['CUDA_VISIBLE_DEVICES'] = config['management']['gpu']
+torch.manual_seed(config['training']['random_seed'])
 
 model = models.Seq2SeqAttention(
     src_vocab_size=src_vocab_size,
