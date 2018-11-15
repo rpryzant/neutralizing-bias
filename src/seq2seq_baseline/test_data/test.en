@@ -1,0 +1,100 @@
+details of dose rate of `` fugen power plant '' can be calculated by using ders software .
+the changes of conditions for computation of the dose rate , namely , object changes , are inputted to ders from vrdose software by using a special marker .
+responding to these changes ders can compute new dose rate .
+the characteristics of r5 version of this software , instruction manual , and design document were summarized .
+here was developed a phase shift magnetic sensor system composed of two sets of coils , amplifiers , and phase shifts for sensing and output .
+this is a feedback circuit shifting resonance frequency by chang of input signal phase , which can detect change of magnetic features of an object present at a center of two coils on high sensitivity and resolution .
+for the coils , here were used two coils with 6mm of inner diameter and 800 of coil number by inversely connecting .
+on a test , it was possible to analyze features of city water , pure water , city water treated by magnetized device by changing frequency .
+and , it was confirmed to enable also to detect change of flow rate and volume .
+here was described a high sensitivity strain sensor using the surface acoustic waves ( saw ) for radio frequency ic tag ( rfid ) and sensor network , to numerically discuss a strain testing meathod observing saw resonant fequency ( saw-rf ) shifts caused by the strain .
+when supposing saw-rf and frequency resolution to 1ghz and 0.1hz , respectively , it could be calculated that detectable strain was 10-10 .
+and , here was designed an saw sensor with 40mhz of resonant frequency , to prepare it on a quartz substrate by micromachining method .
+as a result , it was found that its minimum detection strain was 10-5 .
+here was proposed a real-time phase stamp range finder ( rt-psrf ) using three-phase correlation image sensor ( 3pcis ) .
+if removing a 3pcis and a three-phase reference signal generator from rt-psrf , it is composed of the same parts as those of the conventional optical stripe range finder .
+on rt-psrf , during single scanning using a sheet beam , phase of the reference signal is stamped at a moment where the optical stripes are photographed on every pixcels .
+by converting the phase detected by such a method to angle of projected sheet beam , there can be obtained three-dimensional shapes of the object in real time .
+hence , when comparing it with that using time-stamp vlsi range finder , psrf can avoid effect of spatial ununiformity of surface reflection and background illun\mination of the object .
+and , the proposed psrf has simpler structure than that of modulated psrf .
+to begin with , various properties of water were explained on hydrogen bond in which the force works among the water molecules and the network structure .
+next , the change of hydrogen bond networks which was a basis of the motion of the water was explained .
+the motion of water molecules of local parts which have made hydrogen bond move collectively while water molecules of the other parts do not move .
+energy fluctuations with such intermittent movement were shown .
+finally , freezing conditions , the aspects of changing in ph and meaning of ph7 of water were explained .
+the article introduces technological progresses to fabricate single crystal thin films of insulator , metal and ferroelectrics on a silicon substrate .
+the key technology is to produce a thin film of γ-alumina on the silicon substrate .
+over chemically stable alumina film , various functional thin films can be formed by cvd and mbe methods .
+various sensors have been realized with multilayer thin films .
+we reported what we had done for solution of an electrification problem of a phase plate which was the most difficult problem in development of a phase difference electron microscope .
+there were two problems in solution of the electrification problem .
+one was a fine processing technology of a phase plate , which was solved in a processing method by fib ( focus ion beam equipment ) .
+the other was an electrification problem of a phase plate , and 1 ) the inevitable electrification fouling in the thin film processing was solved by the sandwich carbon coating , and 2 ) the immanent fouling within an electron microscope from the organic substance sample was attempted to solve in manufacture of a new-model electron microscope system .
+hafnium-related thin film oxides are widely studied as tip gate dielectrics for field effect transistors ( fet ) .
+the authors examined the physical properties of high k nano-laminate materials composed of hfo2 and sinx .
+they examined the effect of deposition process and annealing process using a surface analysis method .
+they examined , using xps , the change of chemical state , and the composition profile and band offset in the depth direction .
+they also examined the bandgap using eseels method ( elastic scattering electronic energy loss spectrum ) .
+it was clarified that although hf/ ( hf+si ) ratio did not affect the bandgap , it affected the band offset for nano-laminate .
+using hartree-fock-bogoliubov method , pairing density distribution of the deformed nuclei was investigated .
+axial symmetric quadrupole deformed nuclei were examined .
+angular dependences of the density distribution and pairing density distribution were obtained with the surface type pairing correlation .
+analyses were performed for 102zr at the angle of 0 , π/4 , π/2 from radial axis .
+it was found that the deformation gave effects to the pairing density distribution .
+by measuring josephson vortex flow resistance of slightly over doped ( tc = 86.0k ) and intermediately doped ( tc = 82.5k ) bi2sr2cacu2o8+δ ( bi‐2212 ) single crystals , the magnetic phase diagram was studied .
+from the periodic oscillation of the flow resistance , the upper and lower phase boundaries of the three-dimensional regular josephson vortex lattice phase were obtained .
+doping induced a noticeable change at the lower boundary of the three-dimensional orderly vortex phase .
+at the lower phase boundary , the formation of josephson vortex lattice started , and the layer was filled with josephson vortices , which reflected the anisotropy .
+at the upper boundary , the phase transition from the josephson vortex lattice phase to the two-dimensional quasi-orderly state was suggested .
+the title subject tapes were fabricated by pit method .
+in this process , ag and ag‐0.3wt. % mn were used as the inner and outer sheath materials , respectively .
+the mechanical properties and critical current deterioration under axial fatigue loading were investigated for these tapes .
+the details of the result were described .
+the title subject detector was developed using a superconducting tunnel junction ( stj ) .
+this stj is composed of nb/al/alox/al/nb multi-layer structure , and the substrate was a linbo3 single crystal .
+thz wave irradiation was converted to phonons by a linbo3 crystal , and these phonons destroyed cooper pairs after reaching a nb base electrode .
+consequently , the thz waves can be detected as tunneling current signals at stj .
+the fabrication and property evaluation of this detector were described .
+using the plasma-enhanced chemical vapor deposition ( pecvd ) method developed for low-temperature crystallite silicon transistors , the authors formed sio2 films and si nano-dots .
+a conductively coupled plasma ( ccp ) source was used for the former , and an inductively coupled plasma ( icp ) source was used for the latter .
+the density and diameter distribution of si dots could be changed through formation temperatures .
+it was also proven that the shape and crystallinity of the dots were dependent on temperatures .
+sio2 films showed excellent performance even at 430℃ or less , and the memory effect of si dot mos capacitor was confirmed .
+protein localization and dynamic phase in the reproductive cell of the reproduction granule composition protein were examined .
+it was introduced into the fertilized egg of oryzias latipes by the fusion as vasa of oryzias latipes and result of est analysis of oryzias latipes on the gene of newly identified two piece to the gene of gfp or rfp .
+the germ line was peculiarly manifested by this , and the analysis was carried out using fluorescence correlation spectroscopy and laser scanning type fluorescence microscope .
+it was possible to confirm that as a result of the examination , the fusion gene product shows the peculiar expression of the germ line , and that it forms cytoplasm structure of the patch state which seems to be the reproduction granule in the neighborhood of the nucleus .
+the stability of al/si surface which was made to react with perfluorosilan ( pfts ) was examined using xps and contact angle measurement ( cam ) ( pfts/al/si ) .
+with xps , the perfluorosilan alkyl chain coating exists for pfts/al/si revealed in pfts/al/si , 140 hour externality and on pfts/a l/si revealed in the 140 hour externality of the nitric-acid-treatment .
+cam in these three surfaces it is shown that the static water contact angle is > 115° , and it is shown that the wet hysteresis is determine almost constant and the high and hydrophobicity good resistance is shown .
+that is to say , the stability of pfts/al/si to the nitric acid ( ph < 1.8,60 ℃ , 30 minute ) is shown .
+the afm data shows that there is not large difference at the surface roughness of pfts/al/si in before and behind of the warm nitric-acid-treatment and that the pfts/al/si film is stable .
+liquid crystals have a great deal of potentialities for their application to various functional materials .
+building of the organizational structure by molecular design , and new functionalization were tried .
+design of liquid crystals and nanophase separation structure , mass transport and separation by liquid crystals , and electrical functions of liquid crystals were described .
+molecular shape and intermolecular interaction influence self-assembled structures greatly .
+after describing the characteristics of particle transport and dielectric breakdown under atmospheric pressure , typical atmospheric thermal nonequilibrium plasmas are discussed , and their properties and characteristics are reviewed .
+the corona discharge is a discharge generated in unequal electric fields of electrodes with a needle and a flat plate , or with a wire and a plate , etc .
+the dielectric barrier discharge is generated when alternate current or pulse voltage is applied between the electrodes such as parallel flat plate electrodes , circular cylinder electrodes etc. , at least one of which is made of dielectrics .
+the micro discharge having a filament shape is one mode of the most common dielectric barrier discharges , and discharge filaments appear on the entire surfaces of the electrodes .
+the atmospheric glow discharge is a homogeneous electric discharge obtained by applying alternating voltage after introducing atmospheric he gas in a typical dielectric barrier discharge reactor .
+optical polarization continues to play an increasingly important role in industries ranging from liquid crystal displays to optical recording , and from biotechnology to remote sensing .
+furthermore , the products using polarization elements and polarization elements themselves have been complicatedly applied more than ever .
+systems that measure the complete mueller matrix of a sample have an advantage of measuring all possible polarization properties of a sample , and thus are certain to be suitable for use on nearly any current or future type of polarization sample .
+in this article , we will briefly describe the basic types of polarization measurements , and remind readers of the mueller matrix for describing the polarization properties of a sample .
+we will also describe the axoscan system for measuring the complete mueller matrix of a sample , and give an example of a measurement that can be made with this technology .
+a sequential control is explained , by introducing the automatic control of flow raate .
+the sensor controls the flow rate by detecing the position of the float in the tepered tube with a a differential tranfromer and controlling it with the obtained voltage .
+shown here are type and basic configuration and standards of this flow with some diagrams .
+standards for type selectin , and applications to systems precaution , for standard measurement are described , giving examples of constant flow control .
+the establishment of an optical fiber attenuation standard was attempted .
+emission diode of 850nm center wavelength with gaussian spectrum full width at half maximum 50nm was used as a light source , and multimode gi type optical fiber of 26 μm effective core diameter and 0.11 effective numerical aperture was used .
+measuring temperature was set at 22℃ and measuring range of the attenuation was set at 10‐50db .
+the result of international comparison among japan ( etl ) , italy ( cselt ) , the netherlands ( vsl ) , germany ( ptb ) and france ( lcie ) was discussed .
+power failure and equipment damage by lightning become a problem for a radio relay station , since it is installed at the tip of a high altitude location . 24 lightning strokes to the radio tower and distribution line in winter , fiscal 1990 were observed .
+the following were studied . 1 ) lightning current waveform . 2 ) duration of lightning current . 3 ) estimation of the lightning 's path of entry and lightning stroke aspect .
+as to the polarity of the lightning , positive polarity and bipolarity occupy 75 % .in a bipolar lightning stroke , a positive‐polarity current flows following the negative‐polarity current .
+lightning stroke ratio of the radio tower to distribution lines is equal .
+the united states intends to promote the international and domestic competitive power and superiority as a supreme proposition by close cooperation of government , industry , and university .
+the worldwide research competition began in early 1987 reports on experiments of high temperature superconductivity of yttrium and copper oxides , and especially , national promotion policy was taken not to be left far behind japan .
+the aid policy of the development system of industry‐government‐university was advocated in president reagan 's speech , and concrete legislation and administrative measures were taken , and 5 strengthening bills were proposed .
