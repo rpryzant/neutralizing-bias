@@ -30,7 +30,7 @@ class TFIDF(object):
         scores = np.squeeze(scores.toarray())
         scores_indices = zip(scores, range(len(scores)))
         selected = sorted(scores_indices, reverse=True)[:n]
-        selected = [(self.corpus[i], score) for (score, i) in selected]
+        selected = [(self.corpus[i], i, score) for (score, i) in selected]
 
         return selected
 
@@ -70,30 +70,82 @@ class SalienceCalculator(object):
             return (post_count + lmbda) / (pre_count + lmbda)
 
 
-def extract_diff(pre, post):
-    """
-    seperates a pre/post edit sentence into
-        1) the bits that are shared: content(pre), content(post)   
-        2) the bits that were changed: attribute(pre), attribute(post)
-    """
-    dif_toks = [x for x in difflib.ndiff(pre.split(), post.split())]
 
-    content = []
-    a_pre = []
-    a_post = []
-    
-    cur = None
-    for tok in dif_toks:
-        if tok.startswith('-'):
-            a_pre.append( tok[2:] )
-        elif tok.startswith('+'):
-            a_post.append( tok[2:] )
-        elif tok.startswith('?'):
-            continue
-        else:
-            content.append( tok.strip() )
 
-    return content[:], a_pre, content[:], a_post
+
+class IRDebiaser(object):
+    def __init__(self, corpus_path, attribute_vocab_path=None):
+        (pre_raw, post_raw, pre_a, post_a, 
+         pre_content, post_content) = self.prep_corpus(
+            corpus_path, attribute_vocab_path)
+
+        self.tfidf = TFIDF(content)
+
+
+    def debias(self, s):
+        # TODO -- salience scores?
+
+    def prep_corpus(self, corpus_path, attribute_vocab_path=None):
+        if attribute_vocab_path is not None:
+            attribute_vocab = set([x.strip() for x in open(attribute_vocab_path)])
+
+        pre_raw_corpus = []
+        post_raw_corpus = []
+        pre_content_corpus = []
+        post_content_corpus = []
+        pre_a_corpus = []
+        post_a_corpus = []
+
+        for l in tqdm(open(data_path)):
+            [_, _, pre, post, _] = l.strip().split('\t')
+            pre = pre.lower()
+            post = post.lower()
+
+            if attribute_vocab_path is None:
+                pre_content, post_content, pre_a, post_a = self.extract_diff(pre, post)
+                # TODO -- split by pre content/post content
+            else: 
+                content, pre_a, post_a = self.extract_attributes(pre, post, attribute_vocab)
+                pre_content, post_content = content[:], content[:]
+
+            pre_raw_corpus.append(pre)
+            post_raw_corpus.append(post)
+            pre_content_corpus.append(' '.join(pre_content))
+            post_content_corpus.append(' '.join(post_content))
+            pre_a_corpus.append(pre_a)
+            post_a_corpus.append(post_a)
+
+        return pre_raw_corpus, post_raw_corpus, pre_a_corpus, post_a_corpus, pre_content_corpus, post_content_corpus
+
+    def extract_attributes(self, pre, post, attribute_vocab):
+        # TODO pre content post content
+
+    def extract_diff(self, pre, post):
+        """
+        seperates a pre/post edit sentence into
+            1) the bits that are shared: content(pre), content(post)   
+            2) the bits that were changed: attribute(pre), attribute(post)
+        """
+        dif_toks = [x for x in difflib.ndiff(pre.split(), post.split())]
+
+        content = []
+        a_pre = []
+        a_post = []
+
+        cur = None
+        for tok in dif_toks:
+            if tok.startswith('-'):
+                a_pre.append( tok[2:] )
+            elif tok.startswith('+'):
+                a_post.append( tok[2:] )
+            elif tok.startswith('?'):
+                continue
+            else:
+                content.append( tok.strip() )
+
+        return content, a_pre, a_post
+
+
 
 
 
