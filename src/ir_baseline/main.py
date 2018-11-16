@@ -9,12 +9,9 @@ from tqdm import tqdm
 import numpy as np
 from collections import defaultdict, Counter
 import math
-data_path = sys.argv[1]
-
-
+from nltk.stem import PorterStemmer
 
 class TFIDF(object):
-
     def __init__(self, corpus):
         self.vectorizer = TfidfVectorizer()
         self.vectorizer.fit(corpus)
@@ -36,7 +33,6 @@ class TFIDF(object):
 
 
 class SalienceCalculator(object):
-
     def __init__(self, pre_corpus, post_corpus):
         self.vectorizer = CountVectorizer()
 
@@ -74,21 +70,37 @@ class SalienceCalculator(object):
 
 
 class IRDebiaser(object):
-    def __init__(self, corpus_path, attribute_vocab_path=None):
-        (pre_raw, post_raw, pre_a, post_a, 
-         pre_content, post_content) = self.prep_corpus(
-            corpus_path, attribute_vocab_path)
+    def __init__(self, corpus_path, attribute_vocab_path=None, stem=False):
+        """ if no attribute vocabs, uses pre/post diff
+            and assumes all content at test time
+        """
+        if attribute_vocab_path is not None:
+            self.attribute_vocab = set([x.strip() for x in open(attribute_vocab_path)])
+        else:
+            self.attribute_vocab = None
 
-        self.tfidf = TFIDF(content)
+        self.stemmer = PorterStemmer() if stem else None
 
+        (self.pre_raw, self.post_raw, pre_a, post_a, 
+         pre_content, post_content) = self.prep_corpus(corpus_path)
+
+        self.tfidf = TFIDF(post_content)
 
     def debias(self, s):
-        # TODO -- salience scores?
+        if self.stemmer:
+            s = self.stem(s)
 
-    def prep_corpus(self, corpus_path, attribute_vocab_path=None):
-        if attribute_vocab_path is not None:
-            attribute_vocab = set([x.strip() for x in open(attribute_vocab_path)])
+        if self.attribute_vocab is not None:
+            s_content, _ = self.extract_attributes(
+                s.split(), self.attribute_vocab)
+        else:
+            s_content = s
+            
+        retrieved_content, idx, score = self.tfidf.most_similar(s, n=10)[0]
+        return self.post_raw[idx]
 
+
+    def prep_corpus(self, corpus_path):
         pre_raw_corpus = []
         post_raw_corpus = []
         pre_content_corpus = []
@@ -100,16 +112,20 @@ class IRDebiaser(object):
             [_, _, pre, post, _] = l.strip().split('\t')
             pre = pre.lower()
             post = post.lower()
-
-            if attribute_vocab_path is None:
-                pre_content, post_content, pre_a, post_a = self.extract_diff(pre, post)
-                # TODO -- split by pre content/post content
-            else: 
-                content, pre_a, post_a = self.extract_attributes(pre, post, attribute_vocab)
-                pre_content, post_content = content[:], content[:]
-
             pre_raw_corpus.append(pre)
             post_raw_corpus.append(post)
+
+            if self.stemmer:
+                pre = self.stem(pre)
+                post = self.stem(post)
+
+            if self.attribute_vocab is not None:
+                (pre_content, pre_a) = self.extract_attributes(pre.split(), self.attribute_vocab)
+                (post_content, post_a) = self.extract_attributes(post.split(), self.attribute_vocab)
+            else: 
+                content, pre_a, post_a = self.extract_diff(pre, post)
+                pre_content, post_content = content[:], content[:]
+
             pre_content_corpus.append(' '.join(pre_content))
             post_content_corpus.append(' '.join(post_content))
             pre_a_corpus.append(pre_a)
@@ -117,8 +133,20 @@ class IRDebiaser(object):
 
         return pre_raw_corpus, post_raw_corpus, pre_a_corpus, post_a_corpus, pre_content_corpus, post_content_corpus
 
-    def extract_attributes(self, pre, post, attribute_vocab):
-        # TODO pre content post content
+
+    def stem(self, s):
+        return ' '.join([self.stemmer.stem(x) for x in s.split()])
+
+    def extract_attributes(self, tok_seq, attribute_vocab):
+        content = []
+        attribute = []
+        for tok in tok_seq:
+            if tok in attribute_vocab:
+                attribute.append(tok)
+            else: 
+                content_append(tok)
+        return content, attribute
+
 
     def extract_diff(self, pre, post):
         """
@@ -146,48 +174,10 @@ class IRDebiaser(object):
         return content, a_pre, a_post
 
 
+data_path = sys.argv[1]
 
+db = IRDebiaser(data_path, stem=True)
 
+print(db.debias('retirement'))
 
-pre_raw_corpus = []
-pre_c_corpus = []
-pre_a_corpus = []
-
-post_raw_corpus = []
-post_c_corpus = []
-post_a_corpus = []
-
-
-for l in tqdm(open(data_path)):
-    [_, _, pre, post, _] = l.strip().split('\t')
-    
-    pre_c, pre_a, post_c, post_a = extract_diff(pre, post)
-    
-    pre_raw_corpus.append(pre)
-    pre_c_corpus.append(' '.join(pre_c).lower())
-    pre_a_corpus.append(' '.join(pre_a))
-    
-    post_raw_corpus.append(post)
-    post_c_corpus.append(post_c)
-    post_a_corpus.append(post_a)
-
-import time
-
-start = time.time()
-sc = SalienceCalculator(pre_raw_corpus, post_raw_corpus)
-
-for x in sc.pre_vocab:
-    start = time.time()
-    s = sc.salience(x, attribute='pre')
-#    print(x, s)
-    if s > 5.0:
-        print(x, s)
-
-#start = time.time()
-#tfidf = TFIDF(corpus=pre_c_corpus)
-#print(time.time() - start)
-
-#start = time.time()
-#print(tfidf.most_similar('and then i was in a bar and so drunk yeesh', n=10))
-#print(time.time() - start)
 
