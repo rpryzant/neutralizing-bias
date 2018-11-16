@@ -1,0 +1,36 @@
+{
+  "training": {
+    "optimizer": "sgd",
+    "learning_rate": 1.0,
+    "max_norm": 3.0,
+    "epochs": 70,
+    "batches_per_report": 1,
+    "batches_per_sampling": 500,
+    "random_seed": 123,
+  },
+  "data": {
+    "src": "test_data/train.ja",
+    "tgt": "test_data/train.en",
+    "src_test": "test_data/test.ja",
+    "tgt_test": "test_data/test.en",
+    "src_vocab": "test_data/vocab.12000.ja",
+    "tgt_vocab": "test_data/vocab.12000.en",
+    "attribute_vocab": "TODO",
+    "working_dir": "sample_run",
+    "batch_size": 32,
+    "max_len": 50
+  },
+  "model": {
+    "model_type": "delete",
+    "emb_dim": 64,
+    "attention": true,
+    "encoder": "lstm",
+    "src_hidden_dim": 64,
+    "src_layers": 1,
+    "bidirectional": true,
+    "tgt_hidden_dim": 64,
+    "tgt_layers": 1,
+    "decode": "greedy",
+    "dropout": 0.2
+  }
+}
