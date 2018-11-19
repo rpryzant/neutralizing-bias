@@ -97,7 +97,7 @@ if CUDA:
 torch.manual_seed(config['training']['random_seed'])
 np.random.seed(config['training']['random_seed'])
 
-model = models.Seq2SeqAttention(
+model = models.StyleTransfer(
     src_vocab_size=src_vocab_size,
     tgt_vocab_size=tgt_vocab_size,
     pad_id_src=src['tok2id']['<pad>'],
@@ -166,10 +166,16 @@ for epoch in range(start_epoch, config['training']['epochs']):
 
         input_content, input_aux, output = data.minibatch(
             src, tgt, i, batch_size, max_length, config['model']['model_type'])
+        input_lines_src, _, srclens, srcmask, _ = input_content
+        input_ids_aux, _, auxlens, auxmask, _ = input_aux
+        input_lines_tgt, output_lines_tgt, _, _, _ = output
+        
+        
+#        TODO FROM HERE!!!!!!!!
+        decoder_logit, decoder_probs = model(
+            input_lines_src, input_lines_tgt, srcmask, srclens,
+            input_ids_aux, auxlens, auxmask)
 
-        TODO FROM HERE!!!!!!!!
-
-        decoder_logit, decoder_probs = model(input_lines_src, input_lines_tgt, srcmask, srclens)
         optimizer.zero_grad()
 
         loss = loss_criterion(

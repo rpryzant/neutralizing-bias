@@ -6,31 +6,32 @@
     "epochs": 70,
     "batches_per_report": 1,
     "batches_per_sampling": 500,
-    "random_seed": 123,
+    "random_seed": 1
   },
   "data": {
-    "src": "test_data/train.ja",
-    "tgt": "test_data/train.en",
-    "src_test": "test_data/test.ja",
-    "tgt_test": "test_data/test.en",
-    "src_vocab": "test_data/vocab.12000.ja",
-    "tgt_vocab": "test_data/vocab.12000.en",
-    "attribute_vocab": "TODO",
-    "working_dir": "sample_run",
-    "batch_size": 32,
-    "max_len": 50
+    "src": "test_data/pre.train",
+    "tgt": "test_data/post.train",
+    "src_test": "test_data/pre.test",
+    "tgt_test": "test_data/post.test",
+    "src_vocab": "test_data/vocab.16k",
+    "tgt_vocab": "test_data/vocab.16k",
+    "share_vocab": true,
+    "attribute_vocab": "test_data/attribute_vocab.16k.r2.l0.5",
+    "batch_size": 20,
+    "max_len": 50,
+    "working_dir": "sample_run"
   },
-  "model": {
-    "model_type": "delete",
-    "emb_dim": 64,
-    "attention": true,
-    "encoder": "lstm",
-    "src_hidden_dim": 64,
-    "src_layers": 1,
-    "bidirectional": true,
-    "tgt_hidden_dim": 64,
-    "tgt_layers": 1,
-    "decode": "greedy",
-    "dropout": 0.2
-  }
+    "model": {
+        "model_type": "delete_retrieve",
+        "emb_dim": 32,
+        "attention": false,
+        "encoder": "lstm",
+        "src_hidden_dim": 64,
+        "src_layers": 1,
+        "bidirectional": true,
+        "tgt_hidden_dim": 64,
+        "tgt_layers": 1,
+        "decode": "greedy",
+        "dropout": 0.2
+    }
 }

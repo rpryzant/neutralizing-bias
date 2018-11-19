@@ -23,7 +23,7 @@ class SalienceCalculator(object):
         self.post_counts = np.squeeze(np.asarray(self.post_counts))
 
 
-    def salience(self, feature, attribute='pre', lmbda=1.0):
+    def salience(self, feature, attribute='pre', lmbda=0.5):
         assert attribute in ['pre', 'post']
 
         if feature not in self.pre_vocab:
@@ -59,12 +59,11 @@ corpus2 = [
 
 r = float(sys.argv[4])
 
-
 sc = SalienceCalculator(corpus1, corpus2)
 
 for tok in vocab:
-    print(tok, sc.salience(tok))
-#    if sc.salience(tok) > r:
-#        print(tok)
+#    print(tok, sc.salience(tok))
+    if sc.salience(tok) > r:
+        print(tok)
 
 

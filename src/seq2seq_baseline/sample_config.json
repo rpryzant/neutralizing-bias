@@ -15,6 +15,7 @@
     "tgt_test": "test_data/test.en",
     "src_vocab": "test_data/vocab.12000.ja",
     "tgt_vocab": "test_data/vocab.12000.en",
+    "share_vocab": true,
     "working_dir": "sample_run",
     "batch_size": 32,
     "max_len": 50

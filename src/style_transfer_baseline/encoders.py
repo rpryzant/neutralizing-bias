@@ -21,7 +21,7 @@ class LSTMEncoder(nn.Module):
             batch_first=True,
             dropout=dropout)
 
-        self.pack = True
+        self.pack = pack
 
     def init_state(self, input):
         batch_size = input.size(0) # retrieve dynamically for decoding
@@ -46,10 +46,14 @@ class LSTMEncoder(nn.Module):
         h0, c0 = self.init_state(src_embedding)
 
         # sequences should have already been sorted at this point
-        inputs = pack_padded_sequence(src_embedding, srclens, batch_first=True)
+        if self.pack:
+            inputs = pack_padded_sequence(src_embedding, srclens, batch_first=True)
+        else:
+            inputs = src_embedding
 
         outputs, (h_final, c_final) = self.lstm(inputs, (h0, c0))
 
-        outputs, _ = pad_packed_sequence(outputs, batch_first=True)
+        if self.pack:
+            outputs, _ = pad_packed_sequence(outputs, batch_first=True)
 
         return outputs, (h_final, c_final)

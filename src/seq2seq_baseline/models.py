@@ -66,10 +66,13 @@ class Seq2SeqAttention(nn.Module):
             self.options['emb_dim'],
             self.pad_id_src)
 
-        self.tgt_embedding = nn.Embedding(
-            self.tgt_vocab_size,
-            self.options['emb_dim'],
-            self.pad_id_tgt)
+        if self.config['data']['share_vocab']:
+            self.tgt_embedding = self.src_embedding
+        else:
+            self.tgt_embedding = nn.Embedding(
+                self.tgt_vocab_size,
+                self.options['emb_dim'],
+                self.pad_id_tgt)
 
         if self.options['encoder'] == 'lstm':
             self.encoder = encoders.LSTMEncoder(

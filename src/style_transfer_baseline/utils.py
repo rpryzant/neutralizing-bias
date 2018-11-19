@@ -19,4 +19,3 @@ def config_key_string(config):
     config_keys = map(lambda x: str(x[0]), config_items)
     return ','.join(config_keys)
 
-
