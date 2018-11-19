@@ -211,7 +211,7 @@ for epoch in range(start_epoch, config['training']['epochs']):
             model.eval()
             tgt_pred = evaluation.decode_minibatch(
                 config['data']['max_len'], tgt['tok2id']['<s>'], 
-                model=model, 
+                model=model,
                 src_input=input_lines_src[:3],
                 srclens=srclens[:3],
                 srcmask=srcmask[:3],

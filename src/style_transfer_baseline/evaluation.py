@@ -50,7 +50,7 @@ def get_bleu(hypotheses, reference):
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 
-def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask, temp):
+def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask):
     """ argmax decoding """
     # Initialize target with <s> for every sentence
     tgt_input = Variable(torch.LongTensor(
@@ -63,7 +63,7 @@ def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask, temp
 
     for i in range(max_len):
         # run input through the model
-        decoder_logit, word_probs = model(src_input, tgt_input, srcmask, srclens, temp)
+        decoder_logit, word_probs = model(src_input, tgt_input, srcmask, srclens)
         decoder_argmax = word_probs.data.cpu().numpy().argmax(axis=-1)
         # select the predicted "next" tokens, attach to target-side inputs
         next_preds = Variable(torch.from_numpy(decoder_argmax[:, -1]))
@@ -73,7 +73,7 @@ def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask, temp
 
     return tgt_input
 
-def decode_dataset(model, src, tgt, config, temp):
+def decode_dataset(model, src, tgt, config):
     """Evaluate model."""
     preds = []
     ground_truths = []
@@ -95,7 +95,7 @@ def decode_dataset(model, src, tgt, config, temp):
         # TODO -- beam search
         tgt_pred = decode_minibatch(
             config['data']['max_len'], tgt['tok2id']['<s>'], 
-            model, src_input, srclens, srcmask, temp)
+            model, src_input, srclens, srcmask)
 
         # convert seqs to tokens
         tgt_pred = tgt_pred.data.cpu().numpy()
@@ -119,10 +119,10 @@ def decode_dataset(model, src, tgt, config, temp):
     return preds, ground_truths
 
 
-def evaluate_bleu(model, src, tgt, config, temp):
+def evaluate_bleu(model, src, tgt, config):
     """ decode and evaluate bleu """
     preds, ground_truths = decode_dataset(
-        model, src, tgt, config, temp)
+        model, src, tgt, config)
     bleu = get_bleu(preds, ground_truths)
     preds = [' '.join(seq) for seq in preds]
     ground_truths = [' '.join(seq) for seq in ground_truths]
@@ -130,7 +130,7 @@ def evaluate_bleu(model, src, tgt, config, temp):
     return bleu, preds, ground_truths
 
 
-def evaluate_lpp(model, src, tgt, config, temp):
+def evaluate_lpp(model, src, tgt, config):
     """ evaluate log perplexity WITHOUT decoding
         (i.e., with teacher forcing)
     """
@@ -158,7 +158,7 @@ def evaluate_lpp(model, src, tgt, config, temp):
                 j, config['data']['batch_size'],
                 config['data']['max_len'], idx=idx)
 
-        decoder_logit, decoder_probs = model(src_input, tgt_input, srcmask, srclens, temp)
+        decoder_logit, decoder_probs = model(src_input, tgt_input, srcmask, srclens)
 
         loss = loss_criterion(
             decoder_logit.contiguous().view(-1, len(tgt['tok2id'])),
