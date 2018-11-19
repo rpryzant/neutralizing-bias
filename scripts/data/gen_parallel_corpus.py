@@ -15,7 +15,7 @@ from nltk import sent_tokenize
 
 
 METADATA_PATTERN = 'en_npov_edits_%d.tsv'
-REVISIONS_PATTERN = 'en_npov_edits_%d.revision_text.pkl'
+REVISIONS_PATTERN = 'en_npov_edits_%d.revision_text.wo.pkl'
 
 CTR_ID_MISMATCH = 0
 CTR_MULTIPLE_EDITS = 0

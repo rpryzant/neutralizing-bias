@@ -154,37 +154,41 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
     return input_lines, output_lines, lens, mask, idx
 
 
-def minibatch(src, tgt, idx, batch_size, max_len, model_type):
+def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
     # TODO -- TEST TIME!??!
-    if random.random() < 0.5:
-        dataset = src
-        attribute_ids = [0 for _ in range(batch_size)]
+    if not is_test:
+        use_src = random.random() < 0.5
+        in_dataset = src if use_src else tgt
+        out_dataset = in_dataset
+        attribute_id = 0 if use_src else 1
     else:
-        dataset = tgt
-        attribute_ids = [1 for _ in range(batch_size)]
+        in_dataset = src
+        out_dataset = tgt
+        attribute_id = 1
 
     if model_type == 'delete':
+        attribute_ids = [attribute_id for _ in range(batch_size)]
         attribute_ids = Variable(torch.LongTensor(attribute_ids))
         if CUDA:
             attribute_ids = attribute_ids.cuda()
 
         inputs = get_minibatch(
-            dataset['content'], dataset['tok2id'], idx, batch_size, max_len, sort=True)
+            in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
         outputs = get_minibatch(
-            dataset['data'], dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
+            out_dataset['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
 
         return inputs, (attribute_ids, None, None, None, None), outputs 
 
     elif model_type == 'delete_retrieve':
 
         inputs =  get_minibatch(
-            dataset['content'], dataset['tok2id'], idx, batch_size, max_len, sort=True)
+            in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
 #        TODO!!! THE REPLACEMENT THING??
         attributes =  get_minibatch(
-            dataset['attribute'], dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1],
-            dist_measurer=dataset['attribute_dist'], sample_rate=0.2)
+            out_dataset['attribute'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1],
+            dist_measurer=out_dataset['attribute_dist'], sample_rate=0.2)
         outputs = get_minibatch(
-            dataset['data'], dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
+            out_dataset['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
 
         return inputs, attributes, outputs
 

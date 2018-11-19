@@ -159,6 +159,9 @@ for epoch in range(start_epoch, config['training']['epochs']):
 
     losses = []
     for i in range(0, len(src['content']), batch_size):
+#############    #TODO REMOVE ME!~!!!!!!!!!
+#################### TODO CHECK TEST TIME DATA!!
+        continue 
         if args.overfit:
             i = 50
 
@@ -170,8 +173,6 @@ for epoch in range(start_epoch, config['training']['epochs']):
         input_ids_aux, _, auxlens, auxmask, _ = input_aux
         input_lines_tgt, output_lines_tgt, _, _, _ = output
         
-        
-#        TODO FROM HERE!!!!!!!!
         decoder_logit, decoder_probs = model(
             input_lines_src, input_lines_tgt, srcmask, srclens,
             input_ids_aux, auxlens, auxmask)
@@ -205,36 +206,40 @@ for epoch in range(start_epoch, config['training']['epochs']):
             words_since_last_report = 0
             losses_since_last_report = []
 
-        if not args.overfit and batch_idx % config['training']['batches_per_sampling'] == 0:
-            logging.info('PRINTING SAMPLE...')
+        # NO SAMPLING!! because of weird train-vs-test data stuff
+        # 
+        # if not args.overfit and batch_idx % config['training']['batches_per_sampling'] == 0:
+        #     logging.info('PRINTING SAMPLE...')
 
-            model.eval()
-            tgt_pred = evaluation.decode_minibatch(
-                config['data']['max_len'], tgt['tok2id']['<s>'], 
-                model=model,
-                src_input=input_lines_src[:3],
-                srclens=srclens[:3],
-                srcmask=srcmask[:3],
-                temp=softmax_temp)
-            model.train()
+        #     model.eval()
+        #     tgt_pred = evaluation.decode_minibatch(
+        #         config['data']['max_len'], tgt['tok2id']['<s>'], 
+        #         model=model,
+        #         src_input=input_lines_src[:3],
+        #         srclens=srclens[:3],
+        #         srcmask=srcmask[:3],
+        #         aux_input=input_ids_aux[:3],
+        #         auxlens=auxlens[:3],
+        #         auxmask=auxmask[:3])
+        #     model.train()
 
-            tgt_pred = tgt_pred.data.cpu().numpy()
-            tgt_gold = output_lines_tgt.data.cpu().numpy()[:3]
+        #     tgt_pred = tgt_pred.data.cpu().numpy()
+        #     tgt_gold = output_lines_tgt.data.cpu().numpy()[:3]
 
-            for s_pred, s_gold in zip(tgt_pred, tgt_gold):
-                pred_line = [tgt['id2tok'][x] for x in s_pred]
-                if '</s>' in pred_line:
-                    pred_line = ' '.join(pred_line[:pred_line.index('</s>')])
-                else:
-                    pred_line = ' '.join(pred_line)
-                gold_line = [tgt['id2tok'][x] for x in s_gold]
-                try:
-                    gold_line = ' '.join(gold_line[:gold_line.index('</s>')])
-                except:
-                    gold_line = ' '.join(gold_line)
-                logging.info('PRED: %s' % pred_line)
-                logging.info('GOLD: %s' % gold_line)
-                logging.info('')
+        #     for s_pred, s_gold in zip(tgt_pred, tgt_gold):
+        #         pred_line = [tgt['id2tok'][x] for x in s_pred]
+        #         if '</s>' in pred_line:
+        #             pred_line = ' '.join(pred_line[:pred_line.index('</s>')])
+        #         else:
+        #             pred_line = ' '.join(pred_line)
+        #         gold_line = [tgt['id2tok'][x] for x in s_gold]
+        #         try:
+        #             gold_line = ' '.join(gold_line[:gold_line.index('</s>')])
+        #         except:
+        #             gold_line = ' '.join(gold_line)
+        #         logging.info('PRED: %s' % pred_line)
+        #         logging.info('GOLD: %s' % gold_line)
+        #         logging.info('')
 
         STEP += 1
     if args.overfit:
@@ -244,13 +249,13 @@ for epoch in range(start_epoch, config['training']['epochs']):
     start = time.time()
     model.eval()
     dev_loss = evaluation.evaluate_lpp(
-            model, src_test, tgt_test, config, softmax_temp)
+            model, src_test, tgt_test, config)
 
     writer.add_scalar('eval/loss', dev_loss, epoch)
 
     if args.bleu and epoch >= config['training'].get('bleu_start_epoch', 1):
         cur_metric, preds, golds = evaluation.evaluate_bleu(
-            model, src_test, tgt_test, config, softmax_temp)
+            model, src_test, tgt_test, config)
         with open(working_dir + '/preds.%s' % epoch, 'w') as f:
             f.write('\n'.join(preds) + '\n')
         with open(working_dir + '/golds.%s' % epoch, 'w') as f:

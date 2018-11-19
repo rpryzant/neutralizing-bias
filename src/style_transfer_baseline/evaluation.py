@@ -50,7 +50,8 @@ def get_bleu(hypotheses, reference):
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 
-def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask):
+def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask,
+        aux_input, auxlens, auxmask):
     """ argmax decoding """
     # Initialize target with <s> for every sentence
     tgt_input = Variable(torch.LongTensor(
@@ -63,7 +64,8 @@ def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask):
 
     for i in range(max_len):
         # run input through the model
-        decoder_logit, word_probs = model(src_input, tgt_input, srcmask, srclens)
+        decoder_logit, word_probs = model(src_input, tgt_input, srcmask, srclens,
+            aux_input, auxmask, auxlens)
         decoder_argmax = word_probs.data.cpu().numpy().argmax(axis=-1)
         # select the predicted "next" tokens, attach to target-side inputs
         next_preds = Variable(torch.from_numpy(decoder_argmax[:, -1]))
@@ -82,33 +84,34 @@ def decode_dataset(model, src, tgt, config):
         sys.stdout.flush()
 
         # get batch
-        src_input, src_output, srclens, srcmask, idx = data.get_minibatch(
-            src['data'], src['tok2id'],
-            j, config['data']['batch_size'],
-            config['data']['max_len'], sort=True)
-
-        _, tgt_output, _, _, _ = data.get_minibatch(
-                tgt['data'], tgt['tok2id'],
-                j, config['data']['batch_size'],
-                config['data']['max_len'], idx=idx)
+        input_content, input_aux, output = data.minibatch(
+            src, tgt, j, 
+            config['data']['batch_size'], 
+            config['data']['max_len'], 
+            config['model']['model_type'],
+            is_test=True)
+        input_lines_src, _, srclens, srcmask, _ = input_content
+        input_ids_aux, _, auxlens, auxmask, _ = input_aux
+        input_lines_tgt, output_lines_tgt, _, _, _ = output
 
         # TODO -- beam search
         tgt_pred = decode_minibatch(
             config['data']['max_len'], tgt['tok2id']['<s>'], 
-            model, src_input, srclens, srcmask)
+            model, input_lines_src, srclens, srcmask,
+            input_ids_aux, auxlens, auxmask)
 
         # convert seqs to tokens
         tgt_pred = tgt_pred.data.cpu().numpy()
         tgt_pred = [
             [tgt['id2tok'][x] for x in line]
             for line in tgt_pred]
-        tgt_output = tgt_output.data.cpu().numpy()
-        tgt_output = [
+        output_lines_tgt = output_lines_tgt.data.cpu().numpy()
+        output_lines_tgt = [
             [tgt['id2tok'][x] for x in line]
-            for line in tgt_output]
+            for line in output_lines_tgt]
 
         # cut off at </s>
-        for tgt_pred, tgt_gold in zip(tgt_pred, tgt_output):
+        for tgt_pred, tgt_gold in zip(tgt_pred, output_lines_tgt):
             idx = tgt_pred.index('</s>') if '</s>' in tgt_pred else len(tgt_pred)
             preds.append(tgt_pred[:idx + 1])
 
@@ -148,21 +151,23 @@ def evaluate_lpp(model, src, tgt, config):
         sys.stdout.flush()
 
         # get batch
-        src_input, src_output, srclens, srcmask, idx = data.get_minibatch(
-            src['data'], src['tok2id'],
-            j, config['data']['batch_size'],
-            config['data']['max_len'], sort=True)
+        input_content, input_aux, output = data.minibatch(
+            src, tgt, j, 
+            config['data']['batch_size'], 
+            config['data']['max_len'], 
+            config['model']['model_type'],
+            is_test=True)
+        input_lines_src, _, srclens, srcmask, _ = input_content
+        input_ids_aux, _, auxlens, auxmask, _ = input_aux
+        input_lines_tgt, output_lines_tgt, _, _, _ = output
 
-        tgt_input, tgt_output, _, _, _ = data.get_minibatch(
-                tgt['data'], tgt['tok2id'],
-                j, config['data']['batch_size'],
-                config['data']['max_len'], idx=idx)
-
-        decoder_logit, decoder_probs = model(src_input, tgt_input, srcmask, srclens)
+        decoder_logit, decoder_probs = model(
+            input_lines_src, input_lines_tgt, srcmask, srclens,
+            input_ids_aux, auxlens, auxmask)
 
         loss = loss_criterion(
             decoder_logit.contiguous().view(-1, len(tgt['tok2id'])),
-            tgt_output.view(-1)
+            output_lines_tgt.view(-1)
         )
         losses.append(loss.data[0])
 
