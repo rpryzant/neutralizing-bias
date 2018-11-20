@@ -66,7 +66,6 @@ def extract_attributes(line, attribute_vocab):
 
 
 def read_nmt_data(src, config, tgt, attribute_vocab):
-    # TODO -- handle inference, when there's no tgt
     attribute_vocab = set([x.strip() for x in open(attribute_vocab)])
 
     src_lines = [l.strip().split() for l in open(src, 'r')]

@@ -11,7 +11,7 @@ from itertools import groupby
 import random
 import mwparserfromhell
 import re
-from nltk import sent_tokenize
+from nltk import sent_tokenize, word_tokenize
 
 
 METADATA_PATTERN = 'en_npov_edits_%d.tsv'
@@ -94,6 +94,11 @@ def prep_wikitext(token_list):
 
     return plaintext
 
+def tokenize(s):
+    tok_list = word_tokenize(s.lower())
+    s_tok = ' '.join(tok_list)
+    return re.sub('[ ]+', ' ', s_tok)
+
 
 def extract_examples(metadata, revisions):
     global CTR_ID_MISMATCH
@@ -127,8 +132,8 @@ def extract_examples(metadata, revisions):
         for prev_sent, next_sent, context in get_sents(prev_text, next_text):
             i += 1
             yield (
-                rev_id, metadata_dict['rev_comment'],
-                prev_sent, next_sent, context
+                rev_id, tokenize(metadata_dict['rev_comment']),
+                tokenize(prev_sent), tokenize(next_sent), tokenize(context)
             )
 
         if i == 0: 
