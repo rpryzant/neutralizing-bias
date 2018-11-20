@@ -165,15 +165,17 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
         attribute_id = 1
 
     if model_type == 'delete':
-        attribute_ids = [attribute_id for _ in range(batch_size)]
-        attribute_ids = Variable(torch.LongTensor(attribute_ids))
-        if CUDA:
-            attribute_ids = attribute_ids.cuda()
-
         inputs = get_minibatch(
             in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
         outputs = get_minibatch(
             out_dataset['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
+
+        # true length could be less than batch_size at edge of data
+        batch_len = len(outputs[0])
+        attribute_ids = [attribute_id for _ in range(batch_len)]
+        attribute_ids = Variable(torch.LongTensor(attribute_ids))
+        if CUDA:
+            attribute_ids = attribute_ids.cuda()
 
         return inputs, (attribute_ids, None, None, None, None), outputs 
 

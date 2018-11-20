@@ -165,8 +165,6 @@ class StyleTransfer(nn.Module):
 
         else:
             attr_emb = self.src_embedding(input_attr)
-            # TODO -- just take h for now...
-            print(attr_emb.shape);quit()
             _, (a_ht, a_ct) = self.attribute_encoder(attr_emb, attrlens, attrmask)
             if self.options['bidirectional']:
                 a_ht = torch.cat((a_ht[-1], a_ht[-2]), 1)
