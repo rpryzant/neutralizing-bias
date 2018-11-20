@@ -136,8 +136,6 @@ with open(working_dir + '/stats_labels.csv', 'w') as f:
     f.write(utils.config_key_string(config) + ',%s,%s\n' % (
         ('bleu' if args.bleu else 'dev_loss'), 'best_epoch'))
 
-# TODO -- reinable softmax scheduling
-softmax_temp = 1#config['model']['self_attn_temp']
 STEP = 0
 for epoch in range(start_epoch, config['training']['epochs']):
     # if epoch > 3 and cur_metric == 0 or epoch > 7 and cur_metric < 10 or epoch > 15 and cur_metric < 15:
@@ -159,9 +157,6 @@ for epoch in range(start_epoch, config['training']['epochs']):
 
     losses = []
     for i in range(0, len(src['content']), batch_size):
-#############    #TODO REMOVE ME!~!!!!!!!!!
-#################### TODO CHECK TEST TIME DATA!!
-        continue 
         if args.overfit:
             i = 50
 
@@ -206,40 +201,7 @@ for epoch in range(start_epoch, config['training']['epochs']):
             words_since_last_report = 0
             losses_since_last_report = []
 
-        # NO SAMPLING!! because of weird train-vs-test data stuff
-        # 
-        # if not args.overfit and batch_idx % config['training']['batches_per_sampling'] == 0:
-        #     logging.info('PRINTING SAMPLE...')
-
-        #     model.eval()
-        #     tgt_pred = evaluation.decode_minibatch(
-        #         config['data']['max_len'], tgt['tok2id']['<s>'], 
-        #         model=model,
-        #         src_input=input_lines_src[:3],
-        #         srclens=srclens[:3],
-        #         srcmask=srcmask[:3],
-        #         aux_input=input_ids_aux[:3],
-        #         auxlens=auxlens[:3],
-        #         auxmask=auxmask[:3])
-        #     model.train()
-
-        #     tgt_pred = tgt_pred.data.cpu().numpy()
-        #     tgt_gold = output_lines_tgt.data.cpu().numpy()[:3]
-
-        #     for s_pred, s_gold in zip(tgt_pred, tgt_gold):
-        #         pred_line = [tgt['id2tok'][x] for x in s_pred]
-        #         if '</s>' in pred_line:
-        #             pred_line = ' '.join(pred_line[:pred_line.index('</s>')])
-        #         else:
-        #             pred_line = ' '.join(pred_line)
-        #         gold_line = [tgt['id2tok'][x] for x in s_gold]
-        #         try:
-        #             gold_line = ' '.join(gold_line[:gold_line.index('</s>')])
-        #         except:
-        #             gold_line = ' '.join(gold_line)
-        #         logging.info('PRED: %s' % pred_line)
-        #         logging.info('GOLD: %s' % gold_line)
-        #         logging.info('')
+        # NO SAMPLING!! because weird train-vs-test data stuff would be a pain
 
         STEP += 1
     if args.overfit:

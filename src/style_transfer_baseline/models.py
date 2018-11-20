@@ -90,11 +90,13 @@ class StyleTransfer(nn.Module):
             raise NotImplementedError('unknown encoder type')
 
         # # # # # #  # # # # # #  # # # # #  NEW STUFF FROM STD SEQ2SEQ
+        
         if self.model_type == 'delete':
             self.attribute_embedding = nn.Embedding(
                 num_embeddings=2, 
                 embedding_dim=self.options['emb_dim'])
             attr_size = self.options['emb_dim']
+
         elif self.model_type == 'delete_retrieve':
             self.attribute_encoder = encoders.LSTMEncoder(
                 self.options['emb_dim'],
@@ -108,6 +110,9 @@ class StyleTransfer(nn.Module):
         else:
             raise NotImplementedError('unknown model type')
 
+        self.src_attribute_c_bridge = nn.Linear(
+            attr_size + self.options['src_hidden_dim'], 
+            self.options['tgt_hidden_dim'])
         self.src_attribute_h_bridge = nn.Linear(
             attr_size + self.options['src_hidden_dim'], 
             self.options['tgt_hidden_dim'])
@@ -115,10 +120,6 @@ class StyleTransfer(nn.Module):
         # # # # # #  # # # # # #  # # # # # END NEW STUFF
 
         self.decoder = decoders.StackedAttentionLSTM(config=config)
-
-        self.c_bridge = nn.Linear(
-           self.options['src_hidden_dim'],
-            self.options['tgt_hidden_dim'])
 
         self.output_projection = nn.Linear(
             self.options['tgt_hidden_dim'],
@@ -134,6 +135,7 @@ class StyleTransfer(nn.Module):
         self.src_embedding.weight.data.uniform_(-initrange, initrange)
         self.tgt_embedding.weight.data.uniform_(-initrange, initrange)
         self.src_attribute_h_bridge.bias.data.fill_(0)
+        self.src_attribute_c_bridge.bias.data.fill_(0)
         self.output_projection.bias.data.fill_(0)
 
     def forward(self, input_src, input_tgt, srcmask, srclens, input_attr, attrlens, attrmask):
@@ -151,27 +153,33 @@ class StyleTransfer(nn.Module):
             c_t = src_c_t[-1]
 
         src_outputs = self.ctx_bridge(src_outputs)
-        # bridge c
-        c_t = self.c_bridge(c_t)
 
 
         # # # #  # # # #  # #  # # # # # # #  # # seq2seq diff
-        # join attribute with h and bridge it
+        # join attribute with h/c then bridge 'em
+        # TODO -- put this stuff in a method, overlaps w/above
 
         if self.model_type == 'delete':
+            # just do h i guess?
+            a_ht = self.attribute_embedding(input_attr)
 
-            attr_outputs = self.attribute_embedding(input_attr)
         else:
             attr_emb = self.src_embedding(input_attr)
             # TODO -- just take h for now...
-            _, (attr_outputs, _) = self.attribute_encoder(attr_emb, attrlens, attrmask)
+            _, (a_ht, a_ct) = self.attribute_encoder(attr_emb, attrlens, attrmask)
             if self.options['bidirectional']:
-                attr_outputs = torch.cat((attr_outputs[-1], attr_outputs[-2]), 1)
+                a_ht = torch.cat((a_ht[-1], a_ht[-2]), 1)
+                a_ct = torch.cat((a_ct[-1], a_ct[-2]), 1)
             else:
-                attr_outputs = attr_outputs[-1]
+                a_ht = a_ht[-1]
+                a_ct = a_ct[-1]
                 
-        final_h = torch.cat((h_t, attr_outputs), -1)
+            final_c = torch.cat((c_t, a_ct), -1)
+            c_t = self.src_attribute_c_bridge(final_c)
+
+        final_h = torch.cat((h_t, a_ht), -1)
         h_t = self.src_attribute_h_bridge(final_h)
+
         # # # #  # # # #  # #  # # # # # # #  # # end diff
 
         tgt_emb = self.tgt_embedding(input_tgt)

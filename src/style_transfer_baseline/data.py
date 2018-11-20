@@ -2,7 +2,7 @@
 import os
 import random
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 
 import torch
 from torch.autograd import Variable
@@ -17,14 +17,14 @@ class WordDistance(object):
         self.vectorizer.fit(corpus)
         self.corpus = corpus
         # rows = docs, cols = features
-        self.tfidf_matrix = self.vectorizer.transform(corpus)
-        self.tfidf_matrix = (self.tfidf_matrix != 0).astype(int) # make binary
+        self.counts_matrix = self.vectorizer.transform(corpus)
+        self.counts_matrix = (self.counts_matrix != 0).astype(int) # make binary
 
         
     def most_similar(self, s, n=10):
         assert isinstance(s, str)
-        query_tfidf = self.vectorizer.transform([s])
-        scores = np.dot(self.tfidf_matrix, query_tfidf.T)
+        query_counts = self.vectorizer.transform([s])
+        scores = np.dot(self.counts_matrix, query_counts.T)
         scores = np.squeeze(scores.toarray())
         scores_indices = zip(scores, range(len(scores)))
         selected = sorted(scores_indices, reverse=True)[:n]
@@ -104,12 +104,12 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
 
     if dist_measurer is not None:
         # replace sample_rate * batch_size lines with nearby examples (according to dist_measurer)
-        for line in lines:
+        for i, line in enumerate(lines):
             if random.random() < sample_rate:
-                # take the 2nd closest line in the data (closest = this example)
+                # use the 2nd closest line in the data (closest = this example)
                 line = dist_measurer.most_similar(' '.join(line[1:-1]))[1][0].split()
                 line = ['<s>'] + line + ['</s>']
-
+                lines[i] = line
 
     lens = [len(line) - 1 for line in lines]
     max_len = max(lens)
@@ -155,7 +155,6 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
 
 
 def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
-    # TODO -- TEST TIME!??!
     if not is_test:
         use_src = random.random() < 0.5
         in_dataset = src if use_src else tgt
@@ -180,10 +179,8 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
         return inputs, (attribute_ids, None, None, None, None), outputs 
 
     elif model_type == 'delete_retrieve':
-
         inputs =  get_minibatch(
             in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
-#        TODO!!! THE REPLACEMENT THING??
         attributes =  get_minibatch(
             out_dataset['attribute'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1],
             dist_measurer=out_dataset['attribute_dist'], sample_rate=0.2)

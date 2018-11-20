@@ -35,6 +35,6 @@ x_v_hat = RNN(e)
 Test
 ```
 x'_post = argmin_{ x'_post (possibly excluding the true match) } ( tfidf( c(x'_post), c(x_pre) ) )
-e = [ RNN( c(x) ), RNN( a(x'_post) ) ]
+e = [ RNN( c(x_pre) ), RNN( a(x'_post) ) ]
 x_post_hat = RNN(e)
 ```
