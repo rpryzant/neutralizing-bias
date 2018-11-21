@@ -96,6 +96,10 @@ def read_nmt_data(src, config, tgt, attribute_vocab):
 def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=None,
         dist_measurer=None, sample_rate=0.0):
     """Prepare minibatch."""
+    # FORCE NO SORTING because we care about the order of outputs
+    #   to compare across systems
+    sort = False
+    
     lines = [
         ['<s>'] + line[:max_len] + ['</s>']
         for line in lines[index:index + batch_size]
@@ -109,6 +113,8 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
                 line = dist_measurer.most_similar(' '.join(line[1:-1]))[1][0].split()
                 line = ['<s>'] + line + ['</s>']
                 lines[i] = line
+    # print('lines:')
+    # print('\n'.join([' '.join(l) for l in lines]))
 
     lens = [len(line) - 1 for line in lines]
     max_len = max(lens)
@@ -177,7 +183,7 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
         if CUDA:
             attribute_ids = attribute_ids.cuda()
 
-        return inputs, (attribute_ids, None, None, None, None), outputs 
+        attributes = (attribute_ids, None, None, None, None)
 
     elif model_type == 'delete_retrieve':
         inputs =  get_minibatch(
@@ -188,11 +194,10 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
         outputs = get_minibatch(
             out_dataset['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
 
-        return inputs, attributes, outputs
-
     else:
         raise Exception('Unsupported model_type: %s' % model_type)
 
+    return inputs, attributes, outputs
 
 
 

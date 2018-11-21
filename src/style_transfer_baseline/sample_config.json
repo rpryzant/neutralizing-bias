@@ -22,7 +22,7 @@
     "working_dir": "sample_run"
   },
     "model": {
-        "model_type": "delete_retrieve",
+        "model_type": "delete",
         "emb_dim": 32,
         "attention": false,
         "encoder": "lstm",

@@ -172,7 +172,7 @@ class StyleTransfer(nn.Module):
             else:
                 a_ht = a_ht[-1]
                 a_ct = a_ct[-1]
-                
+
             final_c = torch.cat((c_t, a_ct), -1)
             c_t = self.src_attribute_c_bridge(final_c)
 

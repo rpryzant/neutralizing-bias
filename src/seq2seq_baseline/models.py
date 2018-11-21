@@ -113,12 +113,12 @@ class Seq2SeqAttention(nn.Module):
         self.h_bridge.bias.data.fill_(0)
         self.output_projection.bias.data.fill_(0)
 
-    def forward(self, input_src, input_tgt, srcmask, srclens, temp=1):
+    def forward(self, input_src, input_tgt, srcmask, srclens):
         src_emb = self.src_embedding(input_src)
 
         srcmask = (1-srcmask).byte()
 
-        src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, srclens, srcmask, temp)
+        src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, srclens, srcmask)
 
         if self.options['bidirectional']:
             h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)

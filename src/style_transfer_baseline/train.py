@@ -203,7 +203,6 @@ for epoch in range(start_epoch, config['training']['epochs']):
             losses_since_last_report = []
 
         # NO SAMPLING!! because weird train-vs-test data stuff would be a pain
-
         STEP += 1
     if args.overfit:
         continue

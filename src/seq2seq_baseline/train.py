@@ -135,7 +135,6 @@ with open(working_dir + '/stats_labels.csv', 'w') as f:
         ('bleu' if args.bleu else 'dev_loss'), 'best_epoch'))
 
 # TODO -- reinable softmax scheduling
-softmax_temp = 1#config['model']['self_attn_temp']
 STEP = 0
 for epoch in range(start_epoch, config['training']['epochs']):
     # if epoch > 3 and cur_metric == 0 or epoch > 7 and cur_metric < 10 or epoch > 15 and cur_metric < 15:
@@ -210,8 +209,7 @@ for epoch in range(start_epoch, config['training']['epochs']):
                 model=model, 
                 src_input=input_lines_src[:3],
                 srclens=srclens[:3],
-                srcmask=srcmask[:3],
-                temp=softmax_temp)
+                srcmask=srcmask[:3])
             model.train()
 
             tgt_pred = tgt_pred.data.cpu().numpy()
@@ -240,13 +238,13 @@ for epoch in range(start_epoch, config['training']['epochs']):
     start = time.time()
     model.eval()
     dev_loss = evaluation.evaluate_lpp(
-            model, src_test, tgt_test, config, softmax_temp)
+            model, src_test, tgt_test, config)
 
     writer.add_scalar('eval/loss', dev_loss, epoch)
 
     if args.bleu and epoch >= config['training'].get('bleu_start_epoch', 1):
         cur_metric, preds, golds = evaluation.evaluate_bleu(
-            model, src_test, tgt_test, config, softmax_temp)
+            model, src_test, tgt_test, config)
         with open(working_dir + '/preds.%s' % epoch, 'w') as f:
             f.write('\n'.join(preds) + '\n')
         with open(working_dir + '/golds.%s' % epoch, 'w') as f:

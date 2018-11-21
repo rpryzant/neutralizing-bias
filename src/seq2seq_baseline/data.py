@@ -42,6 +42,10 @@ def read_nmt_data(src, config, tgt):
 
 def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=None):
     """Prepare minibatch."""
+    # FORCE NO SORTING because we care about the order of outputs
+    #   to compare across systems
+    sort = False
+
     lines = [
         ['<s>'] + line[:max_len] + ['</s>']
         for line in lines[index:index + batch_size]
