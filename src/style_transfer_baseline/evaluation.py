@@ -90,7 +90,7 @@ def decode_dataset(model, src, tgt, config):
             config['data']['max_len'], 
             config['model']['model_type'],
             is_test=True)
-        input_lines_src, _, srclens, srcmask, _ = input_content
+        input_lines_src, _, srclens, srcmask, indices = input_content
         input_ids_aux, _, auxlens, auxmask, _ = input_aux
         input_lines_tgt, output_lines_tgt, _, _, _ = output
 
@@ -109,6 +109,9 @@ def decode_dataset(model, src, tgt, config):
         output_lines_tgt = [
             [tgt['id2tok'][x] for x in line]
             for line in output_lines_tgt]
+
+        tgt_pred = data.unsort(tgt_pred, indices)
+        output_lines_tgt = data.unsort(output_lines_tgt, indices)
 
         # cut off at </s>
         for tgt_pred, tgt_gold in zip(tgt_pred, output_lines_tgt):

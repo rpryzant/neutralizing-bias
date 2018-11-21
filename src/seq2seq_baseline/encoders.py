@@ -43,12 +43,10 @@ class LSTMEncoder(nn.Module):
     def forward(self, src_embedding, srclens, srcmask):
         h0, c0 = self.init_state(src_embedding)
 
-        # SKIP PACKING because we really care about the order of the outputs to 
-        #    compare across systems (sort has been skipped)
-        # inputs = pack_padded_sequence(src_embedding, srclens, batch_first=True)
-        inputs = src_embedding   
+        inputs = pack_padded_sequence(src_embedding, srclens, batch_first=True)
+
         outputs, (h_final, c_final) = self.lstm(inputs, (h0, c0))
 
-        # outputs, _ = pad_packed_sequence(outputs, batch_first=True)
+        outputs, _ = pad_packed_sequence(outputs, batch_first=True)
 
         return outputs, (h_final, c_final)

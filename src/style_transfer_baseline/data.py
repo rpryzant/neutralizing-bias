@@ -51,6 +51,11 @@ def build_vocab_maps(vocab_file):
         tok_to_id[vi] = i
         id_to_tok[i] = vi
 
+    # Extra vocab item for empty attribute lines
+    empty_tok_idx =  len(id_to_tok)
+    tok_to_id['<empty>'] = empty_tok_idx
+    id_to_tok[empty_tok_idx] = '<empty>'
+
     return tok_to_id, id_to_tok
 
 
@@ -98,8 +103,7 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
     """Prepare minibatch."""
     # FORCE NO SORTING because we care about the order of outputs
     #   to compare across systems
-    sort = False
-    
+
     lines = [
         ['<s>'] + line[:max_len] + ['</s>']
         for line in lines[index:index + batch_size]
@@ -112,7 +116,12 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
                 # use the 2nd closest line in the data (closest = this example)
                 line = dist_measurer.most_similar(' '.join(line[1:-1]))[1][0].split()
                 line = ['<s>'] + line + ['</s>']
-                lines[i] = line
+            # corner case: special tok for empty sequences (just start/end tok)
+            if len(line) == 2:
+                line.insert(1, '<empty>')
+
+            lines[i] = line
+
     # print('lines:')
     # print('\n'.join([' '.join(l) for l in lines]))
 
@@ -200,6 +209,13 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
     return inputs, attributes, outputs
 
 
+def unsort(arr, idx):
+    """unsort a list given idx: a list of each element's 'origin' index pre-sorting
+    """
+    unsorted_arr = arr[:]
+    for i, origin in enumerate(idx):
+        unsorted_arr[origin] = arr[i]
+    return unsorted_arr
 
 
 

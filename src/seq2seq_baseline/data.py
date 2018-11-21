@@ -44,7 +44,6 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
     """Prepare minibatch."""
     # FORCE NO SORTING because we care about the order of outputs
     #   to compare across systems
-    sort = False
 
     lines = [
         ['<s>'] + line[:max_len] + ['</s>']
@@ -92,4 +91,15 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
         mask = mask.cuda()
 
     return input_lines, output_lines, lens, mask, idx
+
+
+def unsort(arr, idx):
+    """unsort a list given idx: a list of each element's 'origin' index pre-sorting
+    """
+    unsorted_arr = arr[:]
+    for i, origin in enumerate(idx):
+        unsorted_arr[origin] = arr[i]
+    return unsorted_arr
+
+
 

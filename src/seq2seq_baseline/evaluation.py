@@ -107,6 +107,9 @@ def decode_dataset(model, src, tgt, config):
             [tgt['id2tok'][x] for x in line]
             for line in tgt_output]
 
+        tgt_pred = data.unsort(tgt_pred, idx)
+        tgt_output = data.unsort(tgt_output, idx)
+
         # cut off at </s>
         for tgt_pred, tgt_gold in zip(tgt_pred, tgt_output):
             idx = tgt_pred.index('</s>') if '</s>' in tgt_pred else len(tgt_pred)
