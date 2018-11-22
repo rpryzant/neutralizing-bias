@@ -12,7 +12,9 @@ import random
 import mwparserfromhell
 import re
 from nltk import sent_tokenize, word_tokenize
-
+import diff_match_patch as dmp_module
+import Levenshtein
+import numpy as np
 
 METADATA_PATTERN = 'en_npov_edits_%d.tsv'
 REVISIONS_PATTERN = 'en_npov_edits_%d.revision_text.wo.pkl'
@@ -22,9 +24,17 @@ CTR_MULTIPLE_EDITS = 0
 CTR_NO_TEXT = 0 
 CTR_NO_EDITS = 0
 CTR_SENT_MISMATCH = 0
+CTR_RATIO_SKIPPED = 0
 
 wiki_root = sys.argv[1]
 out_path = sys.argv[2]
+
+
+def diff(s1, s2):
+    dmp = dmp_module.diff_match_patch()
+    d = dmp.diff_main(s1, s2)
+    dmp.diff_cleanupSemantic(d)
+    return d
 
 
 def load_metadata(path):
@@ -41,10 +51,6 @@ def load_metadata(path):
     return out
 
 
-def diff(prev_str, next_str):
-    prev_set = set(prev_str.split())
-    next_set = set(next_str.split())
-    return prev_set.symmetric_difference(next_set)
 
 
 def get_sents(prev_edit_str, next_edit_str):
@@ -58,11 +64,19 @@ def get_sents(prev_edit_str, next_edit_str):
         return
     
     for i, (prev_sent, next_sent) in enumerate(zip(prev_sents, next_sents)):
-        diff_size = len(diff(prev_sent, next_sent))
-        if diff_size > 0:
+        sent_diff = diff(prev_sent, next_sent)
+        lev_dist = Levenshtein.distance(prev_sent, next_sent)
+        if len(sent_diff) > 1 and lev_dist > 4:
             prev_ctx = prev_sents[i - 1] if i > 0 else ''
             post_ctx = prev_sents[i + 1] if i < len(prev_sents) - 1 else ''
-            yield prev_sent, next_sent, prev_ctx + ' || ' + post_ctx
+            context = prev_ctx.strip() + ' ||| ' + post_ctx.strip()
+
+            example = (
+                prev_sent.strip(),
+                next_sent.strip(),
+                context.strip()
+            )
+            yield example
 
 
 def prep_wikitext(token_list):    
@@ -76,23 +90,32 @@ def prep_wikitext(token_list):
     parse = mwparserfromhell.parse(x)
     plaintext = parse.strip_code()
     
-    # fix pre-tokenization errors
-    # replace links with their name
-    m = re.match('\[{2}.*\|(.*)\]{2}', plaintext)
-    if m:
-        plaintext = re.sub('\[{2}.*\|(.*)\]{2}', m.group(1), plaintext)
-
-    # Othwise get rid of the links (no name)
-    plaintext = plaintext.replace('[[', '')
-    plaintext = plaintext.replace(']]', '')
-    
-    # rm [urls] and urls
-    plaintext = re.sub('\[.*?\]', '', plaintext)
-    # TODO -- tokenized urls 
+    # rm [[text]] and [text]
+    plaintext = re.sub('\[?\[.*?\]\]?', '', plaintext)
+    # rm {{text}} and {text}
+    plaintext = re.sub('\{?\{.*?\}\}?', '', plaintext)
     # collapse multispaces 
     plaintext = re.sub('[ ]+', ' ', plaintext)
+    # remove urls
+    plaintext = re.sub('(?P<url>https?://[^\\s]+)', '', plaintext)
+    # remove wiki headings (sometimes mwparserfromhell misses these)
+    plaintext = re.sub('==(.*)?==', '', plaintext)
+    # remove leftover table bits
+    plaintext = re.sub('thumb\|(right|left)(\|?)', '', plaintext)
+    # empty parens
+    plaintext = plaintext.replace('()', '')
+
+    # rm examples starting with ! or | (will be thrown out in downstream filtering)
+    plaintext = plaintext.strip()
+    if plaintext and plaintext[0] in ['!', '|']:
+        plaintext = ''
 
     return plaintext
+
+
+def ratio(s1, s2):
+    return len(s1) * 1.0 / len(s2)
+
 
 def tokenize(s):
     tok_list = word_tokenize(s.lower())
@@ -130,10 +153,16 @@ def extract_examples(metadata, revisions):
         
         i = 0
         for prev_sent, next_sent, context in get_sents(prev_text, next_text):
+            # print(prev_sent)
+            # print(next_sent)
+            # print(diff(prev_sent, next_sent))
+            # print()
+        
             i += 1
             yield (
                 rev_id, tokenize(metadata_dict['rev_comment']),
-                tokenize(prev_sent), tokenize(next_sent), tokenize(context)
+                tokenize(prev_sent), tokenize(next_sent), tokenize(context),
+                ratio(tokenize(prev_sent), tokenize(next_sent))
             )
 
         if i == 0: 
@@ -161,11 +190,22 @@ for year in range(2008, 2019):
     print('sent mismatch ', CTR_SENT_MISMATCH)
 
 
+# ratio thresholding
+ratios = [ex[-1] for ex in examples]
+N = len(ratios) * 1.0 
+mu = np.mean(ratios)
+sd = np.std(ratios)
+
+
 with open(out_path, 'w') as f:
     for ex in examples:
-        f.write('\t'.join(ex) + '\n')
+        ratio = ex[-1]
+        if (ratio < mu - 1.90 * sd) or (ratio > mu + 1.90 * sd):
+            CTR_RATIO_SKIPPED += 1
+            continue
+        f.write('\t'.join(ex[:-1]) + '\n')
 
-
+print('Beyond ratio limit: ', CTR_RATIO_SKIPPED)
 
 
 
