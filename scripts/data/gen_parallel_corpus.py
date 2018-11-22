@@ -65,8 +65,11 @@ def get_sents(prev_edit_str, next_edit_str):
     
     for i, (prev_sent, next_sent) in enumerate(zip(prev_sents, next_sents)):
         sent_diff = diff(prev_sent, next_sent)
+        num_shared_regions = len([x for x in sent_diff if x[0] == 0])
+        num_dif_regions = len([x for x in sent_diff if x[0] != 0])
         lev_dist = Levenshtein.distance(prev_sent, next_sent)
-        if len(sent_diff) > 1 and lev_dist > 4:
+
+        if len(sent_diff) > 1 and lev_dist > 4 and num_shared_regions > 0 and num_dif_regions > 0:
             prev_ctx = prev_sents[i - 1] if i > 0 else ''
             post_ctx = prev_sents[i + 1] if i < len(prev_sents) - 1 else ''
             context = prev_ctx.strip() + ' ||| ' + post_ctx.strip()
