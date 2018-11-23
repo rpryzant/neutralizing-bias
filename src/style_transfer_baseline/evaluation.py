@@ -6,6 +6,7 @@ from collections import Counter
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
+import editdistance
 
 import data
 from cuda import CUDA
@@ -48,6 +49,14 @@ def get_bleu(hypotheses, reference):
     return 100 * bleu(stats)
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+def get_edit_distance(hypotheses, reference):
+    ed = 0
+    for hyp, ref in zip(hypotheses, reference):
+        ed += editdistance.eval(hyp, ref)
+
+    return ed * 1.0 / len(hypotheses)
+
 
 
 def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask,
@@ -125,15 +134,16 @@ def decode_dataset(model, src, tgt, config):
     return preds, ground_truths
 
 
-def evaluate_bleu(model, src, tgt, config):
+def inference_metrics(model, src, tgt, config):
     """ decode and evaluate bleu """
     preds, ground_truths = decode_dataset(
         model, src, tgt, config)
     bleu = get_bleu(preds, ground_truths)
+    edit_distance = get_edit_distance(preds, ground_truths)
     preds = [' '.join(seq) for seq in preds]
     ground_truths = [' '.join(seq) for seq in ground_truths]
 
-    return bleu, preds, ground_truths
+    return bleu, edit_distance, preds, ground_truths
 
 
 def evaluate_lpp(model, src, tgt, config):
