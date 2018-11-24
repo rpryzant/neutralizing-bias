@@ -76,6 +76,7 @@ def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask):
         decoder_argmax = word_probs.data.cpu().numpy().argmax(axis=-1)
         # select the predicted "next" tokens, attach to target-side inputs
         next_preds = Variable(torch.from_numpy(decoder_argmax[:, -1]))
+
         if CUDA:
             next_preds = next_preds.cuda()
         tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
@@ -91,7 +92,7 @@ def decode_dataset(model, src, tgt, config):
         sys.stdout.flush()
 
         # get batch
-        src_input, src_output, srclens, srcmask, idx = data.get_minibatch(
+        src_input, src_output, srclens, srcmask, indices = data.get_minibatch(
             src['data'], src['tok2id'],
             j, config['data']['batch_size'],
             config['data']['max_len'], sort=True)
@@ -99,7 +100,7 @@ def decode_dataset(model, src, tgt, config):
         _, tgt_output, _, _, _ = data.get_minibatch(
                 tgt['data'], tgt['tok2id'],
                 j, config['data']['batch_size'],
-                config['data']['max_len'], idx=idx)
+                config['data']['max_len'], idx=indices)
 
         # TODO -- beam search
         tgt_pred = decode_minibatch(
@@ -111,13 +112,14 @@ def decode_dataset(model, src, tgt, config):
         tgt_pred = [
             [tgt['id2tok'][x] for x in line]
             for line in tgt_pred]
+
         tgt_output = tgt_output.data.cpu().numpy()
         tgt_output = [
             [tgt['id2tok'][x] for x in line]
             for line in tgt_output]
 
-        tgt_pred = data.unsort(tgt_pred, idx)
-        tgt_output = data.unsort(tgt_output, idx)
+        tgt_pred = data.unsort(tgt_pred, indices[:])
+        tgt_output = data.unsort(tgt_output, indices[:])
 
         # cut off at </s>
         for tgt_pred, tgt_gold in zip(tgt_pred, tgt_output):

@@ -41,10 +41,6 @@ def read_nmt_data(src, config, tgt):
 
 
 def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=None):
-    """Prepare minibatch."""
-    # FORCE NO SORTING because we care about the order of outputs
-    #   to compare across systems
-
     lines = [
         ['<s>'] + line[:max_len] + ['</s>']
         for line in lines[index:index + batch_size]
@@ -96,7 +92,7 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
 def unsort(arr, idx):
     """unsort a list given idx: a list of each element's 'origin' index pre-sorting
     """
-    unsorted_arr = arr[:]
+    unsorted_arr = [None for _ in arr]
     for i, origin in enumerate(idx):
         unsorted_arr[origin] = arr[i]
     return unsorted_arr
