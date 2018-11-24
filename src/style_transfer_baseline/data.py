@@ -203,6 +203,14 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
         outputs = get_minibatch(
             out_dataset['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
 
+    elif model_type == 'seq2seq':
+        # ignore the in/out dataset stuff
+        inputs = get_minibatch(
+            src['data'], src['tok2id'], idx, batch_size, max_len, sort=True)
+        outputs = get_minibatch(
+            tgt['data'], tgt['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
+        attributes = (None, None, None, None, None)
+
     else:
         raise Exception('Unsupported model_type: %s' % model_type)
 

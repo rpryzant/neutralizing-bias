@@ -42,7 +42,7 @@ def attempt_load_model(model, checkpoint_dir=None, checkpoint_path=None):
         return model, 0
 
 
-class StyleTransfer(nn.Module):
+class SeqModel(nn.Module):
     def __init__(
         self,
         src_vocab_size,
@@ -52,7 +52,7 @@ class StyleTransfer(nn.Module):
         config=None,
     ):
         """Initialize model."""
-        super(StyleTransfer, self).__init__()
+        super(SeqModel, self).__init__()
         self.src_vocab_size = src_vocab_size
         self.tgt_vocab_size = tgt_vocab_size
         self.pad_id_src = pad_id_src
@@ -107,13 +107,16 @@ class StyleTransfer(nn.Module):
                 pack=False)
             attr_size = self.options['src_hidden_dim']
 
+        elif self.model_type == 'seq2seq':
+            attr_size = 0
+
         else:
             raise NotImplementedError('unknown model type')
 
-        self.src_attribute_c_bridge = nn.Linear(
+        self.c_bridge = nn.Linear(
             attr_size + self.options['src_hidden_dim'], 
             self.options['tgt_hidden_dim'])
-        self.src_attribute_h_bridge = nn.Linear(
+        self.h_bridge = nn.Linear(
             attr_size + self.options['src_hidden_dim'], 
             self.options['tgt_hidden_dim'])
 
@@ -134,8 +137,8 @@ class StyleTransfer(nn.Module):
         initrange = 0.1
         self.src_embedding.weight.data.uniform_(-initrange, initrange)
         self.tgt_embedding.weight.data.uniform_(-initrange, initrange)
-        self.src_attribute_h_bridge.bias.data.fill_(0)
-        self.src_attribute_c_bridge.bias.data.fill_(0)
+        self.h_bridge.bias.data.fill_(0)
+        self.c_bridge.bias.data.fill_(0)
         self.output_projection.bias.data.fill_(0)
 
     def forward(self, input_src, input_tgt, srcmask, srclens, input_attr, attrlens, attrmask):
@@ -162,8 +165,10 @@ class StyleTransfer(nn.Module):
         if self.model_type == 'delete':
             # just do h i guess?
             a_ht = self.attribute_embedding(input_attr)
+            c_t = torch.cat((c_t, a_ht), -1)
+            h_t = torch.cat((h_t, a_ht), -1)
 
-        else:
+        elif self.model_type == 'delete_retrieve':
             attr_emb = self.src_embedding(input_attr)
             _, (a_ht, a_ct) = self.attribute_encoder(attr_emb, attrlens, attrmask)
             if self.options['bidirectional']:
@@ -173,11 +178,11 @@ class StyleTransfer(nn.Module):
                 a_ht = a_ht[-1]
                 a_ct = a_ct[-1]
 
-            final_c = torch.cat((c_t, a_ct), -1)
-            c_t = self.src_attribute_c_bridge(final_c)
-
-        final_h = torch.cat((h_t, a_ht), -1)
-        h_t = self.src_attribute_h_bridge(final_h)
+            h_t = torch.cat((h_t, a_ht), -1)
+            c_t = torch.cat((c_t, a_ct), -1)
+            
+        c_t = self.c_bridge(c_t)
+        h_t = self.h_bridge(h_t)
 
         # # # #  # # # #  # #  # # # # # # #  # # end diff
 

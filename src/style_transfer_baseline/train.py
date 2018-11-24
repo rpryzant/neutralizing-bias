@@ -97,7 +97,7 @@ if CUDA:
 torch.manual_seed(config['training']['random_seed'])
 np.random.seed(config['training']['random_seed'])
 
-model = models.StyleTransfer(
+model = models.SeqModel(
     src_vocab_size=src_vocab_size,
     tgt_vocab_size=tgt_vocab_size,
     pad_id_src=src['tok2id']['<pad>'],
