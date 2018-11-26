@@ -184,6 +184,7 @@ def inference_metrics(model, src, tgt, config):
     precision = np.average(precisions)
     recall = np.average(recalls)
 
+    inputs = [' '.join(seq) for seq in inputs]
     preds = [' '.join(seq) for seq in preds]
     ground_truths = [' '.join(seq) for seq in ground_truths]
 
