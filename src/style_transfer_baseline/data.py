@@ -77,7 +77,7 @@ def read_nmt_data(src, config, tgt, attribute_vocab):
     src_lines, src_content, src_attribute = list(zip(
         *[extract_attributes(line, attribute_vocab) for line in src_lines]
     ))
-    src_attribute_dist = None# WordDistance([' '.join(x) for x in src_attribute])
+    src_attribute_dist = WordDistance([' '.join(x) for x in src_attribute])
     src_tok2id, src_id2tok = build_vocab_maps(config['data']['src_vocab'])
     src = {
         'data': src_lines, 'content': src_content, 'attribute': src_attribute,
@@ -88,7 +88,7 @@ def read_nmt_data(src, config, tgt, attribute_vocab):
     tgt_lines, tgt_content, tgt_attribute = list(zip(
         *[extract_attributes(line, attribute_vocab) for line in tgt_lines]
     ))
-    tgt_attribute_dist = None#WordDistance([' '.join(x) for x in tgt_attribute])
+    tgt_attribute_dist = WordDistance([' '.join(x) for x in tgt_attribute])
     tgt_tok2id, tgt_id2tok = build_vocab_maps(config['data']['tgt_vocab'])
     tgt = {
         'data': tgt_lines, 'content': tgt_content, 'attribute': tgt_attribute,
