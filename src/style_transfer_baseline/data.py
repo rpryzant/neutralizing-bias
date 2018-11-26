@@ -132,7 +132,7 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
                 sims = dist_measurer.most_similar(index + i)
                 try:
                     line = next( (s.split() for s, _, _ in sims if s != ' '.join(line)) )
-                except StopIteration
+                except StopIteration:
                     pass
 
             # corner case: special tok for empty sequences (just start/end tok)
