@@ -130,7 +130,10 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
             line = line[1:-1] 
             if random.random() < sample_rate and len(line) > 0: # no use with empty lines
                 sims = dist_measurer.most_similar(index + i)
-                line = next( (s.split() for s, _, _ in sims if s != ' '.join(line)) )
+                try:
+                    line = next( (s.split() for s, _, _ in sims if s != ' '.join(line)) )
+                except StopIteration
+                    pass
 
             # corner case: special tok for empty sequences (just start/end tok)
             if len(line) == 0:
