@@ -12,23 +12,29 @@ from cuda import CUDA
 
 class WordDistance(object):
     # TODO -- doesn't work super well on these data...word vectors might be softer/more lenient
-    def __init__(self, corpus):
+    def __init__(self, key_corpus, value_corpus):
         self.vectorizer = CountVectorizer()
-        self.vectorizer.fit(corpus)
-        self.corpus = corpus
+        self.vectorizer.fit(key_corpus)
+
+        self.key_corpus = key_corpus
+        self.value_corpus = value_corpus
+        
         # rows = docs, cols = features
-        self.counts_matrix = self.vectorizer.transform(corpus)
+        self.counts_matrix = self.vectorizer.transform(key_corpus)
         self.counts_matrix = (self.counts_matrix != 0).astype(int) # make binary
 
         
-    def most_similar(self, s, n=10):
-        assert isinstance(s, str)
+    def most_similar(self, key_idx, n=10):
+        s = self.key_corpus[key_idx]
+
         query_counts = self.vectorizer.transform([s])
         scores = np.dot(self.counts_matrix, query_counts.T)
         scores = np.squeeze(scores.toarray())
         scores_indices = zip(scores, range(len(scores)))
         selected = sorted(scores_indices, reverse=True)[:n]
-        selected = [(self.corpus[i], i, score) for (score, i) in selected]
+
+        # use the retrieved i to pick exampels from the VALUE corpus
+        selected = [(self.value_corpus[i], i, score) for (score, i) in selected]
 
         return selected
 
@@ -77,7 +83,10 @@ def read_nmt_data(src, config, tgt, attribute_vocab):
     src_lines, src_content, src_attribute = list(zip(
         *[extract_attributes(line, attribute_vocab) for line in src_lines]
     ))
-    src_attribute_dist = WordDistance([' '.join(x) for x in src_attribute])
+    src_attribute_dist = WordDistance(
+        key_corpus=[' '.join(x) for x in src_attribute],
+        value_corpus=[' '.join(x) for x in src_attribute]
+    )
     src_tok2id, src_id2tok = build_vocab_maps(config['data']['src_vocab'])
     src = {
         'data': src_lines, 'content': src_content, 'attribute': src_attribute,
@@ -88,7 +97,10 @@ def read_nmt_data(src, config, tgt, attribute_vocab):
     tgt_lines, tgt_content, tgt_attribute = list(zip(
         *[extract_attributes(line, attribute_vocab) for line in tgt_lines]
     ))
-    tgt_attribute_dist = WordDistance([' '.join(x) for x in tgt_attribute])
+    tgt_attribute_dist = WordDistance(
+        key_corpus=[' '.join(x) for x in tgt_attribute],
+        value_corpus=[' '.join(x) for x in tgt_attribute]
+    )
     tgt_tok2id, tgt_id2tok = build_vocab_maps(config['data']['tgt_vocab'])
     tgt = {
         'data': tgt_lines, 'content': tgt_content, 'attribute': tgt_attribute,
@@ -111,15 +123,18 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
 
     if dist_measurer is not None:
         # replace sample_rate * batch_size lines with nearby examples (according to dist_measurer)
+        # not exactly the same as the paper (words shared instead of jaccaurd) 
+        # but same idea
         for i, line in enumerate(lines):
-            if random.random() < sample_rate:
-                # use the 2nd closest line in the data (closest = this example)
-                line = dist_measurer.most_similar(' '.join(line[1:-1]))[1][0].split()
-                line = ['<s>'] + line + ['</s>']
-            # corner case: special tok for empty sequences (just start/end tok)
-            if len(line) == 2:
-                line.insert(1, '<empty>')
+            # remove start/end tokens...dont need 'em
+            line = line[1:-1] 
+            if random.random() < sample_rate and len(line) > 0: # no use with empty lines
+                sims = dist_measurer.most_similar(index + i)
+                line = next( (s.split() for s, _, _ in sims if s != ' '.join(line)) )
 
+            # corner case: special tok for empty sequences (just start/end tok)
+            if len(line) == 0:
+                line.insert(1, '<empty>')
             lines[i] = line
 
     # print('lines:')
@@ -199,7 +214,7 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
             in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
         attributes =  get_minibatch(
             out_dataset['attribute'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1],
-            dist_measurer=out_dataset['attribute_dist'], sample_rate=0.1)
+            dist_measurer=out_dataset['attribute_dist'], sample_rate=0.25)
         outputs = get_minibatch(
             out_dataset['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
 

@@ -124,6 +124,7 @@ def decode_dataset(model, src, tgt, config):
     """Evaluate model."""
     inputs = []
     preds = []
+    auxs = []
     ground_truths = []
     for j in range(0, len(src['data']), config['data']['batch_size']):
         sys.stdout.write("\r%s/%s..." % (j, len(src['data'])))
@@ -161,22 +162,25 @@ def decode_dataset(model, src, tgt, config):
             # unsort
             out = data.unsort(out, indices)
             return out
-        
+
         output_lines_src = ids_to_toks(output_lines_src, src['id2tok'])
         inputs += output_lines_src
 
         tgt_pred = ids_to_toks(tgt_pred, tgt['id2tok'])
         preds += tgt_pred
         
+        input_lines_aux = ids_to_toks(input_ids_aux, tgt['id2tok'])
+        auxs += input_lines_aux
+
         output_lines_tgt = ids_to_toks(output_lines_tgt, tgt['id2tok'])
         ground_truths += output_lines_tgt
 
-    return inputs, preds, ground_truths
+    return inputs, preds, ground_truths, auxs
 
 
 def inference_metrics(model, src, tgt, config):
     """ decode and evaluate bleu """
-    inputs, preds, ground_truths = decode_dataset(
+    inputs, preds, ground_truths, auxs = decode_dataset(
         model, src, tgt, config)
     bleu = get_bleu(preds, ground_truths)
     edit_distance = get_edit_distance(preds, ground_truths)
@@ -187,8 +191,9 @@ def inference_metrics(model, src, tgt, config):
     inputs = [' '.join(seq) for seq in inputs]
     preds = [' '.join(seq) for seq in preds]
     ground_truths = [' '.join(seq) for seq in ground_truths]
+    auxs = [' '.join(seq) for seq in auxs]
 
-    return bleu, edit_distance, precision, recall, inputs, preds, ground_truths
+    return bleu, edit_distance, precision, recall, inputs, preds, ground_truths, auxs
 
 
 def evaluate_lpp(model, src, tgt, config):
