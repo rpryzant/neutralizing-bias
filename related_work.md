@@ -5,3 +5,9 @@ space for msc papers of interest, possible ideas we can draw from, or related wo
 - https://arxiv.org/pdf/1603.02514.pdf
 - http://stanford.edu/~robinjia/pdf/naacl2018-drg.pdf, https://github.com/lijuncen/Sentiment-and-Style-Transfer
 - https://web.stanford.edu/~jurafsky/pubs/neutrality.pdf
+
+
+TO READ
+- https://arxiv.org/pdf/1805.11749.pdf
+- http://aclweb.org/anthology/D18-1080
+- http://aclweb.org/anthology/D18-1028
