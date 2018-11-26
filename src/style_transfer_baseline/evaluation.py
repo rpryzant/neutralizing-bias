@@ -169,11 +169,13 @@ def decode_dataset(model, src, tgt, config):
         tgt_pred = ids_to_toks(tgt_pred, tgt['id2tok'])
         preds += tgt_pred
         
-        input_lines_aux = ids_to_toks(input_ids_aux, tgt['id2tok'])
-        auxs += input_lines_aux
+        if input_ids_aux:
+            input_lines_aux = ids_to_toks(input_ids_aux, tgt['id2tok'])
+            auxs += input_lines_aux
 
         output_lines_tgt = ids_to_toks(output_lines_tgt, tgt['id2tok'])
         ground_truths += output_lines_tgt
+
 
     return inputs, preds, ground_truths, auxs
 
@@ -182,9 +184,11 @@ def inference_metrics(model, src, tgt, config):
     """ decode and evaluate bleu """
     inputs, preds, ground_truths, auxs = decode_dataset(
         model, src, tgt, config)
+
     bleu = get_bleu(preds, ground_truths)
     edit_distance = get_edit_distance(preds, ground_truths)
     precisions, recalls = get_precisions_recalls(inputs, preds, ground_truths)
+
     precision = np.average(precisions)
     recall = np.average(recalls)
 

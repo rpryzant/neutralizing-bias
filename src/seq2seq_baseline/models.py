@@ -73,7 +73,6 @@ class Seq2SeqAttention(nn.Module):
                 self.tgt_vocab_size,
                 self.options['emb_dim'],
                 self.pad_id_tgt)
-
         if self.options['encoder'] == 'lstm':
             self.encoder = encoders.LSTMEncoder(
                 self.options['emb_dim'],
