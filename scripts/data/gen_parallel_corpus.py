@@ -15,6 +15,9 @@ from nltk import sent_tokenize, word_tokenize
 import diff_match_patch as dmp_module
 import Levenshtein
 import numpy as np
+from collections import Counter
+import math
+from tqdm import tqdm
 
 METADATA_PATTERN = 'en_npov_edits_%d.tsv'
 REVISIONS_PATTERN = 'en_npov_edits_%d.revision_text.wo.pkl'
@@ -50,7 +53,41 @@ def load_metadata(path):
         }
     return out
 
+def ratio(s1, s2):
+    return len(s1) * 1.0 / len(s2)
 
+
+def tokenize(s):
+    tok_list = word_tokenize(s.lower())
+    s_tok = ' '.join(tok_list)
+    return re.sub('[ ]+', ' ', s_tok)
+
+
+def BLEU(hyp, ref):
+    # get ngram stats
+    stats = []
+    stats.append(len(hyp))
+    stats.append(len(ref))
+    for n in range(1, 5):
+        s_ngrams = Counter(
+            [tuple(hyp[i:i + n]) for i in range(len(hyp) + 1 - n)]
+        )
+        r_ngrams = Counter(
+            [tuple(ref[i:i + n]) for i in range(len(ref) + 1 - n)]
+        )
+        stats.append(max([sum((s_ngrams & r_ngrams).values()), 0]))
+        stats.append(max([len(hyp) + 1 - n, 0]))
+
+    # get bleu from stats
+    if len(list(filter(lambda x: x == 0, stats))) > 0:
+        return 0
+    (c, r) = stats[:2]
+    log_bleu_prec = sum(
+        [math.log(float(x) / y) for x, y in zip(stats[2::2], stats[3::2])]
+    ) / 4.
+    bleu = math.exp(min([0, 1 - float(r) / c]) + log_bleu_prec)
+
+    return 100 * bleu
 
 
 def get_sents(prev_edit_str, next_edit_str):
@@ -59,27 +96,46 @@ def get_sents(prev_edit_str, next_edit_str):
     prev_sents = sent_tokenize(prev_edit_str)
     next_sents = sent_tokenize(next_edit_str)
 
-    if len(prev_sents) != len(next_sents):
-        CTR_SENT_MISMATCH += 1
-        return
-    
-    for i, (prev_sent, next_sent) in enumerate(zip(prev_sents, next_sents)):
+    for i, prev_sent in enumerate(prev_sents):
+        bleus = [
+            (BLEU(prev_sents[i], next_sents[j]), j)
+            for j in range(max(i - 5, 0), min(i + 5, len(next_sents) - 1))
+            ]
+        # corner case: way more prev's than next's
+        if not bleus: 
+            continue
+        match_bleu, match_idx = max(bleus)
+        # skip perfect matches
+        if match_bleu == 100:
+            continue
+        next_sent = next_sents[match_idx]
+        # skip near-perfect matches
+        if Levenshtein.distance(prev_sent, next_sent) < 4:
+            continue
+
         sent_diff = diff(prev_sent, next_sent)
-        num_shared_regions = len([x for x in sent_diff if x[0] == 0])
-        num_dif_regions = len([x for x in sent_diff if x[0] != 0])
-        lev_dist = Levenshtein.distance(prev_sent, next_sent)
+        shared_regions = [x for x in sent_diff if x[0] == 0]
+        dif_regions = [x for x in sent_diff if x[0] != 0]
 
-        if len(sent_diff) > 1 and lev_dist > 4 and num_shared_regions > 0 and num_dif_regions > 0:
-            prev_ctx = prev_sents[i - 1] if i > 0 else ''
-            post_ctx = prev_sents[i + 1] if i < len(prev_sents) - 1 else ''
-            context = prev_ctx.strip() + ' ||| ' + post_ctx.strip()
+        # skip completely different matches (or, again, completely identical)
+        if not shared_regions or not dif_regions:
+            continue
 
-            example = (
-                prev_sent.strip(),
-                next_sent.strip(),
-                context.strip()
-            )
-            yield example
+        # skip matches that are too different
+        shared_len = len(' '.join([s for _, s in shared_regions]))
+        ratio = shared_len * 1.0 / len(prev_sent)
+        if ratio < 0.5:
+            continue
+
+        # skip matches where only punctuation is shared
+        if not re.findall('\w', ''.join([s for _, s in shared_regions])):
+            continue
+
+#            prev_ctx = prev_sents[i - 1] if i > 0 else ''
+#            post_ctx = prev_sents[i + 1] if i < len(prev_sents) - 1 else ''
+#            context = prev_ctx.strip() + ' ||| ' + post_ctx.strip()
+
+        yield prev_sent.strip(), next_sent.strip()
 
 
 def prep_wikitext(token_list):    
@@ -104,26 +160,33 @@ def prep_wikitext(token_list):
     # remove wiki headings (sometimes mwparserfromhell misses these)
     plaintext = re.sub('==(.*)?==', '', plaintext)
     # remove leftover table bits
-    plaintext = re.sub('thumb\|(right|left)(\|?)', '', plaintext)
+    plaintext = re.sub('\|?thumb( )?\|(.*)?(right|left)( )?(\|?)', '', plaintext)
+    plaintext = plaintext.replace('thumb|', '')
     # empty parens
     plaintext = plaintext.replace('()', '')
+    # ignore timestamp sentences
+    if 'retrieved on' in plaintext.lower():
+        plaintext = ''
+    # fuck stars
+    plaintext = plaintext.replace('*', '')
+
+# TODO?
+# 200px|
+# ( , , , , )
+# | year = 2002 |accessdate = may 31 , 2006 |url=
+# name= '' hrw '' / >
+# ( come-and-hear .com/yebamoth/yebamoth_47.html # partb babylonian talmud yevamot 47b . )
+#    JUST RM ALL PARENS??
+
+
 
     # rm examples starting with ! or | (will be thrown out in downstream filtering)
     plaintext = plaintext.strip()
-    if plaintext and plaintext[0] in ['!', '|']:
+    if plaintext.startswith('?') or plaintext.startswith('|'):
         plaintext = ''
 
     return plaintext
 
-
-def ratio(s1, s2):
-    return len(s1) * 1.0 / len(s2)
-
-
-def tokenize(s):
-    tok_list = word_tokenize(s.lower())
-    s_tok = ' '.join(tok_list)
-    return re.sub('[ ]+', ' ', s_tok)
 
 
 def extract_examples(metadata, revisions):
@@ -133,7 +196,7 @@ def extract_examples(metadata, revisions):
     global CTR_NO_EDITS
 
 
-    for i, (rev_id, metadata_dict) in enumerate(iter(metadata.items())):
+    for i, (rev_id, metadata_dict) in tqdm(enumerate(iter(metadata.items())), total=len(metadata)):
         # ignore headers...     
         if i == 0: continue 
         
@@ -143,7 +206,7 @@ def extract_examples(metadata, revisions):
             
         prevs, nexts = revisions[rev_id]
 
-        if 0 in prevs or 0 in nexts:
+        if len(prevs) > 1 or len(nexts) > 1:
             CTR_MULTIPLE_EDITS += 1
             continue
 
@@ -155,16 +218,14 @@ def extract_examples(metadata, revisions):
             continue
         
         i = 0
-        for prev_sent, next_sent, context in get_sents(prev_text, next_text):
-            # print(prev_sent)
-            # print(next_sent)
-            # print(diff(prev_sent, next_sent))
-            # print()
-        
+        for prev_sent, next_sent in get_sents(prev_text, next_text):
             i += 1
+#            print(prev_sent)
+#            print(next_sent)
+#            print()
             yield (
                 rev_id, tokenize(metadata_dict['rev_comment']),
-                tokenize(prev_sent), tokenize(next_sent), tokenize(context),
+                tokenize(prev_sent), tokenize(next_sent),
                 ratio(tokenize(prev_sent), tokenize(next_sent))
             )
 
@@ -203,7 +264,7 @@ sd = np.std(ratios)
 with open(out_path, 'w') as f:
     for ex in examples:
         ratio = ex[-1]
-        if (ratio < mu - 1.90 * sd) or (ratio > mu + 1.90 * sd):
+        if (ratio < mu - 1.96 * sd) or (ratio > mu + 1.96 * sd):
             CTR_RATIO_SKIPPED += 1
             continue
         f.write('\t'.join(ex[:-1]) + '\n')

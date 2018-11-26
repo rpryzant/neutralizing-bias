@@ -58,6 +58,42 @@ def get_edit_distance(hypotheses, reference):
     return ed * 1.0 / len(hypotheses)
 
 
+def get_precisions_recalls(inputs, preds, ground_truths):
+    def precision_recall(src, tgt, pred):
+        src_set = set(src)
+        tgt_set = set(tgt)
+        pred_set = set(pred)
+    
+        tgt_unique = tgt_set - src_set
+        src_unique = src_set - tgt_set
+        shared = tgt_set & src_set
+        
+        correct_shared = len(pred_set & shared)
+        correct_tgt = len(pred_set & tgt_unique)
+        
+        incorrect_src = len(pred_set & src_unique)
+        incorrect_unseen = len(pred_set - src_set - tgt_set)
+        
+        # words the model correctly introduced
+        tp = correct_tgt
+        # words the model incorrectly introduced
+        fp = incorrect_unseen
+        # bias words the model incorrectly kept
+        fn = incorrect_src
+        
+        precision = tp * 1.0 / (tp + fp + 0.001)
+        recall = tp * 1.0 / (tp + fn + 0.001)
+
+        return precision, recall
+
+    [precisions, recalls] = list(zip(*[
+        precision_recall(src, tgt, pred) 
+        for src, tgt, pred in zip(inputs, ground_truths, preds)
+    ]))
+
+    return precisions, recalls
+
+
 
 def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask,
         aux_input, auxlens, auxmask):
@@ -86,6 +122,7 @@ def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask,
 
 def decode_dataset(model, src, tgt, config):
     """Evaluate model."""
+    inputs = []
     preds = []
     ground_truths = []
     for j in range(0, len(src['data']), config['data']['batch_size']):
@@ -99,7 +136,7 @@ def decode_dataset(model, src, tgt, config):
             config['data']['max_len'], 
             config['model']['model_type'],
             is_test=True)
-        input_lines_src, _, srclens, srcmask, indices = input_content
+        input_lines_src, output_lines_src, srclens, srcmask, indices = input_content
         input_ids_aux, _, auxlens, auxmask, _ = input_aux
         input_lines_tgt, output_lines_tgt, _, _, _ = output
 
@@ -110,40 +147,47 @@ def decode_dataset(model, src, tgt, config):
             input_ids_aux, auxlens, auxmask)
 
         # convert seqs to tokens
-        tgt_pred = tgt_pred.data.cpu().numpy()
-        tgt_pred = [
-            [tgt['id2tok'][x] for x in line]
-            for line in tgt_pred]
-        output_lines_tgt = output_lines_tgt.data.cpu().numpy()
-        output_lines_tgt = [
-            [tgt['id2tok'][x] for x in line]
-            for line in output_lines_tgt]
+        def ids_to_toks(tok_seqs, id2tok):
+            out = []
+            # take off the gpu
+            tok_seqs = tok_seqs.cpu().numpy()
+            # convert to toks, cut off at </s>, delete any start tokens (preds were kickstarted w them)
+            for line in tok_seqs:
+                toks = [id2tok[x] for x in line]
+                if '<s>' in toks: 
+                    toks.remove('<s>')
+                cut_idx = toks.index('</s>') if '</s>' in toks else len(toks)
+                out.append( toks[:cut_idx] )
+            # unsort
+            out = data.unsort(out, indices)
+            return out
+        
+        output_lines_src = ids_to_toks(output_lines_src, src['id2tok'])
+        inputs += output_lines_src
 
-        tgt_pred = data.unsort(tgt_pred, indices)
-        output_lines_tgt = data.unsort(output_lines_tgt, indices)
+        tgt_pred = ids_to_toks(tgt_pred, tgt['id2tok'])
+        preds += tgt_pred
+        
+        output_lines_tgt = ids_to_toks(output_lines_tgt, tgt['id2tok'])
+        ground_truths += output_lines_tgt
 
-        # cut off at </s>
-        for tgt_pred, tgt_gold in zip(tgt_pred, output_lines_tgt):
-            idx = tgt_pred.index('</s>') if '</s>' in tgt_pred else len(tgt_pred)
-            preds.append(tgt_pred[:idx + 1])
-
-            idx = tgt_gold.index('</s>') if '</s>' in tgt_gold else len(tgt_gold)
-            # append start to golds only, because preds were kickstarted w/them
-            ground_truths.append(['<s>'] + tgt_gold[:idx + 1])
-
-    return preds, ground_truths
+    return inputs, preds, ground_truths
 
 
 def inference_metrics(model, src, tgt, config):
     """ decode and evaluate bleu """
-    preds, ground_truths = decode_dataset(
+    inputs, preds, ground_truths = decode_dataset(
         model, src, tgt, config)
     bleu = get_bleu(preds, ground_truths)
     edit_distance = get_edit_distance(preds, ground_truths)
+    precisions, recalls = get_precisions_recalls(inputs, preds, ground_truths)
+    precision = np.average(precisions)
+    recall = np.average(recalls)
+
     preds = [' '.join(seq) for seq in preds]
     ground_truths = [' '.join(seq) for seq in ground_truths]
 
-    return bleu, edit_distance, preds, ground_truths
+    return bleu, edit_distance, precision, recall, inputs, preds, ground_truths
 
 
 def evaluate_lpp(model, src, tgt, config):

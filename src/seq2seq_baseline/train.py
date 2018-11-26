@@ -156,6 +156,7 @@ for epoch in range(start_epoch, config['training']['epochs']):
 
     losses = []
     for i in range(0, len(src['data']), batch_size):
+
         if args.overfit:
             i = 50
 
@@ -243,13 +244,15 @@ for epoch in range(start_epoch, config['training']['epochs']):
     writer.add_scalar('eval/loss', dev_loss, epoch)
 
     if args.bleu and epoch >= config['training'].get('bleu_start_epoch', 1):
-        cur_metric, edit_distance, preds, golds = evaluation.inference_metrics(
+        cur_metric, edit_distance, precision, recall, preds, golds = evaluation.inference_metrics(
             model, src_test, tgt_test, config)
         with open(working_dir + '/preds.%s' % epoch, 'w') as f:
             f.write('\n'.join(preds) + '\n')
         with open(working_dir + '/golds.%s' % epoch, 'w') as f:
             f.write('\n'.join(golds) + '\n')
             
+        writer.add_scalar('eval/precision', precision, epoch)
+        writer.add_scalar('eval/recall', recall, epoch)
         writer.add_scalar('eval/edit_distance', edit_distance, epoch)
         writer.add_scalar('eval/bleu', cur_metric, epoch)
 
