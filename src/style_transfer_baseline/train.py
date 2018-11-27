@@ -159,7 +159,6 @@ for epoch in range(start_epoch, config['training']['epochs']):
 
     losses = []
     for i in range(0, len(src['content']), batch_size):
-
         if args.overfit:
             i = 50
 

@@ -163,19 +163,17 @@ def decode_dataset(model, src, tgt, config):
             out = data.unsort(out, indices)
             return out
 
-        output_lines_src = ids_to_toks(output_lines_src, src['id2tok'])
-        inputs += output_lines_src
-
-        tgt_pred = ids_to_toks(tgt_pred, tgt['id2tok'])
-        preds += tgt_pred
+        # convert inputs/preds/targets/aux to human-readable form
+        inputs += ids_to_toks(output_lines_src, src['id2tok'])
+        preds += ids_to_toks(tgt_pred, tgt['id2tok'])
+        ground_truths += ids_to_toks(output_lines_tgt, tgt['id2tok'])
         
-        if input_ids_aux:
-            input_lines_aux = ids_to_toks(input_ids_aux, tgt['id2tok'])
-            auxs += input_lines_aux
-
-        output_lines_tgt = ids_to_toks(output_lines_tgt, tgt['id2tok'])
-        ground_truths += output_lines_tgt
-
+        if config['model']['model_type'] == 'delete':
+            auxs += [[str(x)] for x in input_ids_aux.data.cpu().numpy()] # because of list comp in inference_metrics()
+        elif config['model']['model_type'] == 'delete_retrieve':
+            auxs += ids_to_toks(input_ids_aux, tgt['id2tok'])
+        elif config['model']['model_type'] == 'seq2seq':
+            auxs += ['None' for _ in range(len(tgt_pred))]
 
     return inputs, preds, ground_truths, auxs
 

@@ -156,7 +156,6 @@ def sample_replace(lines, dist_measurer, sample_rate, corpus_idx):
         # corner case: special tok for empty sequences (just start/end tok)
         if len(line) == 2:
             line.insert(1, '<empty>')
-
         out[i] = line
 
     return out
