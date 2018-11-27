@@ -3,6 +3,8 @@ import os
 import random
 import numpy as np
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+import diff_match_patch as dmp_module
+from collections import defaultdict
 
 import torch
 from torch.autograd import Variable
@@ -27,17 +29,15 @@ class CorpusSearcher(object):
         
     def most_similar(self, key_idx, n=10):
         query = self.query_corpus[key_idx]
-
         query_vec = self.vectorizer.transform([query])
 
         scores = np.dot(self.key_corpus_matrix, query_vec.T)
         scores = np.squeeze(scores.toarray())
         scores_indices = zip(scores, range(len(scores)))
         selected = sorted(scores_indices, reverse=True)[:n]
-
         # use the retrieved i to pick examples from the VALUE corpus
         selected = [
-            (self.query_corpus[i], self.key_corpus[i], self.value_corpus[i], i, score) 
+            (query, self.key_corpus[i], self.value_corpus[i], i, score) 
             for (score, i) in selected
         ]
 
@@ -78,37 +78,66 @@ def extract_attributes(line, attribute_vocab):
             attribute.append(tok)
         else:
             content.append(tok)
-    return line, content, attribute
+    return content, attribute
 
+def split_with_diff(src_lines, tgt_lines):
+    def diff(s1, s2):
+        dmp = dmp_module.diff_match_patch()
+        d = dmp.diff_main(s1, s2)
+        dmp.diff_cleanupSemantic(d)
+        return d
 
-def read_nmt_data(src, config, tgt, attribute_vocab, train_src=None, train_tgt=None):
-    attribute_vocab = set([x.strip() for x in open(attribute_vocab)])
+    content = []
+    src_attr = []
+    tgt_attr = []
 
+    for src, tgt in zip(src_lines, tgt_lines):
+        sent_diff = diff(' '.join(src), ' '.join(tgt))
+        tok_collector = defaultdict(list)
+        for source, chunk in sent_diff:
+            tok_collector[source] += chunk.strip().split()
+
+        content.append(tok_collector[0][:])
+        src_attr.append(tok_collector[-1][:])
+        tgt_attr.append(tok_collector[1][:])
+
+    return content[:], content[:], src_attr, tgt_attr
+        
+
+def read_nmt_data(src, config, tgt, train_src=None, train_tgt=None):
+    # 1) read data and split into content/attribute
     src_lines = [l.strip().split() for l in open(src, 'r')]
-    src_lines, src_content, src_attribute = list(zip(
-        *[extract_attributes(line, attribute_vocab) for line in src_lines]
-    ))
+    tgt_lines = [l.strip().split() for l in open(tgt, 'r')] if tgt else None
+
+    use_diff = config['data']['attribute_vocab'] == 'use_diff'
+    if use_diff:
+        src_content, tgt_content, src_attribute, tgt_attribute =\
+            split_with_diff(src_lines, tgt_lines)
+    else:
+        attr_vocab = set([
+            x.strip() for x in open(config['data']['attribute_vocab'])
+        ])
+        src_content, src_attribute = list(zip(
+            *[extract_attributes(line, attr_vocab) for line in src_lines]
+        ))
+        tgt_content, tgt_attribute = list(zip(
+            *[extract_attributes(line, attr_vocab) for line in tgt_lines]
+        ))
+
+    # 2) read in vocab
     src_tok2id, src_id2tok = build_vocab_maps(config['data']['src_vocab'])
+    tgt_tok2id, tgt_id2tok = build_vocab_maps(config['data']['tgt_vocab'])
+
+    # 3) build corpus searchers for picking nearby examples
     # train time: just pick attributes that are close to the current (using word distance)
-    # we never need to do the TFIDF thing with the source because 
-    # test time is strictly in the src => tgt direction
+    #  (no test time behavior for source)
     src_dist_measurer = CorpusSearcher(
         query_corpus=[' '.join(x) for x in src_attribute],
         key_corpus=[' '.join(x) for x in src_attribute],
-        value_corpus=[' '.join(x) for x in src_attribute],
+        value_corpus=[' '.join(x) for x in src_attribute],  # fuck you RAM
         vectorizer=CountVectorizer(vocabulary=src_tok2id),
         make_binary=True
     )
-    src = {
-        'data': src_lines, 'content': src_content, 'attribute': src_attribute,
-        'tok2id': src_tok2id, 'id2tok': src_id2tok, 'dist_measurer': src_dist_measurer
-    }
-
-    tgt_lines = [l.strip().split() for l in open(tgt, 'r')] if tgt else None
-    tgt_lines, tgt_content, tgt_attribute = list(zip(
-        *[extract_attributes(line, attribute_vocab) for line in tgt_lines]
-    ))
-    tgt_tok2id, tgt_id2tok = build_vocab_maps(config['data']['tgt_vocab'])
     # train time: just pick attributes that are close to the current (using word distance)
     if train_src is None or train_tgt is None:
         tgt_dist_measurer = CorpusSearcher(
@@ -118,21 +147,36 @@ def read_nmt_data(src, config, tgt, attribute_vocab, train_src=None, train_tgt=N
             vectorizer=CountVectorizer(vocabulary=tgt_tok2id),
             make_binary=True
         )
-    # at test time, scan through train content (using tfidf) and retrieve corresponding attributes
+    # at test time:
+    #   if attribute vocab: 
+    #       compare test src content to train tgt contents (using tfidf). retrieve corresponding attributes
+    # if diffs: 
+    #       use entire test src instead of just content (don't know content/attr at test time)
     else:
+        if use_diff:
+            query_corpus = [' '.join(x) for x in src_lines]
+        else:
+            query_corpus = [' '.join(x) for x in src_content]
+
         tgt_dist_measurer = CorpusSearcher(
-            query_corpus=[' '.join(x) for x in train_src['content']],
+            query_corpus=query_corpus,
             key_corpus=[' '.join(x) for x in train_tgt['content']],
             value_corpus=[' '.join(x) for x in train_tgt['attribute']],
             vectorizer=TfidfVectorizer(vocabulary=tgt_tok2id),
             make_binary=False
         )
+
+    # 5) package errythang up yerp
+    src = {
+        'data': src_lines, 'content': src_content, 'attribute': src_attribute,
+        'tok2id': src_tok2id, 'id2tok': src_id2tok, 'dist_measurer': src_dist_measurer
+    }
     tgt = {
         'data': tgt_lines, 'content': tgt_content, 'attribute': tgt_attribute,
         'tok2id': tgt_tok2id, 'id2tok': tgt_id2tok, 'dist_measurer': tgt_dist_measurer
     }
-
     return src, tgt
+
 
 def sample_replace(lines, dist_measurer, sample_rate, corpus_idx):
     """
@@ -151,7 +195,8 @@ def sample_replace(lines, dist_measurer, sample_rate, corpus_idx):
             # all the matches are blanks
             except StopIteration:
                 line = []
-            line = ['<s>'] + line + ['</s>']
+            # TODO: attach start/end backwards and reverse these inputs???
+            line = ['<s>'] + line + ['</s>'] 
 
         # corner case: special tok for empty sequences (just start/end tok)
         if len(line) == 2:
@@ -162,15 +207,12 @@ def sample_replace(lines, dist_measurer, sample_rate, corpus_idx):
 
 
 def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=None,
-        dist_measurer=None, sample_rate=0.0):
+        dist_measurer=None, sample_rate=0.0, reverse=False):
     """Prepare minibatch."""
-    # FORCE NO SORTING because we care about the order of outputs
-    #   to compare across systems
     lines = [
         ['<s>'] + line[:max_len] + ['</s>']
         for line in lines[index:index + batch_size]
     ]
-
     if dist_measurer is not None:
         lines = sample_replace(lines, dist_measurer, sample_rate, index)
 
@@ -183,12 +225,15 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
         [tok2id['<pad>']] * (max_len - len(line) + 1)
         for line in lines
     ]
-
     output_lines = [
         [tok2id.get(w, unk_id) for w in line[1:]] +
         [tok2id['<pad>']] * (max_len - len(line) + 1)
         for line in lines
     ]
+
+    if reverse:
+        input_lines = [l[::-1] for l in input_lines]
+        output_lines = [l[::-1] for l in output_lines]
 
     mask = [
         ([1] * l) + ([0] * (max_len - l))
@@ -248,7 +293,7 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
             in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
         attributes =  get_minibatch(
             out_dataset['attribute'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1],
-            dist_measurer=out_dataset['dist_measurer'], sample_rate=0.25)
+            dist_measurer=out_dataset['dist_measurer'], sample_rate=0.25) # TODO reverse because no packing??
         outputs = get_minibatch(
             out_dataset['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
 
