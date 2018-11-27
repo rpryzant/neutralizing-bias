@@ -15,4 +15,4 @@ tail -n +1000 $OUT_DIR/pre > $OUT_DIR/pre.train
 tail -n +1000 $OUT_DIR/post > $OUT_DIR/post.train
 
 head -n 1000 $OUT_DIR/pre > $OUT_DIR/pre.test
-head -n 11000 $OUT_DIR/post > $OUT_DIR/post.test
+head -n 1000 $OUT_DIR/post > $OUT_DIR/post.test
