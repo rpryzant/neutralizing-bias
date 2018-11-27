@@ -2,7 +2,7 @@
 import os
 import random
 import numpy as np
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 import torch
 from torch.autograd import Variable
@@ -10,31 +10,36 @@ from torch.autograd import Variable
 from cuda import CUDA
 
 
-class WordDistance(object):
-    # TODO -- doesn't work super well on these data...word vectors might be softer/more lenient
-    def __init__(self, key_corpus, value_corpus):
-        self.vectorizer = CountVectorizer()
+class CorpusSearcher(object):
+    def __init__(self, query_corpus, key_corpus, value_corpus, vectorizer, make_binary=True):
+        self.vectorizer = vectorizer
         self.vectorizer.fit(key_corpus)
 
+        self.query_corpus = query_corpus
         self.key_corpus = key_corpus
         self.value_corpus = value_corpus
         
         # rows = docs, cols = features
-        self.counts_matrix = self.vectorizer.transform(key_corpus)
-        self.counts_matrix = (self.counts_matrix != 0).astype(int) # make binary
+        self.key_corpus_matrix = self.vectorizer.transform(key_corpus)
+        if make_binary:
+            self.key_corpus_matrix = (self.key_corpus_matrix != 0).astype(int) # make binary
 
         
     def most_similar(self, key_idx, n=10):
-        s = self.key_corpus[key_idx]
+        query = self.query_corpus[key_idx]
 
-        query_counts = self.vectorizer.transform([s])
-        scores = np.dot(self.counts_matrix, query_counts.T)
+        query_vec = self.vectorizer.transform([query])
+
+        scores = np.dot(self.key_corpus_matrix, query_vec.T)
         scores = np.squeeze(scores.toarray())
         scores_indices = zip(scores, range(len(scores)))
         selected = sorted(scores_indices, reverse=True)[:n]
 
-        # use the retrieved i to pick exampels from the VALUE corpus
-        selected = [(self.value_corpus[i], i, score) for (score, i) in selected]
+        # use the retrieved i to pick examples from the VALUE corpus
+        selected = [
+            (self.query_corpus[i], self.key_corpus[i], self.value_corpus[i], i, score) 
+            for (score, i) in selected
+        ]
 
         return selected
 
@@ -76,38 +81,85 @@ def extract_attributes(line, attribute_vocab):
     return line, content, attribute
 
 
-def read_nmt_data(src, config, tgt, attribute_vocab):
+def read_nmt_data(src, config, tgt, attribute_vocab, train_src=None, train_tgt=None):
     attribute_vocab = set([x.strip() for x in open(attribute_vocab)])
 
     src_lines = [l.strip().split() for l in open(src, 'r')]
     src_lines, src_content, src_attribute = list(zip(
         *[extract_attributes(line, attribute_vocab) for line in src_lines]
     ))
-    src_attribute_dist = WordDistance(
-        key_corpus=[' '.join(x) for x in src_attribute],
-        value_corpus=[' '.join(x) for x in src_attribute]
-    )
     src_tok2id, src_id2tok = build_vocab_maps(config['data']['src_vocab'])
+    # train time: just pick attributes that are close to the current (using word distance)
+    # we never need to do the TFIDF thing with the source because 
+    # test time is strictly in the src => tgt direction
+    src_dist_measurer = CorpusSearcher(
+        query_corpus=[' '.join(x) for x in src_attribute],
+        key_corpus=[' '.join(x) for x in src_attribute],
+        value_corpus=[' '.join(x) for x in src_attribute],
+        vectorizer=CountVectorizer(vocabulary=src_tok2id),
+        make_binary=True
+    )
     src = {
         'data': src_lines, 'content': src_content, 'attribute': src_attribute,
-        'tok2id': src_tok2id, 'id2tok': src_id2tok, 'attribute_dist': src_attribute_dist
+        'tok2id': src_tok2id, 'id2tok': src_id2tok, 'dist_measurer': src_dist_measurer
     }
 
     tgt_lines = [l.strip().split() for l in open(tgt, 'r')] if tgt else None
     tgt_lines, tgt_content, tgt_attribute = list(zip(
         *[extract_attributes(line, attribute_vocab) for line in tgt_lines]
     ))
-    tgt_attribute_dist = WordDistance(
-        key_corpus=[' '.join(x) for x in tgt_attribute],
-        value_corpus=[' '.join(x) for x in tgt_attribute]
-    )
     tgt_tok2id, tgt_id2tok = build_vocab_maps(config['data']['tgt_vocab'])
+    # train time: just pick attributes that are close to the current (using word distance)
+    if train_src is None or train_tgt is None:
+        tgt_dist_measurer = CorpusSearcher(
+            query_corpus=[' '.join(x) for x in tgt_attribute],
+            key_corpus=[' '.join(x) for x in tgt_attribute],
+            value_corpus=[' '.join(x) for x in tgt_attribute],
+            vectorizer=CountVectorizer(vocabulary=tgt_tok2id),
+            make_binary=True
+        )
+    # at test time, scan through train content (using tfidf) and retrieve corresponding attributes
+    else:
+        tgt_dist_measurer = CorpusSearcher(
+            query_corpus=[' '.join(x) for x in train_src['content']],
+            key_corpus=[' '.join(x) for x in train_tgt['content']],
+            value_corpus=[' '.join(x) for x in train_tgt['attribute']],
+            vectorizer=TfidfVectorizer(vocabulary=tgt_tok2id),
+            make_binary=False
+        )
     tgt = {
         'data': tgt_lines, 'content': tgt_content, 'attribute': tgt_attribute,
-        'tok2id': tgt_tok2id, 'id2tok': tgt_id2tok, 'attribute_dist': tgt_attribute_dist
+        'tok2id': tgt_tok2id, 'id2tok': tgt_id2tok, 'dist_measurer': tgt_dist_measurer
     }
 
     return src, tgt
+
+def sample_replace(lines, dist_measurer, sample_rate, corpus_idx):
+    """
+    replace sample_rate * batch_size lines with nearby examples (according to dist_measurer)
+    not exactly the same as the paper (words shared instead of jaccaurd during train) but same idea
+    """
+    out = [None for _ in range(len(lines))]
+    for i, line in enumerate(lines):
+        if random.random() < sample_rate:
+            sims = dist_measurer.most_similar(corpus_idx + i)[1:]  # top match is the current line
+            try:
+                line = next( (
+                    tgt_attr.split() for src_cntnt, tgt_cntnt, tgt_attr, _, _ in sims
+                    if tgt_attr != ' '.join(line) # and tgt_attr != ''   # TODO -- exclude blanks?
+                ) )
+            # all the matches are blanks
+            except StopIteration:
+                line = []
+            line = ['<s>'] + line + ['</s>']
+
+        # corner case: special tok for empty sequences (just start/end tok)
+        if len(line) == 2:
+            line.insert(1, '<empty>')
+
+        out[i] = line
+
+    return out
 
 
 def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=None,
@@ -115,33 +167,13 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
     """Prepare minibatch."""
     # FORCE NO SORTING because we care about the order of outputs
     #   to compare across systems
-
     lines = [
         ['<s>'] + line[:max_len] + ['</s>']
         for line in lines[index:index + batch_size]
     ]
 
     if dist_measurer is not None:
-        # replace sample_rate * batch_size lines with nearby examples (according to dist_measurer)
-        # not exactly the same as the paper (words shared instead of jaccaurd) 
-        # but same idea
-        for i, line in enumerate(lines):
-            # remove start/end tokens...dont need 'em
-            line = line[1:-1] 
-            if random.random() < sample_rate and len(line) > 0: # no use with empty lines
-                sims = dist_measurer.most_similar(index + i)
-                try:
-                    line = next( (s.split() for s, _, _ in sims if s != ' '.join(line)) )
-                except StopIteration:
-                    pass
-
-            # corner case: special tok for empty sequences (just start/end tok)
-            if len(line) == 0:
-                line.insert(1, '<empty>')
-            lines[i] = line
-
-    # print('lines:')
-    # print('\n'.join([' '.join(l) for l in lines]))
+        lines = sample_replace(lines, dist_measurer, sample_rate, index)
 
     lens = [len(line) - 1 for line in lines]
     max_len = max(lens)
@@ -217,7 +249,7 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
             in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
         attributes =  get_minibatch(
             out_dataset['attribute'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1],
-            dist_measurer=out_dataset['attribute_dist'], sample_rate=0.25)
+            dist_measurer=out_dataset['dist_measurer'], sample_rate=0.25)
         outputs = get_minibatch(
             out_dataset['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
 

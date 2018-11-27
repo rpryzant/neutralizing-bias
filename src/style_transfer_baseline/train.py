@@ -76,7 +76,9 @@ src_test, tgt_test = data.read_nmt_data(
     src=config['data']['src_test'],
     config=config,
     tgt=config['data']['tgt_test'],
-    attribute_vocab=config['data']['attribute_vocab']
+    attribute_vocab=config['data']['attribute_vocab'],
+    train_src=src,
+    train_tgt=tgt
 )
 logging.info('...done!')
 
