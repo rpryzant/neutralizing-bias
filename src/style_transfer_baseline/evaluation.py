@@ -64,11 +64,11 @@ def get_precisions_recalls(inputs, preds, ground_truths):
         src_unique = set(src) - set(tgt)
         
         # new words the model correctly introduced
-        true_positives = len(set(pred) & set(tgt_unique))
+        true_positives = len(set(pred) & tgt_unique)
         # new words the model incorrectly introduced
         false_positives = len(set(pred) - set(src) - set(tgt))
         # old words the model incorrectly retained
-        false_negatives = len(set(pred) & set(src_unique))
+        false_negatives = len(set(pred) & src_unique)
         
         precision = true_positives * 1.0 / (true_positives + false_positives + 0.001)
         recall = true_postitives * 1.0 / (true_positives + false_negatives + 0.001)
