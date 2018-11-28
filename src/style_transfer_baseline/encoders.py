@@ -23,8 +23,7 @@ class LSTMEncoder(nn.Module):
 
         self.pack = pack
 
-    def init_state(self, input):
-        batch_size = input.size(0) # retrieve dynamically for decoding
+    def init_state(self, batch_size):
         h0 = Variable(torch.zeros(
             self.lstm.num_layers * self.num_directions,
             batch_size,
@@ -43,7 +42,8 @@ class LSTMEncoder(nn.Module):
 
 
     def forward(self, src_embedding, srclens, srcmask, temp=1):
-        h0, c0 = self.init_state(src_embedding)
+        # retrieve batch size dynamically for decoding
+        h0, c0 = self.init_state(batch_size=src_embedding.size(0))
 
         if self.pack:
             inputs = pack_padded_sequence(src_embedding, srclens, batch_first=True)

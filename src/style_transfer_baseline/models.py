@@ -42,6 +42,7 @@ def attempt_load_model(model, checkpoint_dir=None, checkpoint_path=None):
         return model, 0
 
 
+
 class SeqModel(nn.Module):
     def __init__(
         self,
