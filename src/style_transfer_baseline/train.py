@@ -115,12 +115,13 @@ if CUDA:
 writer = SummaryWriter(working_dir)
 
 
+lr = config['training']['learning_rate']
 if config['training']['optimizer'] == 'adam':
-    lr = config['training']['learning_rate']
     optimizer = optim.Adam(model.parameters(), lr=lr)
 elif config['training']['optimizer'] == 'sgd':
-    lr = config['training']['learning_rate']
     optimizer = optim.SGD(model.parameters(), lr=lr)
+elif config['training']['optimizer'] == 'adadelta':
+    optimizer = optim.Adadelta(model.parameters(), lr=lr)
 else:
     raise NotImplementedError("Learning method not recommend for task")
 
@@ -156,9 +157,9 @@ for epoch in range(start_epoch, config['training']['epochs']):
         best_epoch = epoch - 1
 
     losses = []
-    for i in range(0, len(src['content']), batch_size):
+    for i in range(0, len(src['data']), batch_size):
         if args.overfit:
-            i = 50
+            i = 0
 
         batch_idx = i / batch_size
 

@@ -114,7 +114,7 @@ class SeqModel(nn.Module):
             raise NotImplementedError('unknown model type')
 
         self.c_bridge = nn.Linear(
-            attr_size + self.options['src_hidden_dim'], 
+            self.options['src_hidden_dim'],  #TODO attr_size + 
             self.options['tgt_hidden_dim'])
         self.h_bridge = nn.Linear(
             attr_size + self.options['src_hidden_dim'], 
@@ -135,11 +135,8 @@ class SeqModel(nn.Module):
     def init_weights(self):
         """Initialize weights."""
         initrange = 0.1
-        self.src_embedding.weight.data.uniform_(-initrange, initrange)
-        self.tgt_embedding.weight.data.uniform_(-initrange, initrange)
-        self.h_bridge.bias.data.fill_(0)
-        self.c_bridge.bias.data.fill_(0)
-        self.output_projection.bias.data.fill_(0)
+        for param in self.parameters():
+            param.data.uniform_(-initrange, initrange)
 
     def forward(self, input_src, input_tgt, srcmask, srclens, input_attr, attrlens, attrmask):
         src_emb = self.src_embedding(input_src)
@@ -165,7 +162,7 @@ class SeqModel(nn.Module):
         if self.model_type == 'delete':
             # just do h i guess?
             a_ht = self.attribute_embedding(input_attr)
-            c_t = torch.cat((c_t, a_ht), -1)
+            # c_t = torch.cat((c_t, a_ht), -1)
             h_t = torch.cat((h_t, a_ht), -1)
 
         elif self.model_type == 'delete_retrieve':
@@ -173,13 +170,13 @@ class SeqModel(nn.Module):
             _, (a_ht, a_ct) = self.attribute_encoder(attr_emb, attrlens, attrmask)
             if self.options['bidirectional']:
                 a_ht = torch.cat((a_ht[-1], a_ht[-2]), 1)
-                a_ct = torch.cat((a_ct[-1], a_ct[-2]), 1)
+                # a_ct = torch.cat((a_ct[-1], a_ct[-2]), 1)
             else:
                 a_ht = a_ht[-1]
-                a_ct = a_ct[-1]
+                # a_ct = a_ct[-1]
 
             h_t = torch.cat((h_t, a_ht), -1)
-            c_t = torch.cat((c_t, a_ct), -1)
+            # c_t = torch.cat((c_t, a_ct), -1)
             
         c_t = self.c_bridge(c_t)
         h_t = self.h_bridge(h_t)

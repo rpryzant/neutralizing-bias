@@ -119,6 +119,8 @@ if config['training']['optimizer'] == 'adam':
 elif config['training']['optimizer'] == 'sgd':
     lr = config['training']['learning_rate']
     optimizer = optim.SGD(model.parameters(), lr=lr)
+elif config['training']['optimizer'] == 'adadelta':
+    optimizer = optim.Adadelta(model.parameters(), lr=lr)
 else:
     raise NotImplementedError("Learning method not recommend for task")
 
