@@ -60,7 +60,11 @@ def get_edit_distance(hypotheses, reference):
 
 def get_precisions_recalls(inputs, preds, ground_truths):
     def precision_recall(src, tgt, pred):
-        # TODO -- USE PROPER DIFFS HERE INSTEAD OF SETS??
+        """
+        src: [string tokens], the input to the model
+        tgt: [string tokens], the gold targets
+        pred: [string tokens], the model outputs
+        """
         src_set = set(src)
         tgt_set = set(tgt)
         pred_set = set(pred)
