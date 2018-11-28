@@ -65,26 +65,15 @@ def get_precisions_recalls(inputs, preds, ground_truths):
         tgt: [string tokens], the gold targets
         pred: [string tokens], the model outputs
         """
-        src_set = set(src)
-        tgt_set = set(tgt)
-        pred_set = set(pred)
-    
-        tgt_unique = tgt_set - src_set
-        src_unique = src_set - tgt_set
-        shared = tgt_set & src_set
+        tgt_unique = set(tgt) - set(src)
+        src_unique = set(src) - set(tgt)
         
-        correct_shared = len(pred_set & shared)
-        correct_tgt = len(pred_set & tgt_unique)
-        
-        incorrect_src = len(pred_set & src_unique)
-        incorrect_unseen = len(pred_set - src_set - tgt_set)
-        
-        # words the model correctly introduced
-        true_positives = correct_tgt
-        # words the model incorrectly introduced
-        false_positives = incorrect_unseen
-        # bias words the model incorrectly kept
-        false_negatives = incorrect_src
+        # new words the model correctly introduced
+        true_positives = len(set(pred) & set(tgt_unique))
+        # new words the model incorrectly introduced
+        false_positives = len(set(pred) - set(src) - set(tgt))
+        # old words the model incorrectly retained
+        false_negatives = len(set(pred) & set(src_unique))
         
         precision = true_positives * 1.0 / (true_positives + false_positives + 0.001)
         recall = true_postitives * 1.0 / (true_positives + false_negatives + 0.001)
