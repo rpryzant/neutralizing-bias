@@ -80,14 +80,14 @@ def get_precisions_recalls(inputs, preds, ground_truths):
         incorrect_unseen = len(pred_set - src_set - tgt_set)
         
         # words the model correctly introduced
-        tp = correct_tgt
+        true_positives = correct_tgt
         # words the model incorrectly introduced
-        fp = incorrect_unseen
+        false_positives = incorrect_unseen
         # bias words the model incorrectly kept
-        fn = incorrect_src
+        false_negatives = incorrect_src
         
-        precision = tp * 1.0 / (tp + fp + 0.001)
-        recall = tp * 1.0 / (tp + fn + 0.001)
+        precision = true_positives * 1.0 / (true_positives + false_positives + 0.001)
+        recall = true_postitives * 1.0 / (true_positives + false_negatives + 0.001)
 
         return precision, recall
 
