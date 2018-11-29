@@ -11,18 +11,27 @@ import editdistance
 import data
 from cuda import CUDA
 
-def bleu_stats(hypothesis, reference):
+def bleu_stats(hypothesis, reference, word_list=None):
     """Compute statistics for BLEU."""
+
+    def is_valid_ngram(ngram):
+        if word_list is None:
+            return True
+        else:
+            return len(set(word_list) & set(ngram)) > 0
+
     stats = []
     stats.append(len(hypothesis))
     stats.append(len(reference))
     for n in range(1, 5):
-        s_ngrams = Counter(
-            [tuple(hypothesis[i:i + n]) for i in range(len(hypothesis) + 1 - n)]
-        )
-        r_ngrams = Counter(
-            [tuple(reference[i:i + n]) for i in range(len(reference) + 1 - n)]
-        )
+        s_ngrams = Counter([
+            tuple(hypothesis[i:i + n]) for i in range(len(hypothesis) + 1 - n)
+            if is_valid_ngram(hypothesis[i:i + n])
+        ])
+        r_ngrams = Counter([
+            tuple(reference[i:i + n]) for i in range(len(reference) + 1 - n)
+            if is_valid_ngram(reference[i:i + n])
+        ])
         stats.append(max([sum((s_ngrams & r_ngrams).values()), 0]))
         stats.append(max([len(hypothesis) + 1 - n, 0]))
     return stats
@@ -37,11 +46,18 @@ def bleu(stats):
     ) / 4.
     return math.exp(min([0, 1 - float(r) / c]) + log_bleu_prec)
 
-def get_bleu(hypotheses, reference):
-    """Get validation BLEU score for dev set."""
+def get_bleu(hypotheses, reference, word_lists=None):
+    """Get validation BLEU score for dev set.
+        If provided with a list of word lists, then we'll only consider
+            ngrams with words from that list.
+    """
     stats = np.array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
-    for hyp, ref in zip(hypotheses, reference):
-        stats += np.array(bleu_stats(hyp, ref))
+
+    if word_lists is None:
+        word_lists = [None for _ in range(len(hypotheses))]
+
+    for hyp, ref, wlist in zip(hypotheses, reference, word_lists):
+        stats += np.array(bleu_stats(hyp, ref, word_list=wlist))
     return 100 * bleu(stats)
 
 
@@ -115,12 +131,13 @@ def decode_dataset(model, src, tgt, config):
     preds = []
     auxs = []
     ground_truths = []
+    raw_srcs = []
     for j in range(0, len(src['data']), config['data']['batch_size']):
         sys.stdout.write("\r%s/%s..." % (j, len(src['data'])))
         sys.stdout.flush()
 
         # get batch
-        input_content, input_aux, output = data.minibatch(
+        input_content, input_aux, output, raw_src = data.minibatch(
             src, tgt, j, 
             config['data']['batch_size'], 
             config['data']['max_len'], 
@@ -129,6 +146,7 @@ def decode_dataset(model, src, tgt, config):
         input_lines_src, output_lines_src, srclens, srcmask, indices = input_content
         input_ids_aux, _, auxlens, auxmask, _ = input_aux
         input_lines_tgt, output_lines_tgt, _, _, _ = output
+        _, raw_src, _, _, _ = raw_src
 
         # TODO -- beam search
         tgt_pred = decode_minibatch(
@@ -140,7 +158,8 @@ def decode_dataset(model, src, tgt, config):
         def ids_to_toks(tok_seqs, id2tok):
             out = []
             # take off the gpu
-            tok_seqs = tok_seqs.cpu().numpy()
+            if isinstance(tok_seqs, torch.Tensor):
+                tok_seqs = tok_seqs.cpu().numpy()
             # convert to toks, cut off at </s>, delete any start tokens (preds were kickstarted w them)
             for line in tok_seqs:
                 toks = [id2tok[x] for x in line]
@@ -156,6 +175,7 @@ def decode_dataset(model, src, tgt, config):
         inputs += ids_to_toks(output_lines_src, src['id2tok'])
         preds += ids_to_toks(tgt_pred, tgt['id2tok'])
         ground_truths += ids_to_toks(output_lines_tgt, tgt['id2tok'])
+        raw_srcs += ids_to_toks(raw_src, src['id2tok'])
         
         if config['model']['model_type'] == 'delete':
             auxs += [[str(x)] for x in input_ids_aux.data.cpu().numpy()] # because of list comp in inference_metrics()
@@ -164,27 +184,49 @@ def decode_dataset(model, src, tgt, config):
         elif config['model']['model_type'] == 'seq2seq':
             auxs += ['None' for _ in range(len(tgt_pred))]
 
-    return inputs, preds, ground_truths, auxs
+    return inputs, preds, ground_truths, auxs, raw_srcs
 
 
-def inference_metrics(model, src, tgt, config):
-    """ decode and evaluate bleu """
-    inputs, preds, ground_truths, auxs = decode_dataset(
-        model, src, tgt, config)
-
+def get_metrics(inputs, preds, ground_truths):
     bleu = get_bleu(preds, ground_truths)
+    
+    src_bleu = get_bleu(
+        preds, inputs,
+        word_lists=[
+            set(src) - set(tgt) for src, tgt in zip(inputs, ground_truths)
+        ]
+    )
+
+    tgt_bleu = get_bleu(
+        preds, ground_truths,
+        word_lists=[
+            set(tgt) - set(src) for src, tgt in zip(inputs, ground_truths)
+        ]
+    )
+
     edit_distance = get_edit_distance(preds, ground_truths)
     precisions, recalls = get_precisions_recalls(inputs, preds, ground_truths)
 
     precision = np.average(precisions)
     recall = np.average(recalls)
 
+    return bleu, src_bleu, tgt_bleu, edit_distance, precision, recall
+
+
+def inference_metrics(model, src, tgt, config):
+    """ decode and evaluate bleu """
+    inputs, preds, ground_truths, auxs, raw_srcs = decode_dataset(
+        model, src, tgt, config)
+
+    bleu, src_bleu, tgt_bleu, edit_distance, precision, recall = get_metrics(
+        raw_srcs, preds, ground_truths)
+
     inputs = [' '.join(seq) for seq in inputs]
     preds = [' '.join(seq) for seq in preds]
     ground_truths = [' '.join(seq) for seq in ground_truths]
     auxs = [' '.join(seq) for seq in auxs]
 
-    return bleu, edit_distance, precision, recall, inputs, preds, ground_truths, auxs
+    return bleu, src_bleu, tgt_bleu, edit_distance, precision, recall, inputs, preds, ground_truths, auxs
 
 
 def evaluate_lpp(model, src, tgt, config):
@@ -205,7 +247,7 @@ def evaluate_lpp(model, src, tgt, config):
         sys.stdout.flush()
 
         # get batch
-        input_content, input_aux, output = data.minibatch(
+        input_content, input_aux, output, _ = data.minibatch(
             src, tgt, j, 
             config['data']['batch_size'], 
             config['data']['max_len'], 

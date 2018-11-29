@@ -38,6 +38,11 @@ parser.add_argument(
     help="train continuously on one batch of data",
     action='store_true'
 )
+parser.add_argument(
+    "--test",
+    help="skip training and only test",
+    action='store_true'
+)
 args = parser.parse_args()
 config = json.load(open(args.config, 'r'))
 
@@ -158,12 +163,14 @@ for epoch in range(start_epoch, config['training']['epochs']):
 
     losses = []
     for i in range(0, len(src['data']), batch_size):
+        if args.test:
+            continue
         if args.overfit:
             i = 0
 
         batch_idx = i / batch_size
 
-        input_content, input_aux, output = data.minibatch(
+        input_content, input_aux, output, _ = data.minibatch(
             src, tgt, i, batch_size, max_length, config['model']['model_type'])
         input_lines_src, _, srclens, srcmask, _ = input_content
         input_ids_aux, _, auxlens, auxmask, _ = input_aux
@@ -216,7 +223,7 @@ for epoch in range(start_epoch, config['training']['epochs']):
     writer.add_scalar('eval/loss', dev_loss, epoch)
 
     if args.bleu and epoch >= config['training'].get('bleu_start_epoch', 1):
-        cur_metric, edit_distance, precision, recall, inputs, preds, golds, auxs = evaluation.inference_metrics(
+        cur_metric, src_bleu, tgt_bleu, edit_distance, precision, recall, inputs, preds, golds, auxs = evaluation.inference_metrics(
             model, src_test, tgt_test, config)
 
         with open(working_dir + '/auxs.%s' % epoch, 'w') as f:
@@ -232,6 +239,8 @@ for epoch in range(start_epoch, config['training']['epochs']):
         writer.add_scalar('eval/recall', recall, epoch)
         writer.add_scalar('eval/edit_distance', edit_distance, epoch)
         writer.add_scalar('eval/bleu', cur_metric, epoch)
+        writer.add_scalar('eval/src_bleu', src_bleu, epoch)
+        writer.add_scalar('eval/tgt_bleu', tgt_bleu, epoch)
 
     else:
         cur_metric = dev_loss

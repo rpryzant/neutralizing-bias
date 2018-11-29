@@ -273,11 +273,16 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
         out_dataset = tgt
         attribute_id = 1
 
+
     if model_type == 'delete':
         inputs = get_minibatch(
             in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
         outputs = get_minibatch(
             out_dataset['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
+        
+        # get raw source too for evaluation
+        raw_src = get_minibatch(
+            in_dataset['data'], in_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
 
         # true length could be less than batch_size at edge of data
         batch_len = len(outputs[0])
@@ -297,6 +302,10 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
         outputs = get_minibatch(
             out_dataset['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
 
+        # get raw source too for evaluation
+        raw_src = get_minibatch(
+            in_dataset['data'], in_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
+
     elif model_type == 'seq2seq':
         # ignore the in/out dataset stuff
         inputs = get_minibatch(
@@ -305,10 +314,12 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
             tgt['data'], tgt['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
         attributes = (None, None, None, None, None)
 
+        raw_src = inputs
+
     else:
         raise Exception('Unsupported model_type: %s' % model_type)
 
-    return inputs, attributes, outputs
+    return inputs, attributes, outputs, raw_src
 
 
 def unsort(arr, idx):
