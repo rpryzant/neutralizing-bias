@@ -11,10 +11,6 @@ import editdistance
 import data
 from cuda import CUDA
 
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# BLEU functions from https://github.com/MaximumEntropy/Seq2Seq-PyTorch
-#    (ran some comparisons, and it matches moses's multi-bleu.perl)
 def bleu_stats(hypothesis, reference):
     """Compute statistics for BLEU."""
     stats = []
@@ -47,8 +43,7 @@ def get_bleu(hypotheses, reference):
     for hyp, ref in zip(hypotheses, reference):
         stats += np.array(bleu_stats(hyp, ref))
     return 100 * bleu(stats)
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
 
 def get_edit_distance(hypotheses, reference):
     ed = 0
@@ -60,30 +55,23 @@ def get_edit_distance(hypotheses, reference):
 
 def get_precisions_recalls(inputs, preds, ground_truths):
     def precision_recall(src, tgt, pred):
-        # TODO -- USE PROPER DIFFS HERE INSTEAD OF SETS??
-        src_set = set(src)
-        tgt_set = set(tgt)
-        pred_set = set(pred)
-    
-        tgt_unique = tgt_set - src_set
-        src_unique = src_set - tgt_set
-        shared = tgt_set & src_set
+        """
+        src: [string tokens], the input to the model
+        tgt: [string tokens], the gold targets
+        pred: [string tokens], the model outputs
+        """
+        tgt_unique = set(tgt) - set(src)
+        src_unique = set(src) - set(tgt)
         
-        correct_shared = len(pred_set & shared)
-        correct_tgt = len(pred_set & tgt_unique)
+        # new words the model correctly introduced
+        true_positives = len(set(pred) & tgt_unique)
+        # new words the model incorrectly introduced
+        false_positives = len(set(pred) - set(src) - set(tgt))
+        # old words the model incorrectly retained
+        false_negatives = len(set(pred) & src_unique)
         
-        incorrect_src = len(pred_set & src_unique)
-        incorrect_unseen = len(pred_set - src_set - tgt_set)
-        
-        # words the model correctly introduced
-        tp = correct_tgt
-        # words the model incorrectly introduced
-        fp = incorrect_unseen
-        # bias words the model incorrectly kept
-        fn = incorrect_src
-        
-        precision = tp * 1.0 / (tp + fp + 0.001)
-        recall = tp * 1.0 / (tp + fn + 0.001)
+        precision = true_positives * 1.0 / (true_positives + false_positives + 0.001)
+        recall = true_postitives * 1.0 / (true_positives + false_negatives + 0.001)
 
         return precision, recall
 
