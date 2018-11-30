@@ -11,6 +11,49 @@ import editdistance
 import data
 from cuda import CUDA
 
+
+
+
+
+
+def get_precisions_recalls_DEPRECIATED(inputs, preds, ground_truths):
+    """ v1 of precision/recall based on some dumb logic """
+    def precision_recall(src, tgt, pred):
+        """
+        src: [string tokens], the input to the model
+        tgt: [string tokens], the gold targets
+        pred: [string tokens], the model outputs
+        """
+        tgt_unique = set(tgt) - set(src)
+        src_unique = set(src) - set(tgt)
+        
+        # new words the model correctly introduced
+        true_positives = len(set(pred) & tgt_unique)
+        # new words the model incorrectly introduced
+        false_positives = len(set(pred) - set(src) - set(tgt))
+        # old words the model incorrectly retained
+        false_negatives = len(set(pred) & src_unique)
+        
+        precision = true_positives * 1.0 / (true_positives + false_positives + 0.001)
+        recall = true_postitives * 1.0 / (true_positives + false_negatives + 0.001)
+
+        return precision, recall
+
+    [precisions, recalls] = list(zip(*[
+        precision_recall(src, tgt, pred) 
+        for src, tgt, pred in zip(inputs, ground_truths, preds)
+    ]))
+
+    return precisions, recalls
+
+
+#########################################################################
+# ABOVE THIS LINE ARE DEPRECIATED METHODS...TREAD CAREFULLY
+#########################################################################
+
+
+
+
 def bleu_stats(hypothesis, reference, word_list=None):
     """Compute statistics for BLEU."""
 
@@ -61,6 +104,31 @@ def get_bleu(hypotheses, reference, word_lists=None):
     return 100 * bleu(stats)
 
 
+def get_precision_recall(inputs, top_k_preds, ground_truths, k=10):
+    """
+    Precision@k = (# of generated candidates @k that are relevant to targets) / (# of generated candidates @k)
+    Recall@k = (# of generated candidates @k that are relevant to targets) / (total # of relevant targets)
+    
+    top_k_preds: [Batch, length, k]
+    """
+    
+    def precision_recall(src, tgt, top_k):
+        tgt_unique = set(tgt) - set(src)
+        pred_toks = [tok for klist in top_k for tok in klist[:k]]
+        precision = len(tgt_unique & set(pred_toks)) * 1.0 / (len(pred_toks) + 0.0001)
+        recall = len(tgt_unique & set(pred_toks)) * 1.0 / (len(tgt_unique) + 0.0001)
+
+        return precision, recall
+
+    [precisions, recalls] = list(zip(*[
+        precision_recall(src, tgt, pred) 
+        for src, tgt, pred in zip(inputs, ground_truths, top_k_preds)
+    ]))
+
+    return np.average(precisions), np.average(recalls)
+
+
+
 def get_edit_distance(hypotheses, reference):
     ed = 0
     for hyp, ref in zip(hypotheses, reference):
@@ -69,66 +137,73 @@ def get_edit_distance(hypotheses, reference):
     return ed * 1.0 / len(hypotheses)
 
 
-def get_precisions_recalls(inputs, preds, ground_truths):
-    def precision_recall(src, tgt, pred):
-        """
-        src: [string tokens], the input to the model
-        tgt: [string tokens], the gold targets
-        pred: [string tokens], the model outputs
-        """
-        tgt_unique = set(tgt) - set(src)
-        src_unique = set(src) - set(tgt)
-        
-        # new words the model correctly introduced
-        true_positives = len(set(pred) & tgt_unique)
-        # new words the model incorrectly introduced
-        false_positives = len(set(pred) - set(src) - set(tgt))
-        # old words the model incorrectly retained
-        false_negatives = len(set(pred) & src_unique)
-        
-        precision = true_positives * 1.0 / (true_positives + false_positives + 0.001)
-        recall = true_postitives * 1.0 / (true_positives + false_negatives + 0.001)
-
-        return precision, recall
-
-    [precisions, recalls] = list(zip(*[
-        precision_recall(src, tgt, pred) 
-        for src, tgt, pred in zip(inputs, ground_truths, preds)
-    ]))
-
-    return precisions, recalls
-
-
-
 def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask,
-        aux_input, auxlens, auxmask):
+        aux_input, auxlens, auxmask, k):
     """ argmax decoding """
     # Initialize target with <s> for every sentence
-    tgt_input = Variable(torch.LongTensor(
-        [
+    tgt_input = Variable(torch.LongTensor([
             [start_id] for i in range(src_input.size(0))
-        ]
-    ))
+    ]))
     if CUDA:
         tgt_input = tgt_input.cuda()
+
+    top_k_toks = []
 
     for i in range(max_len):
         # run input through the model
         decoder_logit, word_probs = model(src_input, tgt_input, srcmask, srclens,
             aux_input, auxmask, auxlens)
-        decoder_argmax = word_probs.data.cpu().numpy().argmax(axis=-1)
+        # logits for the latest timestep
+        word_probs = word_probs.data.cpu().numpy()[:, -1, :]
+        # sorted indices (descending)
+        sorted_indices = np.argsort((word_probs))[:, ::-1]
         # select the predicted "next" tokens, attach to target-side inputs
-        next_preds = Variable(torch.from_numpy(decoder_argmax[:, -1]))
+        next_preds = Variable(torch.from_numpy(sorted_indices[:, 0]))
         if CUDA:
             next_preds = next_preds.cuda()
         tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
+        # remember the top k indices at this step for evaluation
+        top_k_toks.append( sorted_indices[:, :k] )
 
-    return tgt_input
+    # make top_k_toks into [Batch, Length, k] tensor
+    top_k_toks = np.array(top_k_toks)
+    top_k_toks = np.transpose(top_k_toks, (1, 0, 2))
 
-def decode_dataset(model, src, tgt, config):
+    # make sure the top k=1 tokens is equal to the true model predictions (argmax)
+    assert np.array_equal(
+        top_k_toks[:, :, 0], 
+        tgt_input[:, 1:].data.cpu().numpy()) # ignore <s> kickstart
+
+    return top_k_toks
+
+# convert seqs to tokens
+def ids_to_toks(tok_seqs, id2tok, sort_indices, cuts=None):
+    out = []
+    cut_indices = []
+    # take off the gpu
+    if isinstance(tok_seqs, torch.Tensor):
+        tok_seqs = tok_seqs.cpu().numpy()
+    # convert to toks, cut off at </s>
+    for i, line in enumerate(tok_seqs):
+        toks = [id2tok[x] for x in line]
+        if cuts is not None:
+            cut_idx = cuts[i]
+        elif '</s>' in toks:
+            cut_idx = toks.index('</s>')
+        else:
+            cut_idx = len(toks)
+        out.append( toks[:cut_idx] )
+        cut_indices += [cut_idx]
+    # unsort
+    out = data.unsort(out, sort_indices)
+    return out, cut_indices
+
+
+def decode_dataset(model, src, tgt, config, k=20):
     """Evaluate model."""
     inputs = []
     preds = []
+    top_k_preds = []
     auxs = []
     ground_truths = []
     raw_srcs = []
@@ -149,54 +224,56 @@ def decode_dataset(model, src, tgt, config):
         _, raw_src, _, _, _ = raw_src
 
         # TODO -- beam search
-        tgt_pred = decode_minibatch(
+        tgt_pred_top_k = decode_minibatch(
             config['data']['max_len'], tgt['tok2id']['<s>'], 
             model, input_lines_src, srclens, srcmask,
-            input_ids_aux, auxlens, auxmask)
-
-        # convert seqs to tokens
-        def ids_to_toks(tok_seqs, id2tok):
-            out = []
-            # take off the gpu
-            if isinstance(tok_seqs, torch.Tensor):
-                tok_seqs = tok_seqs.cpu().numpy()
-            # convert to toks, cut off at </s>, delete any start tokens (preds were kickstarted w them)
-            for line in tok_seqs:
-                toks = [id2tok[x] for x in line]
-                if '<s>' in toks: 
-                    toks.remove('<s>')
-                cut_idx = toks.index('</s>') if '</s>' in toks else len(toks)
-                out.append( toks[:cut_idx] )
-            # unsort
-            out = data.unsort(out, indices)
-            return out
+            input_ids_aux, auxlens, auxmask, k=k)
 
         # convert inputs/preds/targets/aux to human-readable form
-        inputs += ids_to_toks(output_lines_src, src['id2tok'])
-        preds += ids_to_toks(tgt_pred, tgt['id2tok'])
-        ground_truths += ids_to_toks(output_lines_tgt, tgt['id2tok'])
-        raw_srcs += ids_to_toks(raw_src, src['id2tok'])
+        inputs += ids_to_toks(output_lines_src, src['id2tok'], indices)[0]
+        ground_truths += ids_to_toks(output_lines_tgt, tgt['id2tok'], indices)[0]
+        raw_srcs += ids_to_toks(raw_src, src['id2tok'], indices)[0]
+
+        # TODO -- refactor this stuff!! it's shitty
+        # get the "offical" predictions from the model
+        pred_toks, pred_lens = ids_to_toks(tgt_pred_top_k[:, :, 0], tgt['id2tok'], indices)
+        preds += pred_toks
+        # now get all the other top-k prediction levels
+        top_k_pred = [pred_toks]
+        for i in range(k - 1):
+            top_k_pred.append(ids_to_toks(
+                tgt_pred_top_k[:, :, i + 1], tgt['id2tok'], indices, cuts=pred_lens)[0]
+            )
+        # top_k_pred is [k, batch, length] where length is ragged
+        # but we want it in [batch, length, k]
+        batch_size = len(top_k_pred[0]) # could be variable at test time
+        pred_lens = data.unsort(pred_lens, indices)
+        top_k_pred_transposed = [[] for _ in range(batch_size)]
+        for bi in range(batch_size):
+            for ti in range(pred_lens[bi]):
+                top_k_pred_transposed[bi] += [[
+                    top_k_pred[ki][bi][ti] for ki in range(k)
+                ]]
+        top_k_preds += top_k_pred_transposed
         
         if config['model']['model_type'] == 'delete':
             auxs += [[str(x)] for x in input_ids_aux.data.cpu().numpy()] # because of list comp in inference_metrics()
         elif config['model']['model_type'] == 'delete_retrieve':
-            auxs += ids_to_toks(input_ids_aux, tgt['id2tok'])
+            auxs += ids_to_toks(input_ids_aux, tgt['id2tok'], indices)
         elif config['model']['model_type'] == 'seq2seq':
-            auxs += ['None' for _ in range(len(tgt_pred))]
+            auxs += ['None' for _ in range(batch_size)]
 
-    return inputs, preds, ground_truths, auxs, raw_srcs
+    return inputs, preds, top_k_preds, ground_truths, auxs, raw_srcs
 
 
-def get_metrics(inputs, preds, ground_truths):
+def get_metrics(inputs, preds, ground_truths, top_k_preds=None):
     bleu = get_bleu(preds, ground_truths)
-    
     src_bleu = get_bleu(
         preds, inputs,
         word_lists=[
             set(src) - set(tgt) for src, tgt in zip(inputs, ground_truths)
         ]
     )
-
     tgt_bleu = get_bleu(
         preds, ground_truths,
         word_lists=[
@@ -205,28 +282,30 @@ def get_metrics(inputs, preds, ground_truths):
     )
 
     edit_distance = get_edit_distance(preds, ground_truths)
-    precisions, recalls = get_precisions_recalls(inputs, preds, ground_truths)
 
-    precision = np.average(precisions)
-    recall = np.average(recalls)
+    if top_k_preds is None:
+        top_k_preds = [[[x] for x in seq] for seq in preds]
+    tgt_precision, tgt_recall = get_precision_recall(inputs, top_k_preds, ground_truths)
+    src_precision, src_recall = get_precision_recall(ground_truths, top_k_preds, inputs)
 
-    return bleu, src_bleu, tgt_bleu, edit_distance, precision, recall
+
+    return bleu, src_bleu, tgt_bleu, edit_distance, tgt_precision, tgt_recall, src_precision, src_recall
 
 
 def inference_metrics(model, src, tgt, config):
     """ decode and evaluate bleu """
-    inputs, preds, ground_truths, auxs, raw_srcs = decode_dataset(
+    inputs, preds, top_k_preds, ground_truths, auxs, raw_srcs = decode_dataset(
         model, src, tgt, config)
 
-    bleu, src_bleu, tgt_bleu, edit_distance, precision, recall = get_metrics(
-        raw_srcs, preds, ground_truths)
+    bleu, src_bleu, tgt_bleu, edit_distance, tgt_precision, tgt_recall, src_precision, src_recall = get_metrics(
+        raw_srcs, preds, ground_truths, top_k_preds=top_k_preds)
 
     inputs = [' '.join(seq) for seq in inputs]
     preds = [' '.join(seq) for seq in preds]
     ground_truths = [' '.join(seq) for seq in ground_truths]
     auxs = [' '.join(seq) for seq in auxs]
 
-    return bleu, src_bleu, tgt_bleu, edit_distance, precision, recall, inputs, preds, ground_truths, auxs
+    return bleu, src_bleu, tgt_bleu, edit_distance, tgt_precision, tgt_recall, src_precision, src_recall, inputs, preds, ground_truths, auxs
 
 
 def evaluate_lpp(model, src, tgt, config):

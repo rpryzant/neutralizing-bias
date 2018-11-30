@@ -223,7 +223,7 @@ for epoch in range(start_epoch, config['training']['epochs']):
     writer.add_scalar('eval/loss', dev_loss, epoch)
 
     if args.bleu and epoch >= config['training'].get('bleu_start_epoch', 1):
-        cur_metric, src_bleu, tgt_bleu, edit_distance, precision, recall, inputs, preds, golds, auxs = evaluation.inference_metrics(
+        cur_metric, src_bleu, tgt_bleu, edit_distance, tgt_precision, tgt_recall, src_precision, src_recall, inputs, preds, golds, auxs = evaluation.inference_metrics(
             model, src_test, tgt_test, config)
 
         with open(working_dir + '/auxs.%s' % epoch, 'w') as f:
@@ -235,8 +235,10 @@ for epoch in range(start_epoch, config['training']['epochs']):
         with open(working_dir + '/golds.%s' % epoch, 'w') as f:
             f.write('\n'.join(golds) + '\n')
 
-        writer.add_scalar('eval/precision', precision, epoch)
-        writer.add_scalar('eval/recall', recall, epoch)
+        writer.add_scalar('eval/tgt_precision', tgt_precision, epoch)
+        writer.add_scalar('eval/tgt_recall', tgt_recall, epoch)
+        writer.add_scalar('eval/src_precision', src_precision, epoch)
+        writer.add_scalar('eval/src_recall', src_recall, epoch)
         writer.add_scalar('eval/edit_distance', edit_distance, epoch)
         writer.add_scalar('eval/bleu', cur_metric, epoch)
         writer.add_scalar('eval/src_bleu', src_bleu, epoch)
@@ -251,7 +253,7 @@ for epoch in range(start_epoch, config['training']['epochs']):
         cur_metric, (time.time() - start)))
     avg_loss = np.mean(epoch_loss)
     epoch_loss = []
-
+    
 writer.close()
 with open(working_dir + '/stats.csv', 'w') as f:
     f.write(utils.config_val_string(config) + ',%s,%s\n' % (
