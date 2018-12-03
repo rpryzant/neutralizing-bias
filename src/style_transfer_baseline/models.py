@@ -108,7 +108,7 @@ class SeqModel(nn.Module):
                 embedding_dim=self.options['emb_dim'])
             attr_size = self.options['emb_dim']
 
-        elif self.model_type == 'delete_retrieve':
+        elif self.model_type in ['delete_retrieve', 'delete_retrieve_seq2seq']:
             self.attribute_encoder = encoders.LSTMEncoder(
                 self.options['emb_dim'],
                 self.options['src_hidden_dim'],
@@ -182,7 +182,7 @@ class SeqModel(nn.Module):
             # c_t = torch.cat((c_t, a_ht), -1)
             h_t = torch.cat((h_t, a_ht), -1)
 
-        elif self.model_type == 'delete_retrieve':
+        elif self.model_type in ['delete_retrieve', 'delete_retrieve_seq2seq']:
             attr_emb = self.src_embedding(input_attr)
             _, (a_ht, a_ct) = self.attribute_encoder(attr_emb, attrlens, attrmask)
             if self.options['bidirectional']:

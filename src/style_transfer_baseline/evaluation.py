@@ -266,7 +266,7 @@ def decode_dataset(model, src, tgt, config, k=20):
             auxs += [[str(x)] for x in input_ids_aux.data.cpu().numpy()] # because of list comp in inference_metrics()
         if config['model']['model_type'] == 'delete_seq2seq':
             auxs += [[str(x)] for x in input_ids_aux.data.cpu().numpy()] # because of list comp in inference_metrics()
-        elif config['model']['model_type'] == 'delete_retrieve':
+        elif config['model']['model_type'] in ['delete_retrieve', 'delete_retrieve_seq2seq']:
             auxs += ids_to_toks(input_ids_aux, tgt['id2tok'], indices)
         elif config['model']['model_type'] == 'seq2seq':
             auxs += ['None' for _ in range(batch_size)]

@@ -322,6 +322,21 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
         raw_src = get_minibatch(
             in_dataset['data'], in_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
 
+    # same as delete retreive but decodes into tgt
+    elif model_type == 'delete_retrieve_seq2seq':
+        inputs =  get_minibatch(
+            in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
+        attributes =  get_minibatch(
+            tgt['attribute'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1],
+            dist_measurer=tgt['dist_measurer'], sample_rate=0.25) # TODO reverse because no packing??
+        outputs = get_minibatch(
+            tgt['data'], tgt['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
+
+        # get raw source too for evaluation
+        raw_src = get_minibatch(
+            in_dataset['data'], in_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
+
+
     elif model_type == 'seq2seq':
         # ignore the in/out dataset stuff
         inputs = get_minibatch(
