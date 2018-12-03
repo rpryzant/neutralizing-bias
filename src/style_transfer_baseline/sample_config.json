@@ -1,12 +1,13 @@
 {
   "training": {
-    "optimizer": "sgd",
-    "learning_rate": 1.0,
+    "optimizer": "adam",
+    "learning_rate": 0.001,
     "max_norm": 3.0,
-    "epochs": 70,
+    "epochs": 611,
     "batches_per_report": 1,
     "batches_per_sampling": 500,
-    "random_seed": 1
+    "random_seed": 19,
+    "bleu_start_epoch": 0
   },
   "data": {
     "src": "test_data/pre.train",
@@ -16,7 +17,7 @@
     "src_vocab": "test_data/vocab.16k",
     "tgt_vocab": "test_data/vocab.16k",
     "share_vocab": true,
-    "attribute_vocab": "test_data/attribute_vocab.16k.r2.l0.5",
+    "attribute_vocab": "test_data/attribute_vocab",
     "batch_size": 20,
     "max_len": 50,
     "working_dir": "sample_run"
@@ -33,5 +34,9 @@
         "tgt_layers": 1,
         "decode": "greedy",
         "dropout": 0.2
+    },
+    "eval": {
+        "precision_recall_k": 10,
+        "classifier_path": "test_data/eval_classifier"
     }
 }

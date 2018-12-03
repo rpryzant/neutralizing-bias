@@ -8,10 +8,10 @@ from torch.autograd import Variable
 import torch.nn as nn
 import editdistance
 
+import models
 import data
+
 from cuda import CUDA
-
-
 
 
 
@@ -104,13 +104,15 @@ def get_bleu(hypotheses, reference, word_lists=None):
     return 100 * bleu(stats)
 
 
-def get_precision_recall(inputs, top_k_preds, ground_truths, k=10):
+def get_precision_recall(inputs, top_k_preds, ground_truths, k=None):
     """
     Precision@k = (# of generated candidates @k that are relevant to targets) / (# of generated candidates @k)
     Recall@k = (# of generated candidates @k that are relevant to targets) / (total # of relevant targets)
     
     top_k_preds: [Batch, length, k]
     """
+    if not k:
+        k = len(top_k_preds[0][0])
     
     def precision_recall(src, tgt, top_k):
         tgt_unique = set(tgt) - set(src)
@@ -177,7 +179,7 @@ def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask,
     return top_k_toks
 
 # convert seqs to tokens
-def ids_to_toks(tok_seqs, id2tok, sort_indices, cuts=None):
+def ids_to_toks(tok_seqs, id2tok, sort_indices, cuts=None, save_cuts=False):
     out = []
     cut_indices = []
     # take off the gpu
@@ -196,8 +198,11 @@ def ids_to_toks(tok_seqs, id2tok, sort_indices, cuts=None):
         cut_indices += [cut_idx]
     # unsort
     out = data.unsort(out, sort_indices)
-    return out, cut_indices
 
+    if save_cuts:
+        return out, cut_indices
+    else:
+        return out
 
 def decode_dataset(model, src, tgt, config, k=20):
     """Evaluate model."""
@@ -230,22 +235,23 @@ def decode_dataset(model, src, tgt, config, k=20):
             input_ids_aux, auxlens, auxmask, k=k)
 
         # convert inputs/preds/targets/aux to human-readable form
-        inputs += ids_to_toks(output_lines_src, src['id2tok'], indices)[0]
-        ground_truths += ids_to_toks(output_lines_tgt, tgt['id2tok'], indices)[0]
-        raw_srcs += ids_to_toks(raw_src, src['id2tok'], indices)[0]
+        inputs += ids_to_toks(output_lines_src, src['id2tok'], indices)
+        ground_truths += ids_to_toks(output_lines_tgt, tgt['id2tok'], indices)
+        raw_srcs += ids_to_toks(raw_src, src['id2tok'], indices)
 
         # TODO -- refactor this stuff!! it's shitty
         # get the "offical" predictions from the model
-        pred_toks, pred_lens = ids_to_toks(tgt_pred_top_k[:, :, 0], tgt['id2tok'], indices)
+        pred_toks, pred_lens = ids_to_toks(
+            tgt_pred_top_k[:, :, 0], tgt['id2tok'], indices, save_cuts=True)
         preds += pred_toks
         # now get all the other top-k prediction levels
         top_k_pred = [pred_toks]
         for i in range(k - 1):
             top_k_pred.append(ids_to_toks(
-                tgt_pred_top_k[:, :, i + 1], tgt['id2tok'], indices, cuts=pred_lens)[0]
+                tgt_pred_top_k[:, :, i + 1], tgt['id2tok'], indices, cuts=pred_lens)
             )
         # top_k_pred is [k, batch, length] where length is ragged
-        # but we want it in [batch, length, k]
+        # but we want it in [batch, length, k]. Manual transpose b/c ragged :( 
         batch_size = len(top_k_pred[0]) # could be variable at test time
         pred_lens = data.unsort(pred_lens, indices)
         top_k_pred_transposed = [[] for _ in range(batch_size)]
@@ -259,14 +265,14 @@ def decode_dataset(model, src, tgt, config, k=20):
         if config['model']['model_type'] == 'delete':
             auxs += [[str(x)] for x in input_ids_aux.data.cpu().numpy()] # because of list comp in inference_metrics()
         elif config['model']['model_type'] == 'delete_retrieve':
-            auxs += ids_to_toks(input_ids_aux, tgt['id2tok'], indices)[0]
+            auxs += ids_to_toks(input_ids_aux, tgt['id2tok'], indices)
         elif config['model']['model_type'] == 'seq2seq':
             auxs += ['None' for _ in range(batch_size)]
 
     return inputs, preds, top_k_preds, ground_truths, auxs, raw_srcs
 
 
-def get_metrics(inputs, preds, ground_truths, top_k_preds=None):
+def get_metrics(inputs, preds, ground_truths, top_k_preds=None, classifier=None):
     bleu = get_bleu(preds, ground_truths)
     src_bleu = get_bleu(
         preds, inputs,
@@ -288,24 +294,45 @@ def get_metrics(inputs, preds, ground_truths, top_k_preds=None):
     tgt_precision, tgt_recall = get_precision_recall(inputs, top_k_preds, ground_truths)
     src_precision, src_recall = get_precision_recall(ground_truths, top_k_preds, inputs)
 
+    if classifier is not None:
+        print(preds)
+        classifier_error = classifier.error_rate(
+            seqs=[' '.join(seq) for seq in preds],
+            Y=[1 for _ in range(len(preds))])   # we're trying to create "target" seqs
+    else:
+        classifier_error = -1
 
-    return bleu, src_bleu, tgt_bleu, edit_distance, tgt_precision, tgt_recall, src_precision, src_recall
+    return {
+        'bleu':             bleu,
+        'src_bleu':         src_bleu,
+        'tgt_bleu':         tgt_bleu,
+        'edit_distance':    edit_distance,
+        'tgt_precision':    tgt_precision,
+        'src_precision':    src_precision,
+        'tgt_recall':       tgt_recall,
+        'src_recall':       src_recall,
+        'classifier_error': classifier_error
+    }
 
 
 def inference_metrics(model, src, tgt, config):
     """ decode and evaluate bleu """
     inputs, preds, top_k_preds, ground_truths, auxs, raw_srcs = decode_dataset(
-        model, src, tgt, config)
+        model, src, tgt, config, k=config['eval']['precision_recall_k'])
 
-    bleu, src_bleu, tgt_bleu, edit_distance, tgt_precision, tgt_recall, src_precision, src_recall = get_metrics(
-        raw_srcs, preds, ground_truths, top_k_preds=top_k_preds)
+    eval_classifier = models.TextClassifier.from_pickle(
+        config['eval']['classifier_path'])
+
+    metrics = get_metrics(
+        raw_srcs, preds, ground_truths, 
+        top_k_preds=top_k_preds, classifier=eval_classifier)
 
     inputs = [' '.join(seq) for seq in inputs]
     preds = [' '.join(seq) for seq in preds]
     ground_truths = [' '.join(seq) for seq in ground_truths]
     auxs = [' '.join(seq) for seq in auxs]
 
-    return bleu, src_bleu, tgt_bleu, edit_distance, tgt_precision, tgt_recall, src_precision, src_recall, inputs, preds, ground_truths, auxs
+    return metrics, inputs, preds, ground_truths, auxs
 
 
 def evaluate_lpp(model, src, tgt, config):

@@ -13,7 +13,7 @@ from cuda import CUDA
 
 
 class CorpusSearcher(object):
-    def __init__(self, query_corpus, key_corpus, value_corpus, vectorizer, make_binary=True):
+    def __init__(self, query_corpus, key_corpus, value_corpus, vectorizer):
         self.vectorizer = vectorizer
         self.vectorizer.fit(key_corpus)
 
@@ -23,8 +23,6 @@ class CorpusSearcher(object):
         
         # rows = docs, cols = features
         self.key_corpus_matrix = self.vectorizer.transform(key_corpus)
-        if make_binary:
-            self.key_corpus_matrix = (self.key_corpus_matrix != 0).astype(int) # make binary
 
         
     def most_similar(self, key_idx, n=10):
@@ -135,8 +133,7 @@ def read_nmt_data(src, config, tgt, train_src=None, train_tgt=None):
         query_corpus=[' '.join(x) for x in src_attribute],
         key_corpus=[' '.join(x) for x in src_attribute],
         value_corpus=[' '.join(x) for x in src_attribute],  # fuck you RAM
-        vectorizer=CountVectorizer(vocabulary=src_tok2id),
-        make_binary=True
+        vectorizer=CountVectorizer(vocabulary=src_tok2id, binary=True),
     )
     # train time: just pick attributes that are close to the current (using word distance)
     if train_src is None or train_tgt is None:
@@ -144,8 +141,7 @@ def read_nmt_data(src, config, tgt, train_src=None, train_tgt=None):
             query_corpus=[' '.join(x) for x in tgt_attribute],
             key_corpus=[' '.join(x) for x in tgt_attribute],
             value_corpus=[' '.join(x) for x in tgt_attribute],
-            vectorizer=CountVectorizer(vocabulary=tgt_tok2id),
-            make_binary=True
+            vectorizer=CountVectorizer(vocabulary=tgt_tok2id, binary=True),
         )
     # at test time:
     #   if attribute vocab: 
@@ -162,8 +158,7 @@ def read_nmt_data(src, config, tgt, train_src=None, train_tgt=None):
             query_corpus=query_corpus,
             key_corpus=[' '.join(x) for x in train_tgt['content']],
             value_corpus=[' '.join(x) for x in train_tgt['attribute']],
-            vectorizer=TfidfVectorizer(vocabulary=tgt_tok2id),
-            make_binary=False
+            vectorizer=TfidfVectorizer(vocabulary=tgt_tok2id)
         )
 
     # 5) package errythang up yerp

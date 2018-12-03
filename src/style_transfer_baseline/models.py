@@ -2,6 +2,9 @@
 import glob
 import numpy as np
 import os
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn import svm
+import pickle
 
 import torch
 import torch.nn as nn
@@ -212,3 +215,55 @@ class SeqModel(nn.Module):
         
         
         
+
+
+
+
+class TextClassifier(object):
+    def __init__(self, vocab=None):
+        # vocab: {tok: idx}
+        if vocab:
+            self.vectorizer = CountVectorizer(vocabulary=vocab, binary=True)
+        else:
+            self.vectorizer = None
+
+        self.predictor = svm.LinearSVC()
+
+    def fit(self, corpus1_path, corpus2_path):
+        sents = [x.strip() for x in open(corpus1_path)] + [x.strip() for x in open(corpus2_path)]
+
+        X = self.vectorizer.fit_transform(sents)        
+        Y = [0 for _ in open(corpus1_path)] + [1 for _ in open(corpus2_path)]
+
+        self.predictor.fit(X, Y)
+        
+    def predict(self, seqs):
+        X = self.vectorizer.transform(seqs)
+        Y_hat = self.predictor.predict(X)
+        return Y_hat
+        
+    def error_rate(self, seqs, Y):
+        Y_hat = self.predict(seqs)
+        error = len([yhat for yhat, y in zip(Y_hat, Y) if yhat != y]) * 1.0 / len(Y)
+        return error
+        
+    def save(self, path_prefix):
+        with open(path_prefix + '.vectorizer.pkl', 'wb') as f:
+            pickle.dump(self.vectorizer, f)
+        with open(path_prefix + '.predictor.pkl', 'wb') as f:
+            pickle.dump(self.predictor, f)
+
+    def load(self, path_prefix):
+        with open(path_prefix + '.vectorizer.pkl', 'rb') as f:
+            self.vectorizer = pickle.load(f)
+        with open(path_prefix + '.predictor.pkl', 'rb') as f:
+            self.predictor = pickle.load(f)
+
+    @staticmethod
+    def from_pickle(path_prefex):
+        out = TextClassifier()
+        out.load(path_prefex)
+        return out
+
+
+
