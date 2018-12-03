@@ -3,6 +3,7 @@ import glob
 import numpy as np
 import os
 from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.utils import shuffle
 from sklearn import svm
 import pickle
 
@@ -229,11 +230,17 @@ class TextClassifier(object):
 
         self.predictor = svm.LinearSVC()
 
-    def fit(self, corpus1_path, corpus2_path):
+    def parameters(self):
+        id2tok = {i: x for x, i in self.vectorizer.vocabulary_.items()}
+        out = {id2tok[i]: coef for i, coef in enumerate(self.predictor.coef_[0])}
+        return out
+
+    def fit(self, corpus1_path, corpus2_path, seed=0):
         sents = [x.strip() for x in open(corpus1_path)] + [x.strip() for x in open(corpus2_path)]
 
-        X = self.vectorizer.fit_transform(sents)        
+        X = self.vectorizer.fit_transform(sents)
         Y = [0 for _ in open(corpus1_path)] + [1 for _ in open(corpus2_path)]
+        X, Y = shuffle(X, Y, random_state=seed)
 
         self.predictor.fit(X, Y)
         

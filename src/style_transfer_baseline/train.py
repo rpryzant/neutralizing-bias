@@ -46,6 +46,7 @@ parser.add_argument(
 args = parser.parse_args()
 config = json.load(open(args.config, 'r'))
 
+
 working_dir = config['data']['working_dir']
 
 if not os.path.exists(working_dir):
