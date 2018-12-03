@@ -288,6 +288,27 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
 
         attributes = (attribute_ids, None, None, None, None)
 
+    # same as delete but always decodes into tgt
+    elif model_type == 'delete_seq2seq':
+        inputs = get_minibatch(
+            in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
+        outputs = get_minibatch(
+            tgt['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
+        
+        # get raw source too for evaluation
+        raw_src = get_minibatch(
+            in_dataset['data'], in_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
+
+        # true length could be less than batch_size at edge of data
+        batch_len = len(outputs[0])
+        attribute_ids = [attribute_id for _ in range(batch_len)]
+        attribute_ids = Variable(torch.LongTensor(attribute_ids))
+        if CUDA:
+            attribute_ids = attribute_ids.cuda()
+
+        attributes = (attribute_ids, None, None, None, None)
+
+
     elif model_type == 'delete_retrieve':
         inputs =  get_minibatch(
             in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)

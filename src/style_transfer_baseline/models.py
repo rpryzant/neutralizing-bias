@@ -102,6 +102,12 @@ class SeqModel(nn.Module):
                 embedding_dim=self.options['emb_dim'])
             attr_size = self.options['emb_dim']
 
+        elif self.model_type == 'delete_seq2seq':
+            self.attribute_embedding = nn.Embedding(
+                num_embeddings=2, 
+                embedding_dim=self.options['emb_dim'])
+            attr_size = self.options['emb_dim']
+
         elif self.model_type == 'delete_retrieve':
             self.attribute_encoder = encoders.LSTMEncoder(
                 self.options['emb_dim'],
@@ -165,6 +171,12 @@ class SeqModel(nn.Module):
         # TODO -- put this stuff in a method, overlaps w/above
 
         if self.model_type == 'delete':
+            # just do h i guess?
+            a_ht = self.attribute_embedding(input_attr)
+            # c_t = torch.cat((c_t, a_ht), -1)
+            h_t = torch.cat((h_t, a_ht), -1)
+
+        elif self.model_type == 'delete_seq2seq':
             # just do h i guess?
             a_ht = self.attribute_embedding(input_attr)
             # c_t = torch.cat((c_t, a_ht), -1)
