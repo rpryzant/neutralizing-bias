@@ -295,7 +295,6 @@ def get_metrics(inputs, preds, ground_truths, top_k_preds=None, classifier=None)
     src_precision, src_recall = get_precision_recall(ground_truths, top_k_preds, inputs)
 
     if classifier is not None:
-        print(preds)
         classifier_error = classifier.error_rate(
             seqs=[' '.join(seq) for seq in preds],
             Y=[1 for _ in range(len(preds))])   # we're trying to create "target" seqs
