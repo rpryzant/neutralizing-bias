@@ -2,6 +2,8 @@
 generates a TSV parallel corpus from a crawl (the output of gain_wiki_revision.py)
 
 python gen_parallel_corpus.py [root dir with all of the yearly wikipedia files] [out path]
+
+python gen_parallel_corpus.py ~/Desktop/Wiki_NPOV/ TEST
 """
 
 import sys
@@ -30,7 +32,7 @@ CTR_SENT_MISMATCH = 0
 CTR_RATIO_SKIPPED = 0
 
 wiki_root = sys.argv[1]
-out_path = sys.argv[2]
+out_prefix = sys.argv[2]
 
 
 def diff(s1, s2):
@@ -105,10 +107,12 @@ def get_sents(prev_edit_str, next_edit_str):
         if not bleus: 
             continue
         match_bleu, match_idx = max(bleus)
+        next_sent = next_sents[match_idx]
         # skip perfect matches
         if match_bleu == 100:
+            yield prev_sent.strip(), next_sent.strip(), '0'
             continue
-        next_sent = next_sents[match_idx]
+
         # skip near-perfect matches
         if Levenshtein.distance(prev_sent, next_sent) < 4:
             continue
@@ -135,7 +139,7 @@ def get_sents(prev_edit_str, next_edit_str):
 #            post_ctx = prev_sents[i + 1] if i < len(prev_sents) - 1 else ''
 #            context = prev_ctx.strip() + ' ||| ' + post_ctx.strip()
 
-        yield prev_sent.strip(), next_sent.strip()
+        yield prev_sent.strip(), next_sent.strip(), '1'
 
 
 def prep_wikitext(token_list):    
@@ -209,7 +213,7 @@ def extract_examples(metadata, revisions):
         if len(prevs) > 1 or len(nexts) > 1:
             CTR_MULTIPLE_EDITS += 1
             continue
-
+            
         prev_text = prep_wikitext(prevs)
         next_text = prep_wikitext(nexts)
 
@@ -218,14 +222,14 @@ def extract_examples(metadata, revisions):
             continue
         
         i = 0
-        for prev_sent, next_sent in get_sents(prev_text, next_text):
+        for prev_sent, next_sent, bias_status in get_sents(prev_text, next_text):
             i += 1
 #            print(prev_sent)
 #            print(next_sent)
 #            print()
             yield (
                 rev_id, tokenize(metadata_dict['rev_comment']),
-                tokenize(prev_sent), tokenize(next_sent),
+                tokenize(prev_sent), tokenize(next_sent), bias_status,
                 ratio(tokenize(prev_sent), tokenize(next_sent))
             )
 
@@ -255,19 +259,26 @@ for year in range(2008, 2019):
 
 
 # ratio thresholding
-ratios = [ex[-1] for ex in examples]
+ratios = [ex[-1] for ex in examples if ex[-2] == '1'] # only do thresholding on bias
 N = len(ratios) * 1.0 
 mu = np.mean(ratios)
 sd = np.std(ratios)
 
 
-with open(out_path, 'w') as f:
+out_unbiased = open(out_prefix + '.unbiased', 'w')
+out_biased = open(out_prefix + '.biased', 'w')
+
+with open(out_prefix, 'w') as f:
     for ex in examples:
         ratio = ex[-1]
-        if (ratio < mu - 1.96 * sd) or (ratio > mu + 1.96 * sd):
+        bias = ex[-2] == '1'
+        if bias and ((ratio < mu - 1.96 * sd) or (ratio > mu + 1.96 * sd)):
             CTR_RATIO_SKIPPED += 1
             continue
-        f.write('\t'.join(ex[:-1]) + '\n')
+        if bias:
+            out_biased.write('\t'.join(ex[:-1]) + '\n')
+        else:
+            out_unbiased.write('\t'.join(ex[:-1]) + '\n')
 
 print('Beyond ratio limit: ', CTR_RATIO_SKIPPED)
 
