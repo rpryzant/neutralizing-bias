@@ -13,6 +13,7 @@ from torch.autograd import Variable
 
 import decoders
 import encoders
+import ops
 
 from cuda import CUDA
 
@@ -102,13 +103,7 @@ class SeqModel(nn.Module):
                 embedding_dim=self.options['emb_dim'])
             attr_size = self.options['emb_dim']
 
-        elif self.model_type == 'delete_seq2seq':
-            self.attribute_embedding = nn.Embedding(
-                num_embeddings=2, 
-                embedding_dim=self.options['emb_dim'])
-            attr_size = self.options['emb_dim']
-
-        elif self.model_type in ['delete_retrieve', 'delete_retrieve_seq2seq']:
+        elif self.model_type in 'delete_retrieve':
             self.attribute_encoder = encoders.LSTMEncoder(
                 self.options['emb_dim'],
                 self.options['src_hidden_dim'],
@@ -125,11 +120,35 @@ class SeqModel(nn.Module):
             raise NotImplementedError('unknown model type')
 
         self.c_bridge = nn.Linear(
-            self.options['src_hidden_dim'],  #TODO attr_size + 
+            self.options['src_hidden_dim'],
             self.options['tgt_hidden_dim'])
         self.h_bridge = nn.Linear(
             attr_size + self.options['src_hidden_dim'], 
             self.options['tgt_hidden_dim'])
+
+        if self.config['experimental']['predict_sides']:
+            if self.config['experimental']['side_attn_type'] == 'feedforward':
+                self.side_attn = ops.FeedForwardAttention(
+                    input_dim=self.options['src_hidden_dim'],
+                    hidden_dim=self.options['src_hidden_dim'],
+                    layers=2,
+                    dropout=self.options['dropout'])
+            elif self.config['experimental']['side_attn_type'] == 'dot':
+                self.side_attn = ops.BilinearAttention(
+                    hidden=self.options['src_hidden_dim'])
+            elif self.config['experimental']['side_attn_type'] == 'bahdanau':
+                self.side_attn = ops.BilinearAttention(
+                    hidden=self.options['src_hidden_dim'],
+                    score_fn='bahdanau')
+
+            self.side_predictor = ops.FFNN(
+                input_dim=self.options['src_hidden_dim'],
+                hidden_dim=self.options['src_hidden_dim'],
+                output_dim=4,    # TODO -- SET SOMEWHERE
+                nlayers=2,
+                dropout=self.options['dropout']) 
+
+
 
         # # # # # #  # # # # # #  # # # # # END NEW STUFF
 
@@ -149,7 +168,9 @@ class SeqModel(nn.Module):
         for param in self.parameters():
             param.data.uniform_(-initrange, initrange)
 
-    def forward(self, input_src, input_tgt, srcmask, srclens, input_attr, attrlens, attrmask):
+    def forward(self, input_src, input_tgt, srcmask, srclens, input_attr, attrlens, attrmask, side_info):
+
+
         src_emb = self.src_embedding(input_src)
 
         srcmask = (1-srcmask).byte()
@@ -165,39 +186,38 @@ class SeqModel(nn.Module):
 
         src_outputs = self.ctx_bridge(src_outputs)
 
-
         # # # #  # # # #  # #  # # # # # # #  # # seq2seq diff
-        # join attribute with h/c then bridge 'em
-        # TODO -- put this stuff in a method, overlaps w/above
+        if self.config['experimental']['predict_sides']:
+            side_info = side_info[:, 1:].squeeze()  # ignore the "start token" from data.get_minibatch
+            src_summary, _, probs = self.side_attn(
+                query=torch.zeros(src_outputs[:, 0, :].shape),
+                keys=src_outputs, 
+                values=src_outputs,
+                mask=srcmask)
+            side_logit, side_loss = self.side_predictor(
+                src_summary, side_info)
+        else:
+            side_logit, side_loss = None, 0.0
 
+        # join attribute with h/c then bridge 'em
+        # TODO -- put this stuff in a method, overlaps w/above?
         if self.model_type == 'delete':
             # just do h i guess?
             a_ht = self.attribute_embedding(input_attr)
-            # c_t = torch.cat((c_t, a_ht), -1)
             h_t = torch.cat((h_t, a_ht), -1)
 
-        elif self.model_type == 'delete_seq2seq':
-            # just do h i guess?
-            a_ht = self.attribute_embedding(input_attr)
-            # c_t = torch.cat((c_t, a_ht), -1)
-            h_t = torch.cat((h_t, a_ht), -1)
-
-        elif self.model_type in ['delete_retrieve', 'delete_retrieve_seq2seq']:
+        elif self.model_type == 'delete_retrieve':
             attr_emb = self.src_embedding(input_attr)
             _, (a_ht, a_ct) = self.attribute_encoder(attr_emb, attrlens, attrmask)
             if self.options['bidirectional']:
                 a_ht = torch.cat((a_ht[-1], a_ht[-2]), 1)
-                # a_ct = torch.cat((a_ct[-1], a_ct[-2]), 1)
             else:
                 a_ht = a_ht[-1]
-                # a_ct = a_ct[-1]
 
             h_t = torch.cat((h_t, a_ht), -1)
-            # c_t = torch.cat((c_t, a_ct), -1)
             
         c_t = self.c_bridge(c_t)
         h_t = self.h_bridge(h_t)
-
         # # # #  # # # #  # #  # # # # # # #  # # end diff
 
         tgt_emb = self.tgt_embedding(input_tgt)
@@ -218,7 +238,7 @@ class SeqModel(nn.Module):
 
         probs = self.softmax(decoder_logit)
 
-        return decoder_logit, probs
+        return decoder_logit, probs, side_logit, side_loss
 
     def count_params(self):
         n_params = 0

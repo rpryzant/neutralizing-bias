@@ -11,6 +11,30 @@ from torch.autograd import Variable
 
 from cuda import CUDA
 
+# global dicts for seq info stuff...
+# TODO -- do this smarter
+INFO2ID = {
+    'insertion': 0,
+    'deletion': 1,
+    'edit': 2,
+    'unchanged': 3,
+    '<unk>': 4,
+    '<pad>': 5,
+    '<s>': 6,
+    '</s>': 7,
+}
+ID2INFO = {
+    0: 'insertion',
+    1: 'deletion',
+    2: 'edit',
+    3: 'unchanged',
+    4: '<unk>',
+    5: '<pad>',
+    6: '<s>',
+    7: '</s>',
+
+}
+
 
 class CorpusSearcher(object):
     def __init__(self, query_corpus, key_corpus, value_corpus, vectorizer):
@@ -102,13 +126,32 @@ def split_with_diff(src_lines, tgt_lines):
     return content[:], content[:], src_attr, tgt_attr
         
 
+def get_side_info(src_lines, tgt_lines):
+    out = []
+    for src, tgt in zip(src_lines, tgt_lines):
+        n_src_unique = len(set(src) - set(tgt))
+        n_tgt_unique = len(set(tgt) - set(src))
+
+        if n_src_unique == 0 and n_tgt_unique > 0:
+            out.append( ['insertion'] )
+        elif n_src_unique > 0 and n_tgt_unique == 0:
+            out.append( ['deletion'] )
+        elif set(src) == set(tgt):
+            out.append( ['unchanged'] )
+        else:
+            out.append( ['edit'] )
+    return out
+
+
 def read_nmt_data(src, config, tgt, train_src=None, train_tgt=None):
     # 1) read data and split into content/attribute
     src_lines = [l.strip().split() for l in open(src, 'r')]
     tgt_lines = [l.strip().split() for l in open(tgt, 'r')] if tgt else None
 
-    use_diff = config['data']['attribute_vocab'] == 'use_diff'
-    if use_diff:
+    use_diff = config['experimental']['use_diff']
+    # use attr vocab at test time if use_diff (we don't have the diffs at test time)
+    # TODO -- smarter way to do this? 
+    if use_diff and not train_src and not train_tgt:
         src_content, tgt_content, src_attribute, tgt_attribute =\
             split_with_diff(src_lines, tgt_lines)
     else:
@@ -161,14 +204,19 @@ def read_nmt_data(src, config, tgt, train_src=None, train_tgt=None):
             vectorizer=TfidfVectorizer(vocabulary=tgt_tok2id)
         )
 
+    # 4) get some sequence info
+    side_info = get_side_info(src_lines, tgt_lines)
+
     # 5) package errythang up yerp
     src = {
         'data': src_lines, 'content': src_content, 'attribute': src_attribute,
-        'tok2id': src_tok2id, 'id2tok': src_id2tok, 'dist_measurer': src_dist_measurer
+        'tok2id': src_tok2id, 'id2tok': src_id2tok, 'dist_measurer': src_dist_measurer,
+        'side_info': side_info
     }
     tgt = {
         'data': tgt_lines, 'content': tgt_content, 'attribute': tgt_attribute,
-        'tok2id': tgt_tok2id, 'id2tok': tgt_id2tok, 'dist_measurer': tgt_dist_measurer
+        'tok2id': tgt_tok2id, 'id2tok': tgt_id2tok, 'dist_measurer': tgt_dist_measurer,
+        'side_info': side_info
     }
     return src, tgt
 
@@ -257,7 +305,10 @@ def get_minibatch(lines, tok2id, index, batch_size, max_len, sort=False, idx=Non
     return input_lines, output_lines, lens, mask, idx
 
 
-def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
+def minibatch(src, tgt, idx, batch_size, max_len, config, is_test=False):
+    model_type = config['model']['model_type']
+    force_tgt_outputs = config['experimental']['force_tgt_outputs']
+
     if not is_test:
         use_src = random.random() < 0.5
         in_dataset = src if use_src else tgt
@@ -268,13 +319,15 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
         out_dataset = tgt
         attribute_id = 1
 
+    if force_tgt_outputs:
+        out_dataset = tgt
 
     if model_type == 'delete':
         inputs = get_minibatch(
             in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
         outputs = get_minibatch(
             out_dataset['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
-        
+
         # get raw source too for evaluation
         raw_src = get_minibatch(
             in_dataset['data'], in_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
@@ -287,27 +340,6 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
             attribute_ids = attribute_ids.cuda()
 
         attributes = (attribute_ids, None, None, None, None)
-
-    # same as delete but always decodes into tgt
-    elif model_type == 'delete_seq2seq':
-        inputs = get_minibatch(
-            in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
-        outputs = get_minibatch(
-            tgt['data'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
-        
-        # get raw source too for evaluation
-        raw_src = get_minibatch(
-            in_dataset['data'], in_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
-
-        # true length could be less than batch_size at edge of data
-        batch_len = len(outputs[0])
-        attribute_ids = [attribute_id for _ in range(batch_len)]
-        attribute_ids = Variable(torch.LongTensor(attribute_ids))
-        if CUDA:
-            attribute_ids = attribute_ids.cuda()
-
-        attributes = (attribute_ids, None, None, None, None)
-
 
     elif model_type == 'delete_retrieve':
         inputs =  get_minibatch(
@@ -322,21 +354,6 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
         raw_src = get_minibatch(
             in_dataset['data'], in_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
 
-    # same as delete retreive but decodes into tgt
-    elif model_type == 'delete_retrieve_seq2seq':
-        inputs =  get_minibatch(
-            in_dataset['content'], in_dataset['tok2id'], idx, batch_size, max_len, sort=True)
-        attributes =  get_minibatch(
-            tgt['attribute'], out_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1],
-            dist_measurer=tgt['dist_measurer'], sample_rate=0.25) # TODO reverse because no packing??
-        outputs = get_minibatch(
-            tgt['data'], tgt['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
-
-        # get raw source too for evaluation
-        raw_src = get_minibatch(
-            in_dataset['data'], in_dataset['tok2id'], idx, batch_size, max_len, idx=inputs[-1])
-
-
     elif model_type == 'seq2seq':
         # ignore the in/out dataset stuff
         inputs = get_minibatch(
@@ -350,7 +367,11 @@ def minibatch(src, tgt, idx, batch_size, max_len, model_type, is_test=False):
     else:
         raise Exception('Unsupported model_type: %s' % model_type)
 
-    return inputs, attributes, outputs, raw_src
+    # extra side inputs for categorical variables and stuff
+    side_info = get_minibatch(
+        in_dataset['side_info'], INFO2ID, idx, batch_size, max_len, idx=inputs[-1])
+
+    return inputs, attributes, outputs, side_info, raw_src
 
 
 def unsort(arr, idx):

@@ -41,7 +41,7 @@ class LSTMEncoder(nn.Module):
             return h0, c0
 
 
-    def forward(self, src_embedding, srclens, srcmask, temp=1):
+    def forward(self, src_embedding, srclens, srcmask):
         # retrieve batch size dynamically for decoding
         h0, c0 = self.init_state(batch_size=src_embedding.size(0))
 

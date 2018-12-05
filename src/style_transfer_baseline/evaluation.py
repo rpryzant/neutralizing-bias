@@ -10,6 +10,7 @@ import editdistance
 
 import models
 import data
+import ops
 
 from cuda import CUDA
 
@@ -140,7 +141,7 @@ def get_edit_distance(hypotheses, reference):
 
 
 def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask,
-        aux_input, auxlens, auxmask, k):
+        aux_input, auxlens, auxmask, side_info, k):
     """ argmax decoding """
     # Initialize target with <s> for every sentence
     tgt_input = Variable(torch.LongTensor([
@@ -150,11 +151,11 @@ def decode_minibatch(max_len, start_id, model, src_input, srclens, srcmask,
         tgt_input = tgt_input.cuda()
 
     top_k_toks = []
-
     for i in range(max_len):
         # run input through the model
-        decoder_logit, word_probs = model(src_input, tgt_input, srcmask, srclens,
-            aux_input, auxmask, auxlens)
+        decoder_logit, word_probs, _, _ = model(src_input, tgt_input, srcmask, srclens,
+            aux_input, auxmask, auxlens, side_info)
+
         # logits for the latest timestep
         word_probs = word_probs.data.cpu().numpy()[:, -1, :]
         # sorted indices (descending)
@@ -217,22 +218,23 @@ def decode_dataset(model, src, tgt, config, k=20):
         sys.stdout.flush()
 
         # get batch
-        input_content, input_aux, output, raw_src = data.minibatch(
+        input_content, input_aux, output, side_info, raw_src = data.minibatch(
             src, tgt, j, 
             config['data']['batch_size'], 
             config['data']['max_len'], 
-            config['model']['model_type'],
+            config,
             is_test=True)
         input_lines_src, output_lines_src, srclens, srcmask, indices = input_content
         input_ids_aux, _, auxlens, auxmask, _ = input_aux
         input_lines_tgt, output_lines_tgt, _, _, _ = output
         _, raw_src, _, _, _ = raw_src
+        side_info, _, _, _, _ = side_info
 
         # TODO -- beam search
         tgt_pred_top_k = decode_minibatch(
             config['data']['max_len'], tgt['tok2id']['<s>'], 
             model, input_lines_src, srclens, srcmask,
-            input_ids_aux, auxlens, auxmask, k=k)
+            input_ids_aux, auxlens, auxmask, side_info, k=k)
 
         # convert inputs/preds/targets/aux to human-readable form
         inputs += ids_to_toks(output_lines_src, src['id2tok'], indices)
@@ -264,9 +266,7 @@ def decode_dataset(model, src, tgt, config, k=20):
         
         if config['model']['model_type'] == 'delete':
             auxs += [[str(x)] for x in input_ids_aux.data.cpu().numpy()] # because of list comp in inference_metrics()
-        if config['model']['model_type'] == 'delete_seq2seq':
-            auxs += [[str(x)] for x in input_ids_aux.data.cpu().numpy()] # because of list comp in inference_metrics()
-        elif config['model']['model_type'] in ['delete_retrieve', 'delete_retrieve_seq2seq']:
+        elif config['model']['model_type'] == 'delete_retrieve':
             auxs += ids_to_toks(input_ids_aux, tgt['id2tok'], indices)
         elif config['model']['model_type'] == 'seq2seq':
             auxs += ['None' for _ in range(batch_size)]
@@ -354,19 +354,21 @@ def evaluate_lpp(model, src, tgt, config):
         sys.stdout.flush()
 
         # get batch
-        input_content, input_aux, output, _ = data.minibatch(
+        input_content, input_aux, output, side_info, _ = data.minibatch(
             src, tgt, j, 
             config['data']['batch_size'], 
             config['data']['max_len'], 
-            config['model']['model_type'],
+            config,
             is_test=True)
         input_lines_src, _, srclens, srcmask, _ = input_content
         input_ids_aux, _, auxlens, auxmask, _ = input_aux
         input_lines_tgt, output_lines_tgt, _, _, _ = output
+        side_info, _, _, _, _ = side_info
 
-        decoder_logit, decoder_probs = model(
+        decoder_logit, decoder_probs, _, _ = model(
             input_lines_src, input_lines_tgt, srcmask, srclens,
-            input_ids_aux, auxlens, auxmask)
+            input_ids_aux, auxlens, auxmask,
+            side_info)
 
         loss = loss_criterion(
             decoder_logit.contiguous().view(-1, len(tgt['tok2id'])),

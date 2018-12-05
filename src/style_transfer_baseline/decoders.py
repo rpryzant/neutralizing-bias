@@ -6,49 +6,8 @@ import torch.nn as nn
 from torch.autograd import Variable
 
 
+import ops
 
-
-
-class BilinearAttention(nn.Module):
-    """ bilinear attention layer: score(H_j, q) = H_j^T W_a q
-                (where W_a = self.in_projection)
-    """
-    def __init__(self, hidden):
-        super(BilinearAttention, self).__init__()
-        self.in_projection = nn.Linear(hidden, hidden, bias=False)
-        self.softmax = nn.Softmax()
-        self.out_projection = nn.Linear(hidden * 2, hidden, bias=False)
-        self.tanh = nn.Tanh()
-
-    def forward(self, query, keys, srcmask=None, values=None):
-        """
-            query: [batch, hidden]
-            keys: [batch, len, hidden]
-            values: [batch, len, hidden] (optional, if none will = keys)
-
-            compare query to keys, use the scores to do weighted sum of values
-            if no value is specified, then values = keys
-        """
-        if values is None:
-            values = keys
-    
-        # [Batch, Hidden, 1]
-        decoder_hidden = self.in_projection(query).unsqueeze(2)
-        # [Batch, Source length]
-        attn_scores = torch.bmm(keys, decoder_hidden).squeeze(2)
-        if srcmask is not None:
-            attn_scores = attn_scores.masked_fill(srcmask, -float('inf'))
-            
-        attn_probs = self.softmax(attn_scores)
-        # [Batch, 1, source length]
-        attn_probs_transposed = attn_probs.unsqueeze(1)
-        # [Batch, hidden]
-        weighted_context = torch.bmm(attn_probs_transposed, values).squeeze(1)
-
-        context_query_mixed = torch.cat((weighted_context, query), 1)
-        context_query_mixed = self.tanh(self.out_projection(context_query_mixed))
-
-        return weighted_context, context_query_mixed, attn_probs
 
 
 class AttentionalLSTM(nn.Module):
@@ -65,7 +24,7 @@ class AttentionalLSTM(nn.Module):
         self.cell = nn.LSTMCell(input_dim, hidden_dim)
 
         if self.use_attention:
-            self.attention_layer = BilinearAttention(hidden_dim)
+            self.attention_layer = ops.BilinearAttention(hidden_dim)
 
 
     def forward(self, input, hidden, ctx, srcmask, kb=None):
