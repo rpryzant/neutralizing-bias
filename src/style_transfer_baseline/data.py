@@ -194,6 +194,7 @@ def read_nmt_data(src, config, tgt, train_src=None, train_tgt=None):
     #       use entire test src instead of just content (don't know content/attr at test time)
     else:
         if use_diff:
+            assert len(src_lines) == len(src_content)
             query_corpus = [' '.join(x) for x in src_lines]
         else:
             query_corpus = [' '.join(x) for x in src_content]

@@ -194,9 +194,11 @@ class SeqModel(nn.Module):
         # # # #  # # # #  # #  # # # # # # #  # # seq2seq diff
         if self.config['experimental']['predict_sides']:
             side_info = side_info[:, 1:].squeeze(1)  # ignore the "start token" from data.get_minibatch
-
+            query = torch.zeros(src_outputs[:, 0, :].shape)
+            if CUDA:
+                query = query.cuda()
             src_summary, _, probs = self.side_attn(
-                query=torch.zeros(src_outputs[:, 0, :].shape),
+                query=query,
                 keys=src_outputs, 
                 values=src_outputs,
                 mask=srcmask)
@@ -208,7 +210,8 @@ class SeqModel(nn.Module):
                 probs = self.side_softmax(side_logit)
                 if self.config['experimental']['side_embedding_teacher_force']:
                     probs = torch.zeros(probs.shape).scatter_(1, side_info.unsqueeze(1), 1.0)
-
+                    if CUDA:
+                        probs = probs.cuda()
                 embs = self.side_embeddings.repeat(side_logit.shape[0], 1, 1)
                 weighted_emb = torch.bmm(probs.unsqueeze(1), embs).squeeze(1)
                 h_t = torch.cat((h_t, weighted_emb), -1)

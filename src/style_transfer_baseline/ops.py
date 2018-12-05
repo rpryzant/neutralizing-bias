@@ -4,7 +4,7 @@ msc neural stuff
 import torch
 import torch.nn as nn
 
-
+from cuda import CUDA
 
 class FcTube(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, nlayers, dropout):
@@ -31,6 +31,10 @@ class FcTube(nn.Module):
                     # nn.ReLU(), 
                     nn.Dropout(p=dropout)
             ))
+        # TODO -- get this into model.parameters so that we can just do model.cuda()
+        if CUDA:
+            for i in range(len(self.layers)):
+                self.layers[i] = self.layers[i].cuda()
 
 
     def forward(self, X):
