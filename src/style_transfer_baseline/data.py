@@ -14,24 +14,20 @@ from cuda import CUDA
 # global dicts for seq info stuff...
 # TODO -- do this smarter
 INFO2ID = {
-    'insertion': 0,
-    'deletion': 1,
-    'edit': 2,
-    'unchanged': 3,
-    '<unk>': 4,
-    '<pad>': 5,
-    '<s>': 6,
-    '</s>': 7,
+    'unbiased': 0,
+    'biased': 1,
+    '<unk>': 2,
+    '<pad>': 3,
+    '<s>': 4,
+    '</s>': 5,
 }
 ID2INFO = {
-    0: 'insertion',
-    1: 'deletion',
-    2: 'edit',
-    3: 'unchanged',
-    4: '<unk>',
-    5: '<pad>',
-    6: '<s>',
-    7: '</s>',
+    0: 'unbiased',
+    1: 'biased',
+    2: '<unk>',
+    3: '<pad>',
+    4: '<s>',
+    5: '</s>',
 
 }
 
@@ -129,18 +125,23 @@ def split_with_diff(src_lines, tgt_lines):
 def get_side_info(src_lines, tgt_lines):
     out = []
     for src, tgt in zip(src_lines, tgt_lines):
-        n_src_unique = len(set(src) - set(tgt))
-        n_tgt_unique = len(set(tgt) - set(src))
-
-        if n_src_unique == 0 and n_tgt_unique > 0:
-            out.append( ['insertion'] )
-        elif n_src_unique > 0 and n_tgt_unique == 0:
-            out.append( ['deletion'] )
-        elif set(src) == set(tgt):
-            out.append( ['unchanged'] )
+        if set(src) == set(tgt):
+            out.append(['unbiased'])
         else:
-            out.append( ['edit'] )
+            out.append(['biased'])
     return out
+    #     n_src_unique = len(set(src) - set(tgt))
+    #     n_tgt_unique = len(set(tgt) - set(src))
+
+    #     if n_src_unique == 0 and n_tgt_unique > 0:
+    #         out.append( ['insertion'] )
+    #     elif n_src_unique > 0 and n_tgt_unique == 0:
+    #         out.append( ['deletion'] )
+    #     elif set(src) == set(tgt):
+    #         out.append( ['unchanged'] )
+    #     else:
+    #         out.append( ['edit'] )
+    # return out
 
 
 def read_nmt_data(src, config, tgt, train_src=None, train_tgt=None):

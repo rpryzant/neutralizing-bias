@@ -144,11 +144,18 @@ class SeqModel(nn.Module):
             self.side_predictor = ops.FFNN(
                 input_dim=self.options['src_hidden_dim'],
                 hidden_dim=self.options['src_hidden_dim'],
-                output_dim=4,    # TODO -- SET SOMEWHERE
+                output_dim=self.config['experimental']['n_side_outputs'],    # TODO -- SET SOMEWHERE
                 nlayers=2,
                 dropout=self.options['dropout']) 
 
-
+            if self.config['experimental']['add_side_embeddings']:
+                self.side_embeddings = nn.Parameter(
+                    torch.zeros(self.config['experimental']['n_side_outputs'], self.options['emb_dim']),
+                    requires_grad=True)
+                self.h_compression = nn.Linear(
+                    self.options['emb_dim'] + self.options['src_hidden_dim'], 
+                    self.options['tgt_hidden_dim'])
+                self.side_softmax = nn.Softmax(dim=-1)
 
         # # # # # #  # # # # # #  # # # # # END NEW STUFF
 
@@ -169,8 +176,6 @@ class SeqModel(nn.Module):
             param.data.uniform_(-initrange, initrange)
 
     def forward(self, input_src, input_tgt, srcmask, srclens, input_attr, attrlens, attrmask, side_info):
-
-
         src_emb = self.src_embedding(input_src)
 
         srcmask = (1-srcmask).byte()
@@ -188,14 +193,26 @@ class SeqModel(nn.Module):
 
         # # # #  # # # #  # #  # # # # # # #  # # seq2seq diff
         if self.config['experimental']['predict_sides']:
-            side_info = side_info[:, 1:].squeeze()  # ignore the "start token" from data.get_minibatch
+            side_info = side_info[:, 1:].squeeze(1)  # ignore the "start token" from data.get_minibatch
+
             src_summary, _, probs = self.side_attn(
                 query=torch.zeros(src_outputs[:, 0, :].shape),
                 keys=src_outputs, 
                 values=src_outputs,
                 mask=srcmask)
+
             side_logit, side_loss = self.side_predictor(
                 src_summary, side_info)
+            if self.config['experimental']['add_side_embeddings']:
+                # use probs to do weighted sum of embeddings, join those with h_T
+                probs = self.side_softmax(side_logit)
+                if self.config['experimental']['side_embedding_teacher_force']:
+                    probs = torch.zeros(probs.shape).scatter_(1, side_info.unsqueeze(1), 1.0)
+
+                embs = self.side_embeddings.repeat(side_logit.shape[0], 1, 1)
+                weighted_emb = torch.bmm(probs.unsqueeze(1), embs).squeeze(1)
+                h_t = torch.cat((h_t, weighted_emb), -1)
+                h_t = self.h_compression(h_t)
         else:
             side_logit, side_loss = None, 0.0
 
