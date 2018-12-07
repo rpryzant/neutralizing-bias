@@ -209,9 +209,10 @@ class SeqModel(nn.Module):
                 # use probs to do weighted sum of embeddings, join those with h_T
                 probs = self.side_softmax(side_logit)
                 if self.config['experimental']['side_embedding_teacher_force']:
-                    probs = torch.zeros(probs.shape).scatter_(1, side_info.unsqueeze(1), 1.0)
+                    probs = torch.zeros(probs.shape)
                     if CUDA:
                         probs = probs.cuda()
+                    probs = probs.scatter_(1, side_info.unsqueeze(1), 1.0)
                 embs = self.side_embeddings.repeat(side_logit.shape[0], 1, 1)
                 weighted_emb = torch.bmm(probs.unsqueeze(1), embs).squeeze(1)
                 h_t = torch.cat((h_t, weighted_emb), -1)
