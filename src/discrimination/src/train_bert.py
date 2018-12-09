@@ -17,8 +17,12 @@ from tensorboardX import SummaryWriter
 
 import sklearn.metrics as metrics
 
-DATA_PREFIX = "/home/rpryzant/persuasion/src/discrimination/data/data/text"
-LABELS_PREFIX = "/home/rpryzant/persuasion/src/discrimination/data/data/labels"
+TRAIN_DATA = "/home/rpryzant/persuasion/src/discrimination/data/data/text.train"
+TRAIN_LABELS = "/home/rpryzant/persuasion/src/discrimination/data/data/labels.train"
+
+TEST_DATA = "/home/rpryzant/persuasion/src/discrimination/data/data/text.test"
+TEST_LABELS = "/home/rpryzant/persuasion/src/discrimination/data/data/labels.test"
+
 NUM_LABELS=2
 
 BERT_MODEL = "bert-base-uncased"
@@ -108,55 +112,12 @@ def make_optimizer(model, num_train_steps):
                          t_total=num_train_steps)
     return optimizer
 
-
-
 def softmax(x, axis=None):
     x = x - x.max(axis=axis, keepdims=True)
     y = np.exp(x)
     return y / y.sum(axis=axis, keepdims=True)
 
-
-tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
-train_dataloader, num_train_examples = get_dataloader(
-    DATA_PREFIX + '.train', LABELS_PREFIX + '.train', tokenizer, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
-eval_dataloader, num_eval_examples = get_dataloader(
-    DATA_PREFIX + '.test', LABELS_PREFIX + '.test', tokenizer, EVAL_BATCH_SIZE, WORKING_DIR + '/test_data.pkl')
-
-model = BertForSequenceClassification.from_pretrained(
-    BERT_MODEL, 
-    cache_dir=WORKING_DIR + '/cache')
-if CUDA:
-    model = model.cuda()
-
-optimizer = make_optimizer(model, int((num_train_examples * EPOCHS) / TRAIN_BATCH_SIZE))
-
-criterion = CrossEntropyLoss()
-
-writer = SummaryWriter(WORKING_DIR)
-
-
-
-model.train()
-train_step = 0
-for epoch in range(EPOCHS):
-    print('STARTING EPOCH ', epoch)
-    for step, batch in enumerate(tqdm(train_dataloader)):
-        if CUDA:
-            batch = tuple(x.cuda() for x in batch)
-        input_ids, input_mask, segment_ids, label_ids = batch
-        logits = model(input_ids, segment_ids, input_mask)
-        loss = criterion(logits.view(-1, NUM_LABELS), label_ids.view(-1))
-        loss.backward()
-        optimizer.step()
-        model.zero_grad()
-
-        writer.add_scalar('train/loss', loss.data[0], train_step)
-        train_step += 1
-
-    # eval
-    print('EVAL...')
-    model.eval()
-
+def run_inference(model, eval_dataloader):
     eval_logits = []
     eval_loss = []
     eval_label_ids = []
@@ -179,6 +140,52 @@ for epoch in range(EPOCHS):
     eval_preds = np.argmax(eval_probs, axis=1)
     eval_labels = np.array(eval_label_ids)
 
+    return eval_probs, eval_preds, eval_labels, eval_loss
+
+print('LOADING DATA...')
+tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
+train_dataloader, num_train_examples = get_dataloader(
+    DATA_PREFIX + '.train', LABELS_PREFIX + '.train', tokenizer, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
+eval_dataloader, num_eval_examples = get_dataloader(
+    DATA_PREFIX + '.test', LABELS_PREFIX + '.test', tokenizer, EVAL_BATCH_SIZE, WORKING_DIR + '/test_data.pkl')
+
+print('BUILDING MODEL...')
+model = BertForSequenceClassification.from_pretrained(
+    BERT_MODEL, 
+    cache_dir=WORKING_DIR + '/cache')
+if CUDA:
+    model = model.cuda()
+
+print('PREPPING RUN...')
+optimizer = make_optimizer(model, int((num_train_examples * EPOCHS) / TRAIN_BATCH_SIZE))
+criterion = CrossEntropyLoss()
+writer = SummaryWriter(WORKING_DIR)
+
+
+print('TRAINING...')
+model.train()
+train_step = 0
+for epoch in range(EPOCHS):
+    print('STARTING EPOCH ', epoch)
+    for step, batch in enumerate(tqdm(train_dataloader)):
+        if CUDA:
+            batch = tuple(x.cuda() for x in batch)
+        input_ids, input_mask, segment_ids, label_ids = batch
+        logits = model(input_ids, segment_ids, input_mask)
+        loss = criterion(logits.view(-1, NUM_LABELS), label_ids.view(-1))
+        loss.backward()
+        optimizer.step()
+        model.zero_grad()
+
+        writer.add_scalar('train/loss', loss.data[0], train_step)
+        train_step += 1
+
+    # eval
+    print('EVAL...')
+    model.eval()
+    eval_probs, eval_preds, eval_labels, eval_loss = run_inference(model, eval_dataloader)
+    model.train()
+    
     writer.add_scalar('eval/loss', np.mean(eval_loss), epoch)
     writer.add_scalar('eval/acc', metrics.accuracy_score(eval_labels, eval_preds), epoch)
     writer.add_scalar('eval/precision', metrics.precision_score(eval_labels, eval_preds), epoch)
@@ -186,7 +193,6 @@ for epoch in range(EPOCHS):
     writer.add_scalar('eval/f1', metrics.f1_score(eval_labels, eval_preds), epoch)
     writer.add_scalar('eval/auc', metrics.roc_auc_score(eval_labels, eval_probs[:, 1]), epoch)
 
-    model.train()
 
 
 
