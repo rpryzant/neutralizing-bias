@@ -29,8 +29,8 @@ BERT_MODEL = "bert-base-uncased"
 
 WORKING_DIR = "test"
 
-TRAIN_BATCH_SIZE = 64
-EVAL_BATCH_SIZE = 16
+TRAIN_BATCH_SIZE = 4
+EVAL_BATCH_SIZE = 4
 EPOCHS = 15
 
 LEARNING_RATE = 5e-5
@@ -145,9 +145,9 @@ def run_inference(model, eval_dataloader):
 print('LOADING DATA...')
 tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
 train_dataloader, num_train_examples = get_dataloader(
-    DATA_PREFIX + '.train', LABELS_PREFIX + '.train', tokenizer, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
+    TRAIN_DATA, TRAIN_LABELS, tokenizer, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
 eval_dataloader, num_eval_examples = get_dataloader(
-    DATA_PREFIX + '.test', LABELS_PREFIX + '.test', tokenizer, EVAL_BATCH_SIZE, WORKING_DIR + '/test_data.pkl')
+    TEST_DATA, TEST_LABELS, tokenizer, EVAL_BATCH_SIZE, WORKING_DIR + '/test_data.pkl')
 
 print('BUILDING MODEL...')
 model = BertForSequenceClassification.from_pretrained(
