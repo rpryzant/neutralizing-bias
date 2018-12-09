@@ -33,6 +33,8 @@ LEARNING_RATE = 5e-5
 
 MAX_SEQ_LEN = 60
 
+CUDA = (torch.cuda.device_count() > 0)
+
 
 
 
@@ -67,13 +69,13 @@ def get_examples(text_path, labels_path, tokenizer, possible_labels, max_seq_len
     return out
 
 
-def get_dataloader(data_prefix, labels_prefix, tokenizer, batch_size, pickle_path=None):
+def get_dataloader(data_path, labels_path, tokenizer, batch_size, pickle_path=None):
     if pickle_path is not None and os.path.exists(pickle_path):
         train_examples = pickle.load(open(pickle_path, 'rb'))
     else:
         train_examples = get_examples(
-            text_path=data_prefix + '.train', 
-            labels_path=labels_prefix + '.train',
+            text_path=data_path, 
+            labels_path=labels_path,
             tokenizer=tokenizer,
             possible_labels=["0", "1"],
             max_seq_len=MAX_SEQ_LEN)
@@ -115,13 +117,15 @@ def softmax(x, axis=None):
 
 tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
 train_dataloader, num_train_examples = get_dataloader(
-    DATA_PREFIX, LABELS_PREFIX, tokenizer, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
+    DATA_PREFIX + '.train', LABELS_PREFIX + '.train', tokenizer, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
 eval_dataloader, num_eval_examples = get_dataloader(
-    DATA_PREFIX, LABELS_PREFIX, tokenizer, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
+    DATA_PREFIX + '.test', LABELS_PREFIX + '.test', tokenizer, EVAL_BATCH_SIZE, WORKING_DIR + '/test_data.pkl')
 
 model = BertForSequenceClassification.from_pretrained(
     BERT_MODEL, 
     cache_dir=WORKING_DIR + '/cache')
+if CUDA:
+    model = model.cuda()
 
 optimizer = make_optimizer(model, int((num_train_examples * EPOCHS) / TRAIN_BATCH_SIZE))
 
@@ -148,6 +152,7 @@ for epoch in range(EPOCHS):
 
     # eval
     model.eval()
+
     eval_logits = []
     eval_loss = []
     eval_label_ids = []
