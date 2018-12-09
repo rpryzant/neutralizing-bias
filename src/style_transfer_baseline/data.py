@@ -152,7 +152,10 @@ def read_nmt_data(src, config, tgt, train_src=None, train_tgt=None):
     use_diff = config['experimental']['use_diff']
     # use attr vocab at test time if use_diff (we don't have the diffs at test time)
     # TODO -- smarter way to do this? 
-    if use_diff and not train_src and not train_tgt:
+        # if use_diff and (config['experimental']['ignore_test'] or (train_src is not None and train_tgt is not None)):
+    if use_diff and (
+            config['experimental']['ignore_test'] or
+            (not train_src and not train_tgt)):
         src_content, tgt_content, src_attribute, tgt_attribute =\
             split_with_diff(src_lines, tgt_lines)
     else:
