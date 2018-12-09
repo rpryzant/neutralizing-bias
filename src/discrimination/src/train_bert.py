@@ -10,8 +10,12 @@ from tqdm import tqdm
 import torch
 import pickle
 import os
+import numpy as np
 from pytorch_pretrained_bert.modeling import BertForSequenceClassification
 from torch.nn import CrossEntropyLoss
+from tensorboardX import SummaryWriter
+
+import sklearn.metrics as metrics
 
 DATA_PREFIX = "/Users/rpryzant/persuasion/src/discrimination/data/data/text"
 LABELS_PREFIX = "/Users/rpryzant/persuasion/src/discrimination/data/data/labels"
@@ -48,12 +52,6 @@ def get_examples(text_path, labels_path, tokenizer, possible_labels, max_seq_len
 
         tokens = ['[CLS]'] + tokens + ['[SEP]']
         input_ids = pad(tokenizer.convert_tokens_to_ids(tokens), 0)
-#        print(tokenizer.vocab)
-#        print(tokens)
-#        print(input_ids)
-#        print(tokenizer.vocab['[CLS]'])
-#        print(tokenizer.ids_to_tokens[101])
-#        quit()
         segment_ids = pad([0 for _ in range(len(tokens))], 0)
         input_mask = pad([1] * len(tokens), 0)
         label_id = label2id[label.strip()]
@@ -108,6 +106,13 @@ def make_optimizer(model, num_train_steps):
     return optimizer
 
 
+
+def softmax(x, axis=None):
+    x = x - x.max(axis=axis, keepdims=True)
+    y = np.exp(x)
+    return y / y.sum(axis=axis, keepdims=True)
+
+
 tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
 train_dataloader, num_train_examples = get_dataloader(
     DATA_PREFIX, LABELS_PREFIX, tokenizer, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
@@ -122,7 +127,12 @@ optimizer = make_optimizer(model, int((num_train_examples * EPOCHS) / TRAIN_BATC
 
 criterion = CrossEntropyLoss()
 
+writer = SummaryWriter(WORKING_DIR)
+
+
+
 model.train()
+train_step = 0
 for epoch in range(EPOCHS):
     for step, batch in enumerate(tqdm(train_dataloader)):
         for _ in range(0):
@@ -133,19 +143,38 @@ for epoch in range(EPOCHS):
             optimizer.step()
             model.zero_grad()
 
+            writer.add_scalar('train/loss', loss.data[0], train_step)
+            train_step += 1
+
     # eval
     model.eval()
+    eval_logits = []
+    eval_loss = []
+    eval_label_ids = []
+    eval_input_toks = []
     for step, batch in enumerate(tqdm(eval_dataloader)):
         input_ids, input_mask, segment_ids, label_ids = batch
+        if step > 5: 
+            continue
         with torch.no_grad():
             logits = model(input_ids, segment_ids, input_mask)
             loss = criterion(logits.view(-1, NUM_LABELS), label_ids.view(-1))
 
-        logits = logits.detach().cpu().numpy()
-        loss = loss.detach().cpu().numpy()
-        label_ids = label_ids.cpu().numpy()        
-        input_ids = input_ids.cpu().numpy()
-        input_toks = [tokenizer.convert_ids_to_tokens(seq) for seq in input_ids]
+        eval_logits += logits.detach().cpu().numpy().tolist()
+        eval_label_ids += label_ids.cpu().numpy().tolist() 
+        eval_input_toks += [tokenizer.convert_ids_to_tokens(seq) for seq in input_ids.cpu().numpy()]
+        eval_loss.append(float(loss.cpu().numpy()))
+
+    eval_probs = softmax(np.array(eval_logits), axis=1)
+    eval_preds = np.argmax(eval_probs, axis=1)
+    eval_labels = np.array(eval_label_ids)
+
+    writer.add_scalar('eval/loss', np.mean(eval_loss), epoch)
+    writer.add_scalar('eval/acc', metrics.accuracy_score(eval_labels, eval_preds), epoch)
+    writer.add_scalar('eval/precision', metrics.precision_score(eval_labels, eval_preds), epoch)
+    writer.add_scalar('eval/recall', metrics.recall_score(eval_labels, eval_preds), epoch)
+    writer.add_scalar('eval/f1', metrics.f1_score(eval_labels, eval_preds), epoch)
+    writer.add_scalar('eval/auc', metrics.roc_auc_score(eval_labels, eval_probs[:, 1]), epoch)
 
     model.train()
 
