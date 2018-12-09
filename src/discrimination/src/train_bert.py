@@ -17,17 +17,17 @@ from tensorboardX import SummaryWriter
 
 import sklearn.metrics as metrics
 
-DATA_PREFIX = "/Users/rpryzant/persuasion/src/discrimination/data/data/text"
-LABELS_PREFIX = "/Users/rpryzant/persuasion/src/discrimination/data/data/labels"
+DATA_PREFIX = "/home/rpryzant/persuasion/src/discrimination/data/data/text"
+LABELS_PREFIX = "/home/rpryzant/persuasion/src/discrimination/data/data/labels"
 NUM_LABELS=2
 
 BERT_MODEL = "bert-base-uncased"
 
 WORKING_DIR = "test"
 
-TRAIN_BATCH_SIZE = 2
-EVAL_BATCH_SIZE = 2
-EPOCHS = 5
+TRAIN_BATCH_SIZE = 64
+EVAL_BATCH_SIZE = 16
+EPOCHS = 15
 
 LEARNING_RATE = 5e-5
 
@@ -35,7 +35,8 @@ MAX_SEQ_LEN = 60
 
 CUDA = (torch.cuda.device_count() > 0)
 
-
+if CUDA:
+    print('USING CUDA')
 
 
 def get_examples(text_path, labels_path, tokenizer, possible_labels, max_seq_len):
@@ -138,19 +139,22 @@ writer = SummaryWriter(WORKING_DIR)
 model.train()
 train_step = 0
 for epoch in range(EPOCHS):
+    print('STARTING EPOCH ', epoch)
     for step, batch in enumerate(tqdm(train_dataloader)):
-        for _ in range(0):
-            input_ids, input_mask, segment_ids, label_ids = batch
-            logits = model(input_ids, segment_ids, input_mask)
-            loss = criterion(logits.view(-1, NUM_LABELS), label_ids.view(-1))
-            loss.backward()
-            optimizer.step()
-            model.zero_grad()
+        if CUDA:
+            batch = tuple(x.cuda() for x in batch)
+        input_ids, input_mask, segment_ids, label_ids = batch
+        logits = model(input_ids, segment_ids, input_mask)
+        loss = criterion(logits.view(-1, NUM_LABELS), label_ids.view(-1))
+        loss.backward()
+        optimizer.step()
+        model.zero_grad()
 
-            writer.add_scalar('train/loss', loss.data[0], train_step)
-            train_step += 1
+        writer.add_scalar('train/loss', loss.data[0], train_step)
+        train_step += 1
 
     # eval
+    print('EVAL...')
     model.eval()
 
     eval_logits = []
@@ -158,9 +162,10 @@ for epoch in range(EPOCHS):
     eval_label_ids = []
     eval_input_toks = []
     for step, batch in enumerate(tqdm(eval_dataloader)):
+        if CUDA:
+            batch = tuple(x.cuda() for x in batch)
         input_ids, input_mask, segment_ids, label_ids = batch
-        if step > 5: 
-            continue
+
         with torch.no_grad():
             logits = model(input_ids, segment_ids, input_mask)
             loss = criterion(logits.view(-1, NUM_LABELS), label_ids.view(-1))
