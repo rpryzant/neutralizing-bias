@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 train bert 
+
+python train_bert_tagger.py data_all/ test
 """
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from pytorch_pretrained_bert.optimization import BertAdam
@@ -10,6 +12,7 @@ from torch.utils.data import TensorDataset, DataLoader, RandomSampler
 from tqdm import tqdm
 import torch
 import pickle
+import sys
 import os
 import numpy as np
 from pytorch_pretrained_bert.modeling import BertForTokenClassification
@@ -18,19 +21,22 @@ from tensorboardX import SummaryWriter
 
 import sklearn.metrics as metrics
 
-TRAIN_DATA = "/home/rpryzant/persuasion/src/tagging/data_all/text.train"
-TRAIN_LABELS = "/home/rpryzant/persuasion/src/tagging/data_all/labels.train"
+data_prefix = sys.argv[1]
+working_dir = sys.argv[2]
 
-TEST_DATA = "/home/rpryzant/persuasion/src/tagging/data_all/text.test"
-TEST_LABELS = "/home/rpryzant/persuasion/src/tagging/data_all/labels.test"
+TRAIN_DATA = data_prefix + "/text.train"
+TRAIN_LABELS = data_prefix + "/labels.train"
 
-WORKING_DIR = "run_all"
+TEST_DATA = data_prefix + "/text.test"
+TEST_LABELS = data_prefix + "/labels.test"
 
-NUM_LABELS=3
+WORKING_DIR = working_dir
+
+NUM_LABELS = 3
 
 BERT_MODEL = "bert-base-uncased"
 
-TRAIN_BATCH_SIZE = 32
+TRAIN_BATCH_SIZE = 36
 EVAL_BATCH_SIZE = 16
 EPOCHS = 15
 
@@ -134,6 +140,15 @@ def softmax(x, axis=None):
     y = np.exp(x)
     return y / y.sum(axis=axis, keepdims=True)
 
+def is_ranking_hit(probs, labels, top=1):
+    probs_indices = list(zip(probs[:, 1], range(len(labels))))
+    [_, top_indices] = list(zip(*sorted(probs_indices, reverse=True)[:top]))
+
+    if sum([labels[i] for i in top_indices]) > 0:
+        return 1
+    else:
+        return 0
+
 def run_inference(model, eval_dataloader):
     eval_logits = []
     eval_loss = []
@@ -154,18 +169,27 @@ def run_inference(model, eval_dataloader):
         eval_loss.append(float(loss.cpu().numpy()))
 
     # only take stuff on 1's
-    eval_probs, eval_preds, eval_labels = [], [], []
+    eval_probs, eval_preds, eval_labels, ranking_hits = [], [], [], []
     for logits, labels in zip(eval_logits, eval_label_ids):
-        for dist, lab in zip(logits, labels):
-            if lab == 1:
-                eval_probs.append(softmax(np.array(dist[:2]), axis=0))
-                eval_preds.append(np.argmax(eval_probs[-1]))
-                eval_labels.append(lab)
+        # get rid of padding stuff
+        seq_len = list(labels[1:]).index(NUM_LABELS - 1)
+        labels = labels[1:seq_len + 1]
+        logits = np.array(logits[1:seq_len + 1])[:, :2]
+        probs = softmax(logits, axis=1)
+        preds = np.argmax(probs, axis=1)
+
+        ranking_hit = is_ranking_hit(probs, labels, top=1)
+
+        eval_probs += list(probs)
+        eval_preds += list(preds)
+        eval_labels += list(labels)
+        ranking_hits += list([ranking_hit])
+
     eval_probs = np.array(eval_probs)
     eval_preds = np.array(eval_preds)
     eval_labels = np.array(eval_labels)
-    
-    return eval_probs, eval_preds, eval_labels, eval_loss
+
+    return eval_probs, eval_preds, eval_labels, eval_loss, ranking_hits
 
 print('LOADING DATA...')
 tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
@@ -197,12 +221,13 @@ writer = SummaryWriter(WORKING_DIR)
 
 print('INITIAL EVAL...')
 model.eval()
-eval_probs, eval_preds, eval_labels, eval_loss = run_inference(model, eval_dataloader)
+eval_probs, eval_preds, eval_labels, eval_loss, ranking_hits = run_inference(model, eval_dataloader)
 writer.add_scalar('eval/loss', np.mean(eval_loss), 0)
 writer.add_scalar('eval/acc', metrics.accuracy_score(eval_labels, eval_preds), 0)
 writer.add_scalar('eval/precision', metrics.precision_score(eval_labels, eval_preds), 0)
 writer.add_scalar('eval/recall', metrics.recall_score(eval_labels, eval_preds), 0)
 writer.add_scalar('eval/f1', metrics.f1_score(eval_labels, eval_preds), 0)
+writer.add_scalar('eval/ranking_acc', sum(ranking_hits) * 1.0 / len(ranking_hits), 0)
 
 print('TRAINING...')
 model.train()
@@ -225,12 +250,13 @@ for epoch in range(EPOCHS):
     # eval
     print('EVAL...')
     model.eval()
-    eval_probs, eval_preds, eval_labels, eval_loss = run_inference(model, eval_dataloader)
+    eval_probs, eval_preds, eval_labels, eval_loss, ranking_hits = run_inference(model, eval_dataloader)
     writer.add_scalar('eval/loss', np.mean(eval_loss), epoch + 1)
     writer.add_scalar('eval/acc', metrics.accuracy_score(eval_labels, eval_preds), epoch + 1)
     writer.add_scalar('eval/precision', metrics.precision_score(eval_labels, eval_preds), epoch + 1)
     writer.add_scalar('eval/recall', metrics.recall_score(eval_labels, eval_preds), epoch + 1)
     writer.add_scalar('eval/f1', metrics.f1_score(eval_labels, eval_preds), epoch + 1)
+    writer.add_scalar('eval/ranking_acc', sum(ranking_hits) * 1.0 / len(ranking_hits), 0)
     # doesn't make sense cause we only have positive labels
     # writer.add_scalar('eval/auc', metrics.roc_auc_score(eval_labels, eval_probs[:, 1]), epoch + 1)
 
