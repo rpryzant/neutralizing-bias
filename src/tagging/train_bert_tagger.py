@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 train bert 
 """
@@ -17,20 +18,20 @@ from tensorboardX import SummaryWriter
 
 import sklearn.metrics as metrics
 
-TRAIN_DATA = "/Users/rpryzant/persuasion/src/tagging/data_all/text.train"
-TRAIN_LABELS = "/Users/rpryzant/persuasion/src/tagging/data_all/labels.train"
+TRAIN_DATA = "/home/rpryzant/persuasion/src/tagging/data_all/text.train"
+TRAIN_LABELS = "/home/rpryzant/persuasion/src/tagging/data_all/labels.train"
 
-TEST_DATA = "/Users/rpryzant/persuasion/src/tagging/data_all/text.test"
-TEST_LABELS = "/Users/rpryzant/persuasion/src/tagging/data_all/labels.test"
+TEST_DATA = "/home/rpryzant/persuasion/src/tagging/data_all/text.test"
+TEST_LABELS = "/home/rpryzant/persuasion/src/tagging/data_all/labels.test"
+
+WORKING_DIR = "run_all"
 
 NUM_LABELS=3
 
 BERT_MODEL = "bert-base-uncased"
 
-WORKING_DIR = "test"
-
-TRAIN_BATCH_SIZE = 2
-EVAL_BATCH_SIZE = 2
+TRAIN_BATCH_SIZE = 32
+EVAL_BATCH_SIZE = 16
 EPOCHS = 15
 
 LEARNING_RATE = 5e-5
@@ -50,6 +51,8 @@ def get_examples(text_path, labels_path, tokenizer, possible_labels, max_seq_len
     def pad(id_arr, pad_idx):
         return id_arr + ([pad_idx] * (max_seq_len - len(id_arr)))
 
+    skipped = 0 
+
     out = {'tokens': [], 'input_ids': [], 'segment_ids': [], 'input_masks': [], 'label_ids': []}
 
     for i, (line, labels) in enumerate(tqdm(zip(open(text_path), open(labels_path)))):
@@ -64,7 +67,13 @@ def get_examples(text_path, labels_path, tokenizer, possible_labels, max_seq_len
             labels = labels[:max_seq_len - 2]
 
         tokens = ['[CLS]'] + tokens + ['[SEP]']
-        input_ids = pad(tokenizer.convert_tokens_to_ids(tokens), 0)
+    
+        try:
+            input_ids = pad(tokenizer.convert_tokens_to_ids(tokens), 0)
+        except KeyError:
+            # TODO FUCK THIS ENCODING BUG!!!
+            skipped += 1
+            continue
         segment_ids = pad([0 for _ in range(len(tokens))], 0)
         input_mask = pad([1] * len(tokens), 0)
         # Mask out [CLS] token in front too
@@ -78,6 +87,7 @@ def get_examples(text_path, labels_path, tokenizer, possible_labels, max_seq_len
         out['input_masks'].append(input_mask)
         out['label_ids'].append(label_ids)
 
+    print('SKIPPED ', skipped)
     return out
 
 
@@ -130,8 +140,6 @@ def run_inference(model, eval_dataloader):
     eval_label_ids = []
     eval_input_toks = []
     for step, batch in enumerate(tqdm(eval_dataloader)):
-        if step > 3:
-            continue
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         input_ids, input_mask, segment_ids, label_ids = batch
@@ -202,7 +210,6 @@ train_step = 0
 for epoch in range(EPOCHS):
     print('STARTING EPOCH ', epoch)
     for step, batch in enumerate(tqdm(train_dataloader)):
-        continue
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         input_ids, input_mask, segment_ids, label_ids = batch
