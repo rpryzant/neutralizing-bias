@@ -256,7 +256,7 @@ for epoch in range(EPOCHS):
     writer.add_scalar('eval/precision', metrics.precision_score(eval_labels, eval_preds), epoch + 1)
     writer.add_scalar('eval/recall', metrics.recall_score(eval_labels, eval_preds), epoch + 1)
     writer.add_scalar('eval/f1', metrics.f1_score(eval_labels, eval_preds), epoch + 1)
-    writer.add_scalar('eval/ranking_acc', sum(ranking_hits) * 1.0 / len(ranking_hits), 0)
+    writer.add_scalar('eval/ranking_acc', sum(ranking_hits) * 1.0 / len(ranking_hits), epoch + 1)
     # doesn't make sense cause we only have positive labels
     # writer.add_scalar('eval/auc', metrics.roc_auc_score(eval_labels, eval_probs[:, 1]), epoch + 1)
 
