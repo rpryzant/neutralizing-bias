@@ -47,10 +47,10 @@ NUM_TOK_LABELS = 3
 
 BERT_MODEL = "bert-base-uncased"
 
-TRAIN_BATCH_SIZE = 2
-TEST_BATCH_SIZE = 2
+TRAIN_BATCH_SIZE = 32
+TEST_BATCH_SIZE = 16
 
-EPOCHS = 15
+EPOCHS = 5
 
 LEARNING_RATE = 5e-5
 
@@ -93,7 +93,6 @@ def get_examples(text_path, tok_labels_path, bias_labels_path, tokenizer, possib
             # TODO FUCK THIS ENCODING BUG!!!
             skipped += 1
             continue
-
 
         segment_ids = pad([0 for _ in range(len(tokens))], 0)
         input_mask = pad([1] * len(tokens), 0)
@@ -176,7 +175,7 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion):
         'labeling_hits': []
     }
 
-    for step, batch in enumerate(tqdm(eval_dataloader)):
+    for step, batch in enumerate(eval_dataloader):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids = batch
@@ -273,14 +272,14 @@ tok_acc = tag_accuracy(results['tok_logits'], results['bias_labels'], results['t
 writer.add_scalar('eval/bias_loss', np.mean(results['bias_loss']), 0)
 writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), 0)
 writer.add_scalar('eval/bias_acc', bias_acc, 0)
-writer.add_scalar('eval/tok_loss', tok_acc, 0)
+writer.add_scalar('eval/tok_acc', tok_acc, 0)
 
 print('TRAINING...')
 model.train()
 train_step = 0
 for epoch in range(EPOCHS):
     print('STARTING EPOCH ', epoch)
-    for step, batch in enumerate(tqdm(train_dataloader)):
+    for step, batch in enumerate(train_dataloader):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids = batch
@@ -294,7 +293,7 @@ for epoch in range(EPOCHS):
                 continue
             tok_losses.append(tok_criterion(tok_log.view(-1, NUM_TOK_LABELS), tok_lab.view(-1)))
         if not tok_losses:
-            tok_loss = torch.tensor(0.0)
+            tok_loss = 0
         else:
             tok_loss = sum(tok_losses) / len(tok_losses)
     
@@ -310,7 +309,7 @@ for epoch in range(EPOCHS):
         model.zero_grad()
 
         writer.add_scalar('train/bias_loss', bias_loss.data[0], train_step)
-        writer.add_scalar('train/tok_loss', tok_loss.data[0], train_step)
+        writer.add_scalar('train/tok_loss', tok_loss if isinstance(tok_loss, int) else tok_loss.data[0], train_step)
         writer.add_scalar('train/loss', loss.data[0], train_step)
         train_step += 1
 
@@ -320,10 +319,10 @@ for epoch in range(EPOCHS):
     results = run_inference(model, eval_dataloader, cls_criterion, tok_criterion)
     bias_acc = classification_accuracy(results['bias_logits'], results['bias_labels'])
     tok_acc = tag_accuracy(results['tok_logits'], results['bias_labels'], results['tok_labels'], top=1)
-    writer.add_scalar('eval/bias_loss', np.mean(results['bias_loss']), 0)
-    writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), 0)
-    writer.add_scalar('eval/bias_acc', bias_acc, 0)
-    writer.add_scalar('eval/tok_loss', tok_acc, 0)
+    writer.add_scalar('eval/bias_loss', np.mean(results['bias_loss']), epoch + 1)
+    writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), epoch + 1)
+    writer.add_scalar('eval/bias_acc', bias_acc, epoch + 1)
+    writer.add_scalar('eval/tok_acc', tok_acc, epoch + 1)
 
     model.train()
 
