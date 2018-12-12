@@ -45,9 +45,10 @@ def url2diff(url):
 	try:
 		response = urlopen(url)
 		html = response.read()
-	except urllib2.URLError as e:
-		print >> sys.stderr, e.reason   
-	return html2diff(html)
+		return html2diff(html)
+	except Exception as e:
+		print(e.reason, file=sys.stderr)
+
 
 def print_withcolor(idx, l):
 	l = l.replace('\n', '')

@@ -5,8 +5,12 @@ import operator
 import numpy as np
 import string, pickle, os
 from nltk.tokenize import regexp_tokenize, wordpunct_tokenize, blankline_tokenize
-
+from tqdm import tqdm
 from util import *
+
+
+
+
 
 printable = set(string.printable)
 
@@ -31,7 +35,7 @@ def collect_revision_text(rev_ids):
 	cnt = 0
 	X = {}
 
-	for rev_id in rev_ids:
+	for rev_id in tqdm(rev_ids):
 		print('processing revision id = ' + str(rev_id) + ', ' + str(cnt) + '/' + str(rev_size))
 
 		url = 'https://en.wikipedia.org/wiki/?diff=' + str(rev_id)
@@ -63,7 +67,10 @@ def collect_revision_text(rev_ids):
 				nexts.extend(next_tokens)
 			else:
 				nexts.extend([0] + next_tokens)
-
+		print(prevs)
+		print()
+		print(nexts)
+		quit()
 		X[rev_id] = (prevs, nexts)
 
 	return X
@@ -74,9 +81,10 @@ def go(filename):
 	with open(filename, 'r') as f:
 		data = list(csv.reader(f, delimiter='\t'))
 
-	rev_ids = [r[0] for r in data[1:]]
+	rev_ids = [r[0] for r in data]
 
 	X = collect_revision_text(rev_ids)
+
 	pickle.dump(X, open(filename[:-3] + 'revision_text.pkl', 'wb'))
 
 if __name__ == '__main__':
