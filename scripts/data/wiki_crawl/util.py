@@ -21,6 +21,10 @@ def html2diff(html):
     div_p = re.compile(r'<div.*?>(.*)</div>', re.DOTALL)
     
     for i in range(0, len(nodes), 2):
+        # skip straddeling cases
+        if i + 1 >= len(nodes):
+            continue
+    
         node_prev = nodes[i]
         node_next = nodes[i + 1]
 
@@ -43,8 +47,8 @@ def url2diff(url):
         html = response.read()
         return html2diff(html)
     except Exception as e:
-        print(e.reason, file=sys.stderr)
-
+        print(e, file=sys.stderr)
+        return [], []
 
 def print_withcolor(idx, l):
     l = l.replace('\n', '')

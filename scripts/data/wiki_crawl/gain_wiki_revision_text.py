@@ -35,6 +35,7 @@ def wiki_text_clean(text):
 
 def collect_revision_text(rev_ids):
     rev_size = len(rev_ids)
+    success = 0
     out = {}
 
     for rev_id in tqdm(rev_ids):
@@ -52,7 +53,11 @@ def collect_revision_text(rev_ids):
             nexts.append( wiki_text_clean(post) )
 
         if len(prevs) > 0 and len(nexts) > 0:
+            print('...success!')
+            success += 1
             out[rev_id] = (prevs, nexts)
+
+    print('failures: ', rev_size - success)
 
     return out
 
@@ -66,7 +71,7 @@ def go(filename):
 
     X = collect_revision_text(rev_ids)
 
-    pickle.dump(X, open(out_file + 'revision_text.pkl', 'wb'))
+    pickle.dump(X, open(out_file + '.pkl', 'wb'))
 
 if __name__ == '__main__':
     go(in_file)
