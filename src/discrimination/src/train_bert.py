@@ -183,7 +183,8 @@ for epoch in range(EPOCHS):
     # eval
     print('EVAL...')
     model.eval()
-    eval_probs, eval_preds, eval_labels, eval_loss = run_inference(model, eval_dataloader)
+    eval_probs, eval_preds, eval_labels, eval_loss = run_inference(
+        model, eval_dataloader)
     model.train()
     
     writer.add_scalar('eval/loss', np.mean(eval_loss), epoch)

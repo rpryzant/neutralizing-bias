@@ -73,7 +73,7 @@ def tokenize_and_label(s1, s2, tokenizer):
             pass
     assert len(labels) == len(s1)
 
-    return s1, labels, take #True
+    return s1, labels, take#True#take #True
 
 
 if not os.path.exists(out_dir):
@@ -92,7 +92,8 @@ for line in tqdm(open(corpus)):
     pre_tok, labels, take = tokenize_and_label(pre, post, tokenizer)
 
     # TODO -- follow http://www.aclweb.org/anthology/P13-1162 and only take single-word changes
-    if sum([int(x) for x in labels]) == 1: #take
+    if take: #sum([int(x) for x in labels]) == 1: #take
+
         out_text.append(' '.join(pre_tok))
         out_labels.append(' '.join(labels))
 
