@@ -8,7 +8,10 @@ from nltk.tokenize import regexp_tokenize, wordpunct_tokenize, blankline_tokeniz
 from tqdm import tqdm
 from util import *
 
+import mwparserfromhell
 
+in_file = sys.argv[1]
+out_file = sys.argv[2]
 
 
 
@@ -20,75 +23,53 @@ csv.field_size_limit(sys.maxsize)
 separator = 0
 mask_char = 1 
 unknown   = 2
-to_TBD 	  = 3
-offset 	  = 4
+to_TBD    = 3
+offset    = 4
 
 def wiki_text_clean(text):
-	# text_ = filter(lambda x: x in printable, text)
-	text_ = ''.join(filter(lambda x:x in string.printable, text))
-	tokens = wordpunct_tokenize(text_)
-	# tokens = [s.encode('utf-8') for s in tokens]
-	return tokens 
+    # text_ = filter(lambda x: x in printable, text)
+    text_ = ''.join(filter(lambda x:x in string.printable, text)).encode('utf-8')
+    # tokens = wordpunct_tokenize(text_)
+    # tokens = [s.encode('utf-8') for s in tokens]
+    return text_
 
 def collect_revision_text(rev_ids):
-	rev_size = len(rev_ids)
-	cnt = 0
-	X = {}
+    rev_size = len(rev_ids)
+    out = {}
 
-	for rev_id in tqdm(rev_ids):
-		print('processing revision id = ' + str(rev_id) + ', ' + str(cnt) + '/' + str(rev_size))
+    for rev_id in tqdm(rev_ids):
+        print('processing revision id = ' + str(rev_id))
 
-		url = 'https://en.wikipedia.org/wiki/?diff=' + str(rev_id)
-		prevs_, nexts_ = url2diff(url)
+        url = 'https://en.wikipedia.org/wiki/?diff=' + str(rev_id)
+        prevs_, nexts_ = url2diff(url)
 
-		if len(prevs_) != len(nexts_):
-			print('prev and next docs size not equal')
-			print(len(prevs_))
-			print(len(nexts_))
-			exit(-1)
+        assert len(prevs_) == len(nexts_), 'corpus sizes not equal!'
 
-		cnt += 1
-		prevs, nexts = [], []
+        prevs, nexts = [], []
 
-		for i in range(len(prevs_)):
-			prev_ = prevs_[i]
-			prev_tokens = wiki_text_clean(prev_)
-			if i == 0:
-				prevs.extend(prev_tokens)
-			else:
-				nexts.extend([0] + prev_tokens)
-		
+        for pre, post in zip(prevs_, nexts_):
+            prevs.append( wiki_text_clean(pre) )
+            nexts.append( wiki_text_clean(post) )
 
-		for i in range(len(nexts_)):
-			next_ = nexts_[i]
-			next_tokens = wiki_text_clean(next_)
-		
-			if i == 0:
-				nexts.extend(next_tokens)
-			else:
-				nexts.extend([0] + next_tokens)
-		print(prevs)
-		print()
-		print(nexts)
-		quit()
-		X[rev_id] = (prevs, nexts)
+        if len(prevs) > 0 and len(nexts) > 0:
+            out[rev_id] = (prevs, nexts)
 
-	return X
+    return out
 
 
 def go(filename):
-	# rev_id	rev_comment	rev_user	rev_user_text	rev_timestamp	rev_minor_edit
-	with open(filename, 'r') as f:
-		data = list(csv.reader(f, delimiter='\t'))
+    # rev_id    rev_comment    rev_timestamp
+    with open(filename, 'r') as f:
+        data = list(csv.reader(f, delimiter='\t'))
 
-	rev_ids = [r[0] for r in data]
+    rev_ids = [r[0] for r in data]
 
-	X = collect_revision_text(rev_ids)
+    X = collect_revision_text(rev_ids)
 
-	pickle.dump(X, open(filename[:-3] + 'revision_text.pkl', 'wb'))
+    pickle.dump(X, open(out_file + 'revision_text.pkl', 'wb'))
 
 if __name__ == '__main__':
-	go(sys.argv[1])
+    go(in_file)
 
 
 
