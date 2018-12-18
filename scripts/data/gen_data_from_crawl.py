@@ -184,11 +184,11 @@ def extract_sents(prev_edit_str, post_edit_str):
 
         # perfect match = unchanged (no bias)
         if score == 100:
-            assert prevs[i] == posts[j]
-            yield (
-                prevs[i], posts[j], prev_sents[i], post_sents[j],
-                '0', ' '.join(['0' for _ in range(len(prevs[i]))])
-            )
+            if prevs[i] == posts[j]:
+                yield (
+                    prevs[i], posts[j], prev_sents[i], post_sents[j],
+                    '0', ' '.join(['0' for _ in range(len(prevs[i]))])
+                )
 
         if should_filter(prevs[i], posts[j]):
             CTR_FILTERED_OUT += 1
