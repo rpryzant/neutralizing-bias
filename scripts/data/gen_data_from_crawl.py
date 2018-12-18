@@ -1,7 +1,7 @@
 """
 generates a TSV parallel corpus from a crawl (the output of gain_wiki_revision.py)
 
-python gen_data_from_crawl.py wiki_crawl/final_data.pkl CACHE OUT
+python gen_data_from_crawl.py wiki_crawl/final_data.pkl CACHE OUT 100
 
 pickle_path = sys.argv[1]
 cache_path = sys.argv[2]
@@ -45,6 +45,7 @@ CTR_SENT_EXTRACTION_FAILED = 0
 CTR_RATIO_SKIPPED = 0
 CTR_EMPTY_REV = 0
 CTR_FILTERED_OUT = 0
+CTR_TO_MANY_1_TOK_LABELS = 0
 
 from nltk import sent_tokenize, word_tokenize
 
@@ -170,37 +171,6 @@ def get_tok_labels(s1_toks, s2_toks):
 
     return tok_labels
 
-def extract_sents(prev_edit_str, post_edit_str):
-    global CTR_FILTERED_OUT
-
-    # break up into sentences
-    prev_sents = sent_tokenize(prev_edit_str)
-    post_sents = sent_tokenize(post_edit_str)
-    # break sentences into lower-cased tokens
-    prevs = [tokenize(s.lower()) for s in prev_sents]
-    posts = [tokenize(s.lower()) for s in post_sents]
-
-    for i, j, score in find_matches(prevs, posts):
-
-        # perfect match = unchanged (no bias)
-        if score == 100:
-            if prevs[i] == posts[j]:
-                yield (
-                    prevs[i], posts[j], prev_sents[i], post_sents[j],
-                    '0', ' '.join(['0' for _ in range(len(prevs[i]))])
-                )
-
-        if should_filter(prevs[i], posts[j]):
-            CTR_FILTERED_OUT += 1
-            continue
-
-        # we're good to go here
-        tok_labels = get_tok_labels(prevs[i].strip().split(), posts[j].strip().split())
-        yield (
-            prevs[i], posts[j], prev_sents[i], post_sents[j],
-            '1', ' '.join(tok_labels)
-        )
-
 
 def clean_wikitext(token_list):    
     x = ' '.join(token_list)
@@ -213,6 +183,10 @@ def clean_wikitext(token_list):
     parse = mwparserfromhell.parse(x)
     plaintext = parse.strip_code()
     
+    # remove tabs and newlines (those is our deliminators beeyotch)
+    plaintext.replace('\t', ' ')
+    plaintext.replace('\n', ' ')
+
     # rm [[text]] and [text]
     plaintext = re.sub('\[?\[.*?\]\]?', '', plaintext)
     # rm {{text}} and {text}
@@ -238,23 +212,51 @@ def clean_wikitext(token_list):
     if not re.findall('\w', ''.join(plaintext)):
         plaintext = ''
 
-    # remove tabs (that's our deliminator beeyotch)
-    plaintext.replace('\t', ' ')
-
     # rm examples starting with ! or | 
     plaintext = plaintext.strip()
     if plaintext.startswith('?') or plaintext.startswith('|'):
         plaintext = ''
 
-# TODO?
-# 200px|
-# | year = 2002 |accessdate = may 31 , 2006 |url=
-# name= '' hrw '' / >
-# ( come-and-hear .com/yebamoth/yebamoth_47.html # partb babylonian talmud yevamot 47b . )
-#    JUST RM ALL PARENS??
-
     return plaintext
 
+
+def extract_sents(prev_edit_str, post_edit_str, rev_id):
+    global CTR_FILTERED_OUT
+    global CTR_TO_MANY_1_TOK_LABELS
+
+    # break up into sentences
+    prev_sents = sent_tokenize(prev_edit_str)
+    post_sents = sent_tokenize(post_edit_str)
+    # break sentences into lower-cased tokens
+    prevs = [tokenize(s.lower()) for s in prev_sents]
+    posts = [tokenize(s.lower()) for s in post_sents]
+
+    for i, j, score in find_matches(prevs, posts):
+
+        # perfect match = unchanged (no bias)
+        if score == 100:
+            if prevs[i] == posts[j]:
+                yield (
+                    rev_id, prevs[i], posts[j], prev_sents[i], post_sents[j],
+                    '0', ' '.join(['0' for _ in range(len(prevs[i].split()))])
+                )
+
+        if should_filter(prevs[i], posts[j]):
+            CTR_FILTERED_OUT += 1
+            continue
+
+        tok_labels = get_tok_labels(prevs[i].strip().split(), posts[j].strip().split())
+
+        # more than half of toks have to be shared
+        tok_nums = [int(x) for x in tok_labels]
+        if ( sum(tok_nums) * 1.0 / len(tok_nums) ) > 0.5:
+            CTR_TO_MANY_1_TOK_LABELS += 1
+            continue
+        
+        yield (
+            rev_id, prevs[i], posts[j], prev_sents[i], post_sents[j],
+            '1', ' '.join(tok_labels)
+        )
 
 
 def extract_examples(revisions):
@@ -288,7 +290,7 @@ def extract_examples(revisions):
             continue
 
         i = 0
-        for example in extract_sents(prev_text, next_text):
+        for example in extract_sents(prev_text, next_text, rev_id):
             i += 1
             yield example
 
@@ -324,11 +326,11 @@ out_biased = []
 out_biased_singletoken = []
 
 for i, example in enumerate(extract_examples(revisions)):
-    # prev_toks, post_toks, prev_raw, post_raw, sent_label, tok_labels
+    # rev_id, prev_toks, post_toks, prev_raw, post_raw, sent_label, tok_labels
     if example[-2] == '0':
         out_unbiased.append(example)
     else:
-        lenth_ratio = len(example[2]) * 1.0 / len(example[3])
+        lenth_ratio = len(example[3]) * 1.0 / len(example[4])
 
         out_biased.append( (lenth_ratio, example) )
 
@@ -361,7 +363,7 @@ for r, ex in tqdm(out_biased):
     if sum([int(x) for x in ex[-1].split()]) == 1:
         f_tok.write('\t'.join(ex) + '\n')
     # single word
-    if is_single_word_diff(ex[2], ex[3]):
+    if is_single_word_diff(ex[3], ex[4]):
         f_word.write('\t'.join(ex) + '\n')
         
             
@@ -375,6 +377,7 @@ print('CTR_SENT_EXTRACTION_FAILED', CTR_SENT_EXTRACTION_FAILED)
 print('CTR_RATIO_SKIPPED', CTR_RATIO_SKIPPED)
 print('CTR_EMPTY_REV', CTR_EMPTY_REV)
 print('CTR_FILTERED_OUT', CTR_FILTERED_OUT)
+print('CTR_TO_MANY_1_TOK_LABELS', CTR_TO_MANY_1_TOK_LABELS)
 
 
 
