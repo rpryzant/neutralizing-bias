@@ -1,9 +1,7 @@
 """
 generates a TSV parallel corpus from a crawl (the output of gain_wiki_revision.py)
 
-python gen_parallel_corpus.py [root dir with all of the yearly wikipedia files] [out path]
-
-python gen_parallel_corpus.py ~/Desktop/Wiki_NPOV/ TEST
+python gen_data_from_crawl.py wiki_crawl/final_data.pkl
 """
 
 
@@ -23,21 +21,23 @@ from collections import Counter
 import math
 from tqdm import tqdm
 
+
+from pytorch_pretrained_bert.tokenization import BertTokenizer
+from simplediff import diff
+
+
 METADATA_PATTERN = 'en_npov_edits_%d.tsv'
 REVISIONS_PATTERN = 'en_npov_edits_%d.revision_text.wo.pkl'
 
 CTR_ID_MISMATCH = 0
 CTR_MULTIPLE_EDITS = 0
-CTR_NO_TEXT = 0 
-CTR_NO_EDITS = 0
+CTR_FAILED_CLEANING = 0 
+CTR_SENT_EXTRACTION_FAILED = 0
 CTR_SENT_MISMATCH = 0
 CTR_RATIO_SKIPPED = 0
+CTR_EMPTY_REV = 0
 
-wiki_root = sys.argv[1]
-out_prefix = sys.argv[2]
-
-
-def diff(s1, s2):
+def diff_dmp(s1, s2):
     dmp = dmp_module.diff_match_patch()
     d = dmp.diff_main(s1, s2)
     dmp.diff_cleanupSemantic(d)
@@ -94,7 +94,7 @@ def BLEU(hyp, ref):
     return 100 * bleu
 
 
-def get_sents(prev_edit_str, next_edit_str):
+def extract_sents(prev_edit_str, next_edit_str):
     global CTR_SENT_MISMATCH
 
     prev_sents = sent_tokenize(prev_edit_str)
@@ -119,7 +119,7 @@ def get_sents(prev_edit_str, next_edit_str):
         if Levenshtein.distance(prev_sent, next_sent) < 4:
             continue
 
-        sent_diff = diff(prev_sent, next_sent)
+        sent_diff = diff_dmp(prev_sent, next_sent)
         shared_regions = [x for x in sent_diff if x[0] == 0]
         dif_regions = [x for x in sent_diff if x[0] != 0]
 
@@ -147,7 +147,7 @@ def get_sents(prev_edit_str, next_edit_str):
         yield prev_sent.strip(), next_sent.strip(), '1'
 
 
-def prep_wikitext(token_list):    
+def clean_wikitext(token_list):    
     x = ' '.join(token_list)
     # fix tags
     x = x.replace('< ', '<')
@@ -179,88 +179,93 @@ def prep_wikitext(token_list):
     # fuck stars
     plaintext = plaintext.replace('*', '')
 
+    # ignore lines without text, e.g. ( , , , , )
+    if not re.findall('\w', ''.join(plaintext)):
+        plaintext = ''
+
+    # rm examples starting with ! or | 
+    plaintext = plaintext.strip()
+    if plaintext.startswith('?') or plaintext.startswith('|'):
+        plaintext = ''
+
 # TODO?
 # 200px|
-# ( , , , , )
 # | year = 2002 |accessdate = may 31 , 2006 |url=
 # name= '' hrw '' / >
 # ( come-and-hear .com/yebamoth/yebamoth_47.html # partb babylonian talmud yevamot 47b . )
 #    JUST RM ALL PARENS??
 
-
-
-    # rm examples starting with ! or | (will be thrown out in downstream filtering)
-    plaintext = plaintext.strip()
-    if plaintext.startswith('?') or plaintext.startswith('|'):
-        plaintext = ''
-
     return plaintext
 
 
 
-def extract_examples(metadata, revisions):
+def extract_examples(revisions):
     global CTR_ID_MISMATCH
     global CTR_MULTIPLE_EDITS
-    global CTR_NO_TEXT
-    global CTR_NO_EDITS
+    global CTR_FAILED_CLEANING
+    global CTR_SENT_EXTRACTION_FAILED
+    global CTR_EMPTY_REV
 
-
-    for i, (rev_id, metadata_dict) in tqdm(enumerate(iter(metadata.items())), total=len(metadata)):
-        # ignore headers...     
-        if i == 0: continue 
+    for rev_id in tqdm(revisions):            
+        prevs, nexts = revisions[rev_id]
         
-        if rev_id not in revisions:
-            CTR_ID_MISMATCH += 1
+        if not prevs or not nexts:
+            CTR_EMPTY_REV += 1
             continue
             
-        prevs, nexts = revisions[rev_id]
+        # unicode dat shit
+        if isinstance(prevs[0], bytes):
+            prevs = [x.decode() for x in prevs]
+        if isinstance(nexts[0], bytes):
+            nexts = [x.decode() for x in nexts]
 
         if len(prevs) > 1 or len(nexts) > 1:
             CTR_MULTIPLE_EDITS += 1
             continue
             
-        prev_text = prep_wikitext(prevs)
-        next_text = prep_wikitext(nexts)
+        prev_text = clean_wikitext(prevs)
+        next_text = clean_wikitext(nexts)
 
         if not prev_text or not next_text:
-            CTR_NO_TEXT += 1
+            CTR_FAILED_CLEANING += 1
             continue
-        
+
+        !!!!!!!  TODO FROM HERE!!!!!!!
         i = 0
-        for prev_sent, next_sent, bias_status in get_sents(prev_text, next_text):
+        for prev_toks, post_toks, sent_label, tok_labels in extract_sents(prev_text, next_text):
             i += 1
-#            print(prev_sent)
-#            print(next_sent)
-#            print()
+            print(prev_sent)
+            print(next_sent)
+            print()
+            # TODO -- get comment in there? 
             yield (
-                rev_id, tokenize(metadata_dict['rev_comment']),
-                tokenize(prev_sent), tokenize(next_sent), bias_status,
-                ratio(tokenize(prev_sent), tokenize(next_sent))
+                rev_id, prev_toks, post_toks, sent_label, tok_labels,
+                ratio(prev_toks, post_toks)
             )
 
         if i == 0: 
-            CTR_NO_EDITS += 1
+            CTR_SENT_EXTRACTION_FAILED += 1
 
 
-examples = []
-for year in range(2008, 2019):
-    md_path = os.path.join(wiki_root, METADATA_PATTERN % year)
-    rev_path = os.path.join(wiki_root, REVISIONS_PATTERN % year)
 
-    try:
-        metadata = load_metadata(md_path)
-        revisions = pickle.load(open(rev_path, 'rb'))
-    except FileNotFoundError:
-        continue
+# load big pickle 
+# https://stackoverflow.com/questions/31468117/python-3-can-pickle-handle-byte-objects-larger-than-4gb
+print('LOADING PICKLE...')
+pickle_path = sys.argv[1]
+# revisions = pickle.load(open(pickle_path, 'rb'))
+bytes_in = bytearray(0)
+max_bytes = 2**31 - 1
+input_size = os.path.getsize(pickle_path)
+with open(pickle_path, 'rb') as f_in:
+    for _ in range(0, input_size, max_bytes):
+        bytes_in += f_in.read(max_bytes)
+revisions = pickle.loads(bytes_in)
 
-    examples += [ex for ex in extract_examples(metadata, revisions)]
-    print('=' * 80)
-    print(year)
-    print('Examples ', len(examples))
-    print('id mismatch ', CTR_ID_MISMATCH)
-    print('multiple edits ', CTR_MULTIPLE_EDITS)
-    print('no text ', CTR_NO_TEXT)
-    print('sent mismatch ', CTR_SENT_MISMATCH)
+print('EXTRACTING EXAMPLES...')
+examples = extract_examples(revisions)
+
+# TODO -- COUNTERS
+
 
 
 # ratio thresholding
