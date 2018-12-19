@@ -1,7 +1,7 @@
 """
 generates a TSV parallel corpus from a crawl (the output of gain_wiki_revision.py)
 
-python gen_data_from_crawl.py wiki_crawl/final_data.pkl CACHE OUT 100
+python gen_data_from_crawl.py wiki_crawl/final_data.pkl CACHE OUT
 
 pickle_path = sys.argv[1]
 cache_path = sys.argv[2]
@@ -9,7 +9,8 @@ out_prefix = sys.argv[3]
 
 """
 
-
+# TODO - EXAMPLES THAT ARE JUST FIXING SPELLING
+# inbetween => in between (multi-tok)
 
 import sys
 import os
@@ -29,6 +30,8 @@ from tqdm import tqdm
 
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from simplediff import diff
+from spellchecker import SpellChecker
+
 
 
 pickle_path = sys.argv[1]
@@ -39,6 +42,9 @@ out_prefix = sys.argv[3]
 BERT_MODEL = "bert-base-uncased"
 TOKENIZER = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=cache_path)
 
+SPELLCHECKER = SpellChecker()
+
+
 CTR_MULTIPLE_EDITS = 0
 CTR_FAILED_CLEANING = 0 
 CTR_SENT_EXTRACTION_FAILED = 0
@@ -46,6 +52,7 @@ CTR_RATIO_SKIPPED = 0
 CTR_EMPTY_REV = 0
 CTR_FILTERED_OUT = 0
 CTR_TO_MANY_1_TOK_LABELS = 0
+CTR_SPELLING_FIX = 0
 
 from nltk import sent_tokenize, word_tokenize
 
@@ -72,104 +79,6 @@ def load_metadata(path):
 
 def ratio(s1, s2):
     return len(s1) * 1.0 / len(s2)
-
-
-def tokenize(s):
-    global TOKENIZER
-    tok_list = TOKENIZER.tokenize(s.strip())
-    return ' '.join(tok_list)
-
-
-def BLEU(hyp, ref):
-    # get ngram stats
-    stats = []
-    stats.append(len(hyp))
-    stats.append(len(ref))
-    for n in range(1, 5):
-        s_ngrams = Counter(
-            [tuple(hyp[i:i + n]) for i in range(len(hyp) + 1 - n)]
-        )
-        r_ngrams = Counter(
-            [tuple(ref[i:i + n]) for i in range(len(ref) + 1 - n)]
-        )
-        stats.append(max([sum((s_ngrams & r_ngrams).values()), 0]))
-        stats.append(max([len(hyp) + 1 - n, 0]))
-
-    # get bleu from stats
-    if len(list(filter(lambda x: x == 0, stats))) > 0:
-        return 0
-    (c, r) = stats[:2]
-    log_bleu_prec = sum(
-        [math.log(float(x) / y) for x, y in zip(stats[2::2], stats[3::2])]
-    ) / 4.
-    bleu = math.exp(min([0, 1 - float(r) / c]) + log_bleu_prec)
-
-    return 100 * bleu
-
-
-def find_matches(a_list, b_list, delta=5):
-    for i in range(len(a_list)):
-        neighborhood_bleus = [
-            (BLEU(a_list[i].split(), b_list[j].split()), j)
-            for j in range(max(i - delta, 0), min(i + delta, len(b_list) - 1))
-        ]
-        # corner case: len(a_list) >> len(b_list)
-        if not neighborhood_bleus:
-            continue
-        
-        max_bleu, match_idx = max(neighborhood_bleus)
-        
-        yield i, match_idx, max_bleu
-            
-
-def should_filter(prev_sent, post_sent):
-    """ whether we should filter out a sentence pair """
-    # skip near-perfect matches
-    if Levenshtein.distance(prev_sent, post_sent) < 4:
-        return True
-
-    sent_diff = diff_dmp(prev_sent, post_sent)
-    shared_regions = [x for x in sent_diff if x[0] == 0]
-    dif_regions = [x for x in sent_diff if x[0] != 0]
-
-    # skip completely different matches (or, again, completely identical)
-    if not shared_regions or not dif_regions:
-        return True
-
-    # skip matches that are too different
-    shared_len = len(' '.join([s for _, s in shared_regions]))
-    assert isinstance(prev_sent, str) and isinstance(post_sent, str)
-    prev_ratio = shared_len * 1.0 / len(prev_sent)
-    post_ratio = shared_len * 1.0 / len(post_sent)
-    ratio = (prev_ratio + post_ratio) / 2.0
-    if ratio < 0.5:
-        return True
-
-    # skip matches where only punctuation is shared
-    if not re.findall('\w', ''.join([s for _, s in shared_regions])):
-        return True
-
-        # TODO -- skip matches where diff occurs AFTER length threshold???
-        # ALSO MAX LENGTH THRESHOLD, THROW OUT EXAMPLES WHOSE
-        # DIF IS AFTER MY MAX LENGTH (MAYBE 60 OR SO)
-
-    return False
-
-
-
-def get_tok_labels(s1_toks, s2_toks):
-    s_diff = diff(s1_toks, s2_toks)
-    tok_labels = []
-    for tag, chunk in s_diff:
-        if tag == '=':
-            tok_labels += ['0'] * len(chunk)
-        elif tag == '-':
-            tok_labels += ['1'] * len(chunk)
-        else:
-            pass
-    assert len(tok_labels) == len(s1_toks)
-
-    return tok_labels
 
 
 def clean_wikitext(token_list):    
@@ -220,9 +129,137 @@ def clean_wikitext(token_list):
     return plaintext
 
 
+
+def BLEU(hyp, ref):
+    # get ngram stats
+    stats = []
+    stats.append(len(hyp))
+    stats.append(len(ref))
+    for n in range(1, 5):
+        s_ngrams = Counter(
+            [tuple(hyp[i:i + n]) for i in range(len(hyp) + 1 - n)]
+        )
+        r_ngrams = Counter(
+            [tuple(ref[i:i + n]) for i in range(len(ref) + 1 - n)]
+        )
+        stats.append(max([sum((s_ngrams & r_ngrams).values()), 0]))
+        stats.append(max([len(hyp) + 1 - n, 0]))
+
+    # get bleu from stats
+    if len(list(filter(lambda x: x == 0, stats))) > 0:
+        return 0
+    (c, r) = stats[:2]
+    log_bleu_prec = sum(
+        [math.log(float(x) / y) for x, y in zip(stats[2::2], stats[3::2])]
+    ) / 4.
+    bleu = math.exp(min([0, 1 - float(r) / c]) + log_bleu_prec)
+
+    return 100 * bleu
+
+
+def find_matches(a_list, b_list, delta=5):
+    for i in range(len(a_list)):
+        neighborhood_bleus = [
+            (BLEU(a_list[i].split(), b_list[j].split()), j)
+            for j in range(max(i - delta, 0), min(i + delta, len(b_list) - 1))
+        ]
+        # corner case: len(a_list) >> len(b_list)
+        if not neighborhood_bleus:
+            continue
+        
+        max_bleu, match_idx = max(neighborhood_bleus)
+        
+        yield i, match_idx, max_bleu
+            
+       
+     
+def is_spelling_diff(prev_sent, post_sent):
+    global SPELLCHECKER
+
+    d = diff(word_tokenize(prev_sent), word_tokenize(post_sent))
+
+    # only look at the one-word diffs
+    if sum([len(chunk) for tag, chunk in d if tag == '-']) > 1:
+        return False
+
+    for i, (tag, words) in enumerate(d):
+        # is one-word spelling replacement
+        if tag == '-' and \
+            i+1 < len(d) - 1 and \
+            len(words) == 1 and \
+            d[i+1][0] == '+' and \
+            not SPELLCHECKER.correction(words[0]) == words[0] and \
+            SPELLCHECKER.correction(words[0]) in ' '.join(d[i+1][1]):
+
+            return True
+
+    return False
+
+    
+
+def should_filter(prev_tok, post_tok, prev_raw, post_raw, tok_labels):
+    global CTR_TO_MANY_1_TOK_LABELS
+    global CTR_SPELLING_FIX
+    
+    """ whether we should filter out a sentence pair """
+    # skip near-perfect matches
+    if Levenshtein.distance(prev_tok, post_tok) < 4:
+        return True
+
+    sent_diff = diff_dmp(prev_tok, post_tok)
+    shared_regions = [x for x in sent_diff if x[0] == 0]
+    dif_regions = [x for x in sent_diff if x[0] != 0]
+
+    # skip completely different matches (or, again, completely identical)
+    if not shared_regions or not dif_regions:
+        return True
+
+    # skip matches that are too different (more than half the sentence should be shared)
+    # more than half of toks have to be shared
+    assert len(tok_labels) == len(prev_tok.split())
+    tok_nums = [int(x) for x in tok_labels]
+    if ( sum(tok_nums) * 1.0 / len(tok_nums) ) > 0.5:
+        CTR_TO_MANY_1_TOK_LABELS += 1
+        return True
+
+    # skip matches where only punctuation is shared
+    if not re.findall('\w', ''.join([s for _, s in shared_regions])):
+        return True
+
+    # skip matches that only fixed spelling
+    if is_spelling_diff(prev_raw, post_raw):
+        CTR_SPELLING_FIX += 1
+        return True
+
+    # TODO -- skip matches where diff occurs AFTER length threshold???
+    # ALSO MAX LENGTH THRESHOLD, THROW OUT EXAMPLES WHOSE
+    # DIF IS AFTER MY MAX LENGTH (MAYBE 60 OR SO)
+
+    return False
+
+
+
+def get_tok_labels(s1_toks, s2_toks):
+    s_diff = diff(s1_toks, s2_toks)
+    tok_labels = []
+    for tag, chunk in s_diff:
+        if tag == '=':
+            tok_labels += ['0'] * len(chunk)
+        elif tag == '-':
+            tok_labels += ['1'] * len(chunk)
+        else:
+            pass
+    assert len(tok_labels) == len(s1_toks)
+
+    return tok_labels
+
+def tokenize(s):
+    global TOKENIZER
+    tok_list = TOKENIZER.tokenize(s.strip())
+    return ' '.join(tok_list)
+
 def extract_sents(prev_edit_str, post_edit_str, rev_id):
     global CTR_FILTERED_OUT
-    global CTR_TO_MANY_1_TOK_LABELS
 
     # break up into sentences
     prev_sents = sent_tokenize(prev_edit_str)
@@ -232,29 +269,28 @@ def extract_sents(prev_edit_str, post_edit_str, rev_id):
     posts = [tokenize(s.lower()) for s in post_sents]
 
     for i, j, score in find_matches(prevs, posts):
+        cur_prev = prevs[i]
+        cur_post = posts[j]
+
+        cur_prev_raw = prev_sents[i]
+        cur_post_raw = post_sents[j]
 
         # perfect match = unchanged (no bias)
         if score == 100:
-            if prevs[i] == posts[j]:
+            if cur_prev == cur_post:
                 yield (
-                    rev_id, prevs[i], posts[j], prev_sents[i], post_sents[j],
-                    '0', ' '.join(['0' for _ in range(len(prevs[i].split()))])
+                    rev_id, cur_prev, cur_post, cur_prev_raw, cur_post_raw,
+                    '0', ' '.join(['0' for _ in range(len(cur_prev.split()))])
                 )
 
-        if should_filter(prevs[i], posts[j]):
+        tok_labels = get_tok_labels(cur_prev.strip().split(), cur_post.strip().split())
+
+        if should_filter(cur_prev, cur_post, cur_prev_raw, cur_post_raw, tok_labels):
             CTR_FILTERED_OUT += 1
-            continue
-
-        tok_labels = get_tok_labels(prevs[i].strip().split(), posts[j].strip().split())
-
-        # more than half of toks have to be shared
-        tok_nums = [int(x) for x in tok_labels]
-        if ( sum(tok_nums) * 1.0 / len(tok_nums) ) > 0.5:
-            CTR_TO_MANY_1_TOK_LABELS += 1
             continue
         
         yield (
-            rev_id, prevs[i], posts[j], prev_sents[i], post_sents[j],
+            rev_id, cur_prev, cur_post, cur_prev_raw, cur_post_raw,
             '1', ' '.join(tok_labels)
         )
 
@@ -325,21 +361,24 @@ out_biased = []
 #  out_biased_singleword = []    # TODO???
 out_biased_singletoken = []
 
+out_all = open(out_prefix + '.all', 'w')
+
 for i, example in enumerate(extract_examples(revisions)):
     # rev_id, prev_toks, post_toks, prev_raw, post_raw, sent_label, tok_labels
+    assert len(example) == 7
+
+    example_row = '\t'.join(example).strip().replace('\n', ' ').replace('\r', '') # get rid of newlines??
+
+    out_all.write(example_row + '\n')
+
     if example[-2] == '0':
-        out_unbiased.append(example)
+        out_unbiased.append(example_row)
     else:
-        lenth_ratio = len(example[3]) * 1.0 / len(example[4])
+        length_ratio = len(example[3]) * 1.0 / len(example[4])
 
-        out_biased.append( (lenth_ratio, example) )
+        out_biased.append( (length_ratio, example_row) )
 
-
-print('WRITING...')
-# write unbiased
-with open(out_prefix + '.unbiased', 'w') as f:
-    for ex in out_unbiased:
-        f.write('\t'.join(ex) + '\n')
+out_all.close()
 
 # ratio thresholding
 ratios = [r for r, _ in out_biased]
@@ -347,28 +386,37 @@ N = len(ratios) * 1.0
 mu = np.mean(ratios)
 sd = np.std(ratios)
 
+
+print('WRITING...')
+# write unbiased
+with open(out_prefix + '.unbiased', 'w') as f:
+    for ex in out_unbiased:
+        f.write(ex + '\n')
+
 # write biased
 f = open(out_prefix + '.biased', 'w')
 f_tok = open(out_prefix + '.tokbiased', 'w')
 f_word = open(out_prefix + '.wordbiased', 'w')
 for r, ex in tqdm(out_biased):
-
     if (r < mu - 1.96 * sd) or (r > mu + 1.96 * sd):
         CTR_RATIO_SKIPPED += 1
         continue
 
-    f.write('\t'.join(ex) + '\n')
+    f.write(ex + '\n')
     
+    ex_parts = ex.strip().split('\t')
     # single tok
-    if sum([int(x) for x in ex[-1].split()]) == 1:
-        f_tok.write('\t'.join(ex) + '\n')
+    if sum([int(x) for x in ex_parts[-1].split()]) == 1:
+        f_tok.write(ex + '\n')
+
     # single word
-    if is_single_word_diff(ex[3], ex[4]):
-        f_word.write('\t'.join(ex) + '\n')
+    if is_single_word_diff(ex_parts[3], ex_parts[4]):
+        f_word.write(ex + '\n')
         
             
 f.close()
 f_tok.close()
+f_word.close()
 
 print('counters:')
 print('CTR_MULTIPLE_EDITS', CTR_MULTIPLE_EDITS)
@@ -378,6 +426,7 @@ print('CTR_RATIO_SKIPPED', CTR_RATIO_SKIPPED)
 print('CTR_EMPTY_REV', CTR_EMPTY_REV)
 print('CTR_FILTERED_OUT', CTR_FILTERED_OUT)
 print('CTR_TO_MANY_1_TOK_LABELS', CTR_TO_MANY_1_TOK_LABELS)
+print('CTR_SPELLING_FIX', CTR_SPELLING_FIX)
 
 
 
