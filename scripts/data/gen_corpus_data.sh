@@ -8,7 +8,7 @@ BIASED_CORPUS=$1
 UNBIASED_CORPUS=$2
 OUT_DIR=$3
 VOCAB=$4 # BERT vocab etc
-TEST_SIZE=5000
+TEST_SIZE=2000
 
 mkdir $OUT_DIR
 
@@ -27,18 +27,18 @@ echo "MIXING..."
 cat $OUT_DIR/biased.train $OUT_DIR/unbiased.raw | gshuf > $OUT_DIR/mixed.train
 
 echo "SEPERATING..."
-cat $OUT_DIR/biased.train | cut -f1 > $OUT_DIR/biased.train.pre
-cat $OUT_DIR/biased.train | cut -f2 > $OUT_DIR/biased.train.post
+cat $OUT_DIR/biased.train | cut -f2 > $OUT_DIR/biased.train.pre
+cat $OUT_DIR/biased.train | cut -f3 > $OUT_DIR/biased.train.post
 cat $OUT_DIR/biased.train | cut -f6 > $OUT_DIR/biased.train.seq_labels
 cat $OUT_DIR/biased.train | cut -f7 > $OUT_DIR/biased.train.tok_labels
 
-cat $OUT_DIR/mixed.train | cut -f1 > $OUT_DIR/mixed.train.pre
-cat $OUT_DIR/mixed.train | cut -f2 > $OUT_DIR/mixed.train.post
+cat $OUT_DIR/mixed.train | cut -f2 > $OUT_DIR/mixed.train.pre
+cat $OUT_DIR/mixed.train | cut -f3 > $OUT_DIR/mixed.train.post
 cat $OUT_DIR/mixed.train | cut -f6 > $OUT_DIR/mixed.train.seq_labels
 cat $OUT_DIR/mixed.train | cut -f7 > $OUT_DIR/mixed.train.tok_labels
 
-cat $OUT_DIR/biased.test | cut -f1 > $OUT_DIR/biased.test.pre
-cat $OUT_DIR/biased.test | cut -f2 > $OUT_DIR/biased.test.post
+cat $OUT_DIR/biased.test | cut -f2 > $OUT_DIR/biased.test.pre
+cat $OUT_DIR/biased.test | cut -f3 > $OUT_DIR/biased.test.post
 cat $OUT_DIR/biased.test | cut -f6 > $OUT_DIR/biased.test.seq_labels
 cat $OUT_DIR/biased.test | cut -f7 > $OUT_DIR/biased.test.tok_labels
 
