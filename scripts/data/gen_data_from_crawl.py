@@ -8,10 +8,6 @@ cache_path = sys.argv[2]
 out_prefix = sys.argv[3]
 
 """
-
-# TODO - EXAMPLES THAT ARE JUST FIXING SPELLING
-# inbetween => in between (multi-tok)
-
 import sys
 import os
 import pickle
@@ -41,8 +37,6 @@ out_prefix = sys.argv[3]
 
 BERT_MODEL = "bert-base-uncased"
 TOKENIZER = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=cache_path)
-
-SPELLCHECKER = SpellChecker()
 
 
 CTR_MULTIPLE_EDITS = 0
@@ -170,26 +164,25 @@ def find_matches(a_list, b_list, delta=5):
         max_bleu, match_idx = max(neighborhood_bleus)
         
         yield i, match_idx, max_bleu
-            
+
        
      
 def is_spelling_diff(prev_sent, post_sent):
-    global SPELLCHECKER
-
     d = diff(word_tokenize(prev_sent), word_tokenize(post_sent))
 
     # only look at the one-word diffs
     if sum([len(chunk) for tag, chunk in d if tag == '-']) > 1:
         return False
 
+    sp = SpellChecker()
     for i, (tag, words) in enumerate(d):
         # is one-word spelling replacement
         if tag == '-' and \
             i+1 < len(d) - 1 and \
             len(words) == 1 and \
             d[i+1][0] == '+' and \
-            not SPELLCHECKER.correction(words[0]) == words[0] and \
-            SPELLCHECKER.correction(words[0]) in ' '.join(d[i+1][1]):
+            not sp.correction(words[0]) == words[0] and \
+            sp.correction(words[0]) in ' '.join(d[i+1][1]):
 
             return True
 
@@ -301,7 +294,7 @@ def extract_examples(revisions):
     global CTR_SENT_EXTRACTION_FAILED
     global CTR_EMPTY_REV
 
-    for rev_id in tqdm(revisions): 
+    for rev_id in tqdm(revisions):
         prevs, nexts = revisions[rev_id]
         
         if not prevs or not nexts:
@@ -367,7 +360,8 @@ for i, example in enumerate(extract_examples(revisions)):
     # rev_id, prev_toks, post_toks, prev_raw, post_raw, sent_label, tok_labels
     assert len(example) == 7
 
-    example_row = '\t'.join(example).strip().replace('\n', ' ').replace('\r', '') # get rid of newlines??
+    # no idea how these characters get in but they're in there...so delete them
+    example_row = '\t'.join([x.replace('\t', ' ') for x  in example]).strip().replace('\n', ' ').replace('\r', '')
 
     out_all.write(example_row + '\n')
 
