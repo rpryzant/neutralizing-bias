@@ -1,11 +1,13 @@
-# python build_eval_classifier.py ../../data/pre.train ../../data/post.train ../../data/vocab.20000 /Users/rpryzant/persuasion/data/eval_classifier
+# python build_eval_classifier.py ../../data/v3/full/biased.train.pre ../../data/v3/full/biased.train.post ../../data/v3/full/vocab /Users/rpryzant/persuasion/data/v3/full/eval_classifier
+# python build_eval_classifier.py ../../data/v3/words/biased.train.pre ../../data/v3/words/biased.train.post ../../data/v3/words/vocab /Users/rpryzant/persuasion/data/v3/words/eval_classifier
+
 
 # builds the classifier needed for "classifier eval" metric
 
 import time
 
 import sys
-sys.path.append('../../src/style_transfer_baseline')
+sys.path.append('../../src/generation')
 import data
 import models
 
