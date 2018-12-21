@@ -10,33 +10,44 @@
     "bleu_start_epoch": 0
   },
   "data": {
-    "src": "test_data/pre.train",
-    "tgt": "test_data/post.train",
-    "src_test": "test_data/pre.test",
-    "tgt_test": "test_data/post.test",
-    "src_vocab": "test_data/vocab.16k",
-    "tgt_vocab": "test_data/vocab.16k",
+    "src": "../../data/v2/pre.biased.train",
+    "tgt": "../../data/v2/post.biased.train",
+    "src_test": "../../data/v2/pre.biased.test",
+    "tgt_test": "../../data/v2/post.biased.test",
+    "src_vocab": "../../data/v2/vocab.24000",
+    "tgt_vocab": "../../data/v2/vocab.24000",
     "share_vocab": true,
-    "attribute_vocab": "test_data/attribute_vocab",
-    "batch_size": 20,
+    "attribute_vocab": "../../data/v2/vocab.attribute",
+    "batch_size": 128,
     "max_len": 50,
     "working_dir": "sample_run"
   },
     "model": {
-        "model_type": "delete_retrieve",
-        "emb_dim": 32,
-        "attention": false,
+        "model_type": "seq2seq",
+        "emb_dim": 16,
+        "attention": true,
         "encoder": "lstm",
-        "src_hidden_dim": 64,
+        "src_hidden_dim": 16,
         "src_layers": 1,
         "bidirectional": true,
-        "tgt_hidden_dim": 64,
+        "tgt_hidden_dim": 16,
         "tgt_layers": 1,
         "decode": "greedy",
         "dropout": 0.2
     },
     "eval": {
         "precision_recall_k": 10,
-        "classifier_path": "test_data/eval_classifier"
+        "classifier_path": "../../data/v2/eval_classifier"
+    },
+    "experimental": {
+        "use_diff": false,
+        "diff_ignore_test_attribute_rule": false,
+        "force_tgt_outputs": false,
+        "predict_sides": false,
+        "n_side_outputs": 2,
+        "side_attn_type": "bahdanau",
+        "add_side_embeddings": false,
+        "side_embedding_teacher_force": false,
+        "side_loss_multiplyer": 10.0
     }
 }

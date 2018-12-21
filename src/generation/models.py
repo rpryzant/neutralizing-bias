@@ -17,6 +17,8 @@ import ops
 
 from cuda import CUDA
 
+from simplediff import diff
+
 
 def get_latest_ckpt(ckpt_dir):
     ckpts = glob.glob(os.path.join(ckpt_dir, '*.ckpt'))

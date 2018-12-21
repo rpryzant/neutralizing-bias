@@ -7,6 +7,10 @@ pickle_path = sys.argv[1]
 cache_path = sys.argv[2]
 out_prefix = sys.argv[3]
 
+
+TODO REMAKDE DATA FROM THE BEGINNING, MAKE SURE TAGS ARE GETTING IN THERE SO YOU CAN DELETE THEM,
+        THEN FIDDLE WITH THE LENGTH THRESHOLD!!
+
 """
 import sys
 import os
@@ -16,13 +20,13 @@ import random
 import mwparserfromhell
 import re
 from nltk import sent_tokenize, word_tokenize
-import diff_match_patch as dmp_module
 import Levenshtein
 import numpy as np
 from collections import Counter
 import math
 from tqdm import tqdm
 
+from nltk import sent_tokenize, word_tokenize
 
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from simplediff import diff
@@ -50,8 +54,6 @@ BERT_MODEL = "bert-base-uncased"
 TOKENIZER = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=cache_path)
 
 
-from nltk import sent_tokenize, word_tokenize
-
 
 
 
@@ -59,11 +61,9 @@ from nltk import sent_tokenize, word_tokenize
 
 def clean_wikitext(token_list):    
     x = ' '.join(token_list)
-    # fix tags
-    x = x.replace('< ', '<')
-    x = x.replace('</ ', '</')
-    x = x.replace(' >', '>')
-    x = x.replace(' />', '/>')
+
+    # preemptively delete <ref>'s, etc from source to avoid "p. 34" type stuff from getting in
+    x = re.sub('<[\w=" ]+>.*?<\/\w+>', ' ', x)
 
     parse = mwparserfromhell.parse(x)
     plaintext = parse.strip_code()
@@ -161,7 +161,7 @@ def sent_generator(revisions):
 
     for rev_id in tqdm(revisions):
         prevs, posts = revisions[rev_id]
-        
+
         # empty revision
         if not prevs or not posts:
             CTR_EMPTY_REV += 1
@@ -313,7 +313,7 @@ for pre_post_bleu_id in sent_generator(revisions):
     })
 
 # ratio thresholding
-ratios = [x['length_ratio'] for x in out]
+ratios = [x['length_ratio'] for x in out if out['is_word_edit'] is not None]
 N = len(ratios) * 1.0 
 mu = np.mean(ratios)
 sd = np.std(ratios)
@@ -324,6 +324,7 @@ print('WRITING...')
 f_unbiased = open(out_prefix + '.unbiased', 'w')
 f_biased = open(out_prefix + '.biased', 'w')
 f_word = open(out_prefix + '.wordbiased', 'w')
+f_length_skipped = open(out_prefix + '.biased_ratioskipped', 'w')
 
 for ex in out:
     if ex['is_word_edit'] is None:
@@ -332,7 +333,8 @@ for ex in out:
 
     # ratio skip
     r = ex['length_ratio']
-    if (r < mu - 1.96 * sd) or (r > mu + 1.96 * sd):
+    if (r < mu - 2.0 * sd) or (r > mu + 2.0 * sd):
+        f_length_skipped.write(ex['out_row'] + '\n')
         CTR_LENGTH_RATIO += 1
         continue
 
@@ -346,6 +348,7 @@ for ex in out:
 f_unbiased.close()
 f_biased.close()
 f_word.close()
+f_length_skipped.close()
 
 print('ctrs:')
 

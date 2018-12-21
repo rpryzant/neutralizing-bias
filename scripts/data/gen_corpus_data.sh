@@ -1,7 +1,7 @@
 # generate train/test splits from gen_data_from_crawl.py outputs
 
-# sh gen_corpus_data.sh ../../data/v3/raw/OUT.biased ../../data/v3/raw/OUT.unbiased ../../data/v3/full ../../data/v3/raw/vocab.bert
-# sh gen_corpus_data.sh ../../data/v3/raw/OUT.wordbiased ../../data/v3/raw/OUT.unbiased ../../data/v3/words ../../data/v3/raw/vocab.bert
+# sh gen_corpus_data.sh ../../data/v3/raw/OUT.biased ../../data/v3/raw/OUT.unbiased_for_full_mix ../../data/v3/full ../../data/v3/raw/vocab.bert
+# sh gen_corpus_data.sh ../../data/v3/raw/OUT.wordbiased ../../data/v3/raw/OUT.unbiased_for_word_mix ../../data/v3/words ../../data/v3/raw/vocab.bert
 
 
 BIASED_CORPUS=$1

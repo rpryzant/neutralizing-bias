@@ -99,25 +99,19 @@ def extract_attributes(line, attribute_vocab):
     return content, attribute
 
 def split_with_diff(src_lines, tgt_lines):
-    def diff(s1, s2):
-        dmp = dmp_module.diff_match_patch()
-        d = dmp.diff_main(s1, s2)
-        dmp.diff_cleanupSemantic(d)
-        return d
-
     content = []
     src_attr = []
     tgt_attr = []
 
     for src, tgt in zip(src_lines, tgt_lines):
-        sent_diff = diff(' '.join(src), ' '.join(tgt))
+        sent_diff = diff(src, tgt)
         tok_collector = defaultdict(list)
         for source, chunk in sent_diff:
-            tok_collector[source] += chunk.strip().split()
+            tok_collector[source] += chunk
 
-        content.append(tok_collector[0][:])
-        src_attr.append(tok_collector[-1][:])
-        tgt_attr.append(tok_collector[1][:])
+        content.append(tok_collector['='][:])
+        src_attr.append(tok_collector['-'][:])
+        tgt_attr.append(tok_collector['+'][:])
 
     return content[:], content[:], src_attr, tgt_attr
         
@@ -147,14 +141,12 @@ def get_side_info(src_lines, tgt_lines):
 def read_nmt_data(src, config, tgt, train_src=None, train_tgt=None):
     # 1) read data and split into content/attribute
     src_lines = [l.strip().split() for l in open(src, 'r')]
-    tgt_lines = [l.strip().split() for l in open(tgt, 'r')] if tgt else None
+    tgt_lines = [l.strip().split() for l in open(tgt, 'r')]
 
     use_diff = config['experimental']['use_diff']
     # use attr vocab at test time if use_diff (we don't have the diffs at test time)
-    # TODO -- smarter way to do this? 
-        # if use_diff and (config['experimental']['ignore_test'] or (train_src is not None and train_tgt is not None)):
     if use_diff and (
-            config['experimental']['ignore_test'] or
+            config['experimental']['diff_ignore_test_attribute_rule'] or
             (not train_src and not train_tgt)):
         src_content, tgt_content, src_attribute, tgt_attribute =\
             split_with_diff(src_lines, tgt_lines)
