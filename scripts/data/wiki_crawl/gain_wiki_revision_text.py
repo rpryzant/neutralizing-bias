@@ -7,16 +7,9 @@ import string, pickle, os
 from nltk.tokenize import regexp_tokenize, wordpunct_tokenize, blankline_tokenize
 from tqdm import tqdm
 from util import *
-
 import mwparserfromhell
 
 in_file = sys.argv[1]
-out_file = sys.argv[2]
-
-
-printable = set(string.printable)
-
-csv.field_size_limit(sys.maxsize)
 
 # special characters
 separator = 0
@@ -35,7 +28,6 @@ class bcolors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
-
 
 
 def print_withcolor(idx, l):
@@ -101,9 +93,9 @@ def url2diff(url):
 
 
 def wiki_text_clean(text):
-    text_ = ''.join(filter(lambda x:x in string.printable, text)).encode('utf-8')
-    text_ = text_.replace('\n', ' ').replace('\t', ' ')
-    return text_
+    text = ''.join([x for x in text if x in string.printable])
+    text = text.replace('\n', ' ').replace('\t', ' ')
+    return text
 
 def gen_revisions(rev_ids):
     rev_size = len(rev_ids)
@@ -117,7 +109,7 @@ def gen_revisions(rev_ids):
         prevs_, nexts_ = url2diff(url)
 
         if len(prevs_) != len(nexts_):
-            print('ERROR: corpus sizes not equal!')
+            print('ERROR: corpus sizes not equal!', file=sys.stderr)
             continue
 
         prevs, nexts = [], []
@@ -127,34 +119,26 @@ def gen_revisions(rev_ids):
             nexts.append( wiki_text_clean(post) )
 
         if len(prevs) > 0 and len(nexts) > 0:
-            print('...success!')
+            print('...success!', file=sys.stderr)
             success += 1
             yield rev_id, prevs, nexts
 
-    print('failures: ', rev_size - success)
+    print('failures: ', rev_size - success, file=sys.stderr)
 
     return out
 
 
 def go(filename):
-    # rev_id    rev_comment    rev_timestamp
     with open(filename, 'r') as f:
-        data = list(csv.reader(f, delimiter='\t'))
-
-    out = open(out_file, 'w')
-    rev_ids = [r[0] for r in data]
+        rev_ids = [l.split('\t')[0] for l in f]
 
     for rev_id, prevs, nexts in gen_revisions(rev_ids):
-        out.write('\t'.join(
+        print('\t'.join([
             rev_id, 
             '<EDIT-DELIM>'.join(prevs),
             '<EDIT-DELIM>'.join(nexts)
-        ) + '\n')
+        ]) + '\n')
 
 
 if __name__ == '__main__':
     go(in_file)
-
-
-
-
