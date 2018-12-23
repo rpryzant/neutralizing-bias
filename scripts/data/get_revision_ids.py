@@ -26,6 +26,8 @@ class Revision():
         if 'reverted' in c_lower or 'undid' in c_lower:
             return False
         if 'pov' in c_lower or 'npov' in c_lower or 'neutral' in c_lower:
+            if 'pover' in c_lower: # special case: "poverty", "impovershiment", etc
+                return False
             return True
         return False
 
@@ -51,7 +53,7 @@ for line in tqdm(open(wiki_xml_path), total=11325433847):
     elif '<id>' in line and cur_rev.revid is None:  # avoid comment id
             cur_rev.revid = re.sub('</?[\w]+>', '', line)
     elif '<comment>' in line:
-        cur_rev.comment = re.sub('</?[\w]+>', '', line)
+        cur_rev.comment = re.sub('</?[\w]+>', '', line).replace('\n', ' ').replace('\t', ' ').replace('\r', ' ')
     elif '<timestamp>' in line:
         cur_rev.timestamp = re.sub('</?[\w]+>', '', line)
 
