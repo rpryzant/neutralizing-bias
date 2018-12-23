@@ -1,6 +1,7 @@
 # FROM HINOKI!
 # python get_revision_ids.py /data/rpryzant/wiki/enwiki-20181120-stub-meta-history.xml
 
+
 import sys
 import xml.etree.cElementTree as ET
 from tqdm import tqdm
@@ -37,7 +38,7 @@ for line in tqdm(open(wiki_xml_path), total=11325433847):
     line = line.strip()
     if line == '<page>':
         page_skip = False
-    if "<title>User:>" in line or "<title>Talk:" in line: 
+    if "<title>>" in line and ('user:' in line.lower() or 'talk:' in line.lower()): 
         page_skip = True
     if page_skip:
         continue

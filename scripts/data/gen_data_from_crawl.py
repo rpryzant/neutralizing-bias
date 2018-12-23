@@ -8,8 +8,29 @@ cache_path = sys.argv[2]
 out_prefix = sys.argv[3]
 
 
+ONLY TAKE REVISIONS WITH 1 CHANGED SENTENCE?
+
 TODO REMAKDE DATA FROM THE BEGINNING, MAKE SURE TAGS ARE GETTING IN THERE SO YOU CAN DELETE THEM,
         THEN FIDDLE WITH THE LENGTH THRESHOLD!!
+
+# IGNORE IF ONLY URL IS CHANGED, E.G. https://en.wikipedia.org/w/index.php?diff=9779941 (before sent tokenization)
+
+# BETTER URL STRIPPING: http://lcweb2.loc.gov/cgi-bin/query/r?frd/cstdy:@field(DOCID+iq0023
+    use "http\S+" ??
+
+[ http : / / www .
+( ch : 21 , ve ##r : 104
+[ http : / / www . alter ##net .
+jericho ( arabic , ar ; standard y ##rio ti ##ber ##ian y ##r / y ##r ; meaning " fra ##grant " . strong ' s bible dictionary greek ' ' ' ' ' ' ) is a town in [ [ palestine ] ] , located within the jericho governorate , near the jordan river .
+the azerbaijani ##s ( ; , ) are a [ [ turkic peoples | turkic people ] ] 
+col ##sp ##an = 2 | congress body ! !
+
+4 , 09 ##3 killed ##alla ##fr ##ica more than 1 , 700 killed in clashes in 2009 , 1 january 2010 ##iri ##n africa accusations traded over rising casualties at mo ##ga ##dis ##hu market , 2 december 2010 - 6 , 310 < br >
+4 , 09 ##3 killed ##alla ##fr ##ica more than 1 , 700 killed in clashes in 2009 , 1 january 2010 ##iri ##n africa accusations traded over rising casualties at mo ##ga ##dis ##hu market , 2 december 2010 - 6 , 310 < < ins class = " di ##ff ##chang ##e di ##ff ##chang ##e - inline
+    ===> REMOVE ALL <TAGS> and <BR> and <INCOMPLETE TAGS
+
+
+
 
 """
 import sys
