@@ -19,7 +19,7 @@ class Revision():
         self.timestamp = None        
 
     def incomplete(self):
-        return not self.revid or not self.comment or not self.timestamp 
+        return not self.revid or not self.comment or not self.timestamp
 
     def is_admissible(self):
         c_lower = self.comment.lower()
@@ -40,7 +40,7 @@ for line in tqdm(open(wiki_xml_path), total=11325433847):
     line = line.strip()
     if line == '<page>':
         page_skip = False
-    if "<title>>" in line and ('user:' in line.lower() or 'talk:' in line.lower()): 
+    if "<title>" in line and ('user:' in line.lower() or 'talk:' in line.lower()): 
         page_skip = True
     if page_skip:
         continue
