@@ -10,7 +10,7 @@ import torch
 from torch.autograd import Variable
 
 from cuda import CUDA
-
+from simplediff import diff
 # global dicts for seq info stuff...
 # TODO -- do this smarter
 INFO2ID = {
@@ -119,7 +119,7 @@ def split_with_diff(src_lines, tgt_lines):
 def get_side_info(src_lines, tgt_lines):
     out = []
     for src, tgt in zip(src_lines, tgt_lines):
-        if set(src) == set(tgt):
+        if ' '.join(src) == ' '.join(tgt):
             out.append(['unbiased'])
         else:
             out.append(['biased'])

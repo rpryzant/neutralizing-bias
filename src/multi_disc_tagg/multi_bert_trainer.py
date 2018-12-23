@@ -25,20 +25,24 @@ import sklearn.metrics as metrics
 import modeling
 
 
-data_prefix = sys.argv[1]
-mode = sys.argv[2]
-working_dir = sys.argv[3]
+train_data_prefix = sys.argv[1]
+test_data_prefix = sys.argv[2]
+mode = sys.argv[3]
+working_dir = sys.argv[4]
+if not os.path.exists(working_dir):
+    os.makedirs(working_dir)
+
 
 assert mode in ['multi_always', 'multi_targeted', 'classification', 'tagging_always', 'tagging_targeted']
 
 
-TRAIN_TEXT = data_prefix + '/text.train'
-TRAIN_TOK_LABELS = data_prefix + '/tok_labels.train'
-TRAIN_BIAS_LABELS = data_prefix + '/bias_labels.train'
+TRAIN_TEXT = train_data_prefix + '.train.pre'
+TRAIN_TOK_LABELS = train_data_prefix + '.train.tok_labels'
+TRAIN_BIAS_LABELS = train_data_prefix + '.train.seq_labels'
 
-TEST_TEXT = data_prefix + '/text.test'
-TEST_TOK_LABELS = data_prefix + '/tok_labels.test'
-TEST_BIAS_LABELS = data_prefix + '/bias_labels.test'
+TEST_TEXT = test_data_prefix + '.test.pre'
+TEST_TOK_LABELS = test_data_prefix + '.test.tok_labels'
+TEST_BIAS_LABELS = test_data_prefix + '.test.seq_labels'
 
 WORKING_DIR = working_dir
 
@@ -78,7 +82,9 @@ def get_examples(text_path, tok_labels_path, bias_labels_path, tokenizer, possib
         tokens = line.strip().split() # Pre-tokenized
         tok_labels = tok_labels.strip().split()
 
-        assert len(tokens) == len(tok_labels)
+        if len(tokens) != len(tok_labels):
+            skipped += 1
+            continue
 
         # account for [CLS] and [SEP]
         if len(tokens) > max_seq_len - 2:
