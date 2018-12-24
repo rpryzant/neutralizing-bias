@@ -18,20 +18,11 @@ TODO REMAKDE DATA FROM THE BEGINNING, MAKE SURE TAGS ARE GETTING IN THERE SO YOU
 # BETTER URL STRIPPING: http://lcweb2.loc.gov/cgi-bin/query/r?frd/cstdy:@field(DOCID+iq0023
     use "http\S+" ??
 
-[ http : / / www .
-( ch : 21 , ve ##r : 104
-[ http : / / www . alter ##net .
-jericho ( arabic , ar ; standard y ##rio ti ##ber ##ian y ##r / y ##r ; meaning " fra ##grant " . strong ' s bible dictionary greek ' ' ' ' ' ' ) is a town in [ [ palestine ] ] , located within the jericho governorate , near the jordan river .
-the azerbaijani ##s ( ; , ) are a [ [ turkic peoples | turkic people ] ] 
-col ##sp ##an = 2 | congress body ! !
 
-4 , 09 ##3 killed ##alla ##fr ##ica more than 1 , 700 killed in clashes in 2009 , 1 january 2010 ##iri ##n africa accusations traded over rising casualties at mo ##ga ##dis ##hu market , 2 december 2010 - 6 , 310 < br >
-4 , 09 ##3 killed ##alla ##fr ##ica more than 1 , 700 killed in clashes in 2009 , 1 january 2010 ##iri ##n africa accusations traded over rising casualties at mo ##ga ##dis ##hu market , 2 december 2010 - 6 , 310 < < ins class = " di ##ff ##chang ##e di ##ff ##chang ##e - inline
-    ===> REMOVE ALL <TAGS> and <BR> and <INCOMPLETE TAGS
 
-URL STUFF LIKE these
-118482450   | image name=  <del class="diffchange diffchange-inline">   Joe_McCarthy.JPG  </del>  |  <del class="diffchange diffchange-inline">   220px  </del><EDIT-DELIM>''' Joseph Raymond McCarthy''' ([[November 14]], [[1908]]  [[May 2]], [[1957]]) was a [[Republican Party (United States)|Republican]] [[United States Senate|U.S. Senator]] from the state of [[Wisconsin]] between 1947 and 1957. Beginning in 1950, McCarthy became the most visible public face of a period of extreme [[anti-communism|anti-communist]] suspicion inspired by the  <del class="diffchange diffchange-inline">   later proven presence  </del>  of  <del class="diffchange diffchange-inline">   Soviet spies placed in high ranking government positions in  </del>  the  <del class="diffchange diffchange-inline">   United  </del>  <del class="diffchange diffchange-inline">   States  </del>  . He was noted for making  <del class="diffchange diffchange-inline">   substantiated  </del>  claims that there were large numbers of  <del class="diffchange diffchange-inline">   members of the American  </del>  Communist  <del class="diffchange diffchange-inline">   Party  </del>  and [[Soviet Union|Soviet]] spies and sympathizers inside the federal government  <del class="diffchange diffchange-inline">   . These claims were later substantiated by the findings of the top secret Vernona Project conducted by military intelligence. The purpose of the project was to decrypt the U.S.S.R.'s encrypted cables sent to their spies  </del>  . Ultimately, his tactics  <del class="diffchange diffchange-inline">   were so affective that they  </del>  led to  <del class="diffchange diffchange-inline">   the wide disaproval of the liberal media although  </del>  his  <del class="diffchange diffchange-inline">   popularity  </del>  <del class="diffchange diffchange-inline">   rating was still strong  </del>  and  <del class="diffchange diffchange-inline">   he was widely supported  </del>  by  <del class="diffchange diffchange-inline">   J.  </del>  <del class="diffchange diffchange-inline">   Edgar  </del>  <del class="diffchange diffchange-inline">   Hoover and all US citizens who loved their  </del>  <del class="diffchange diffchange-inline">   country  </del>  . The term "[[McCarthyism]]," coined in 1950 in reference to McCarthy's practices, was soon applied to similar anti-communist pursuits. Today the term is used more generally to describe demagogic, reckless, and unsubstantiated accusations, as well as public attacks on the character or patriotism of political opponents.  <del class="diffchange diffchange-inline">   This is what he was advertised as by the communist media and members of the American Communist Party. It it also noteworthy that the Vernona Projects findings have determined that not only were there 57 Soviet agents, nor a mere 205 Soviet agents but over 300 Soviet agents in high level government positions. One of these agents namedly Alger Hiss advised President Franklin D. Roosevelt at the treaty of Yalta where F.D.R notoriosly gave Poland over to the Soviet Union. The full extent of the massive damage that was incurred by just this one agent is still not fully known, much less the damage caused by over 300 Soviet spies. Thanks to Julius and Ethyl Rosenberg Stalin found out about the existence of the atomic bomb before President Truman did.  </del><EDIT-DELIM>Born and raised on a Wisconsin farm, McCarthy earned a law degree at [[Marquette University]] in 1935 and was elected as a [[Circuit (subnational entity)|circuit]] judge in 1939, the youngest in state history.<EDIT-DELIM>** [  <del class="diffchange diffchange-inline">   http://web.archive.org/web/20051102065730/  </del>  http://www.thenewamerican.com/tna/2003/06-16-2003/vo19no12_witches.htm McCarthy's "Witches']<EDIT-DELIM>**[http://www.  <del class="diffchange diffchange-inline">   jbs  </del>  .  <del class="diffchange diffchange-inline">   org  </del>  /  <del class="diffchange diffchange-inline">   node  </del>  /  <del class="diffchange diffchange-inline">   632  </del>  The Real McCarthy Record] | image name=  <ins class="diffchange diffchange-inline">   Joseph  </ins>  <ins class="diffchange diffchange-inline">   McCarthy.jpg  </ins>  |  <ins class="diffchange diffchange-inline">   200px  </ins><EDIT-DELIM>''' Joseph Raymond McCarthy''' ([[November 14]], [[1908]]  [[May 2]], [[1957]]) was a [[Republican Party (United States)|Republican]] [[United States Senate|U.S. Senator]] from the state of [[Wisconsin]] between 1947 and 1957. Beginning in 1950, McCarthy became the most visible public face of a period of extreme [[anti-communism|anti-communist]] suspicion inspired by the  <ins class="diffchange diffchange-inline">   tensions  </ins>  of the  <ins class="diffchange diffchange-inline">   [[Cold  </ins>  <ins class="diffchange diffchange-inline">   War]]  </ins>  . He was noted for making  <ins class="diffchange diffchange-inline">   unsubstantiated  </ins>  claims that there were large numbers of  <ins class="diffchange diffchange-inline">   [[  </ins>  Communist  <ins class="diffchange diffchange-inline">   party|Communists]]  </ins>  and [[Soviet Union|Soviet]] spies and sympathizers inside the federal government. Ultimately, his tactics led to his  <ins class="diffchange diffchange-inline">   being  </ins>  <ins class="diffchange diffchange-inline">   discredited  </ins>  and  <ins class="diffchange diffchange-inline">   censured  </ins>  by  <ins class="diffchange diffchange-inline">   the  </ins>  <ins class="diffchange diffchange-inline">   United  </ins>  <ins class="diffchange diffchange-inline">   States  </ins>  <ins class="diffchange diffchange-inline">   Senate  </ins>  . The term "[[McCarthyism]]," coined in 1950 in reference to McCarthy's practices, was soon applied to similar anti-communist pursuits. Today the term is used more generally to describe demagogic, reckless, and unsubstantiated accusations, as well as public attacks on the character or patriotism of political opponents.  <ins class="diffchange diffchange-inline">   <ref>  </ins><EDIT-DELIM>Born and raised on a Wisconsin farm, McCarthy earned a law degree at [[Marquette University]] in 1935 and was elected as a [[Circuit (subnational entity)|circuit]] judge in 1939, the youngest in state history.  <ins class="diffchange diffchange-inline">   <ref>  </ins><EDIT-DELIM>** [http://www.thenewamerican.com/tna/2003/06-16-2003/vo19no12_witches.htm McCarthy's "Witches']<EDIT-DELIM>**[http://www.  <ins class="diffchange diffchange-inline">   thenewamerican  </ins>  .  <ins class="diffchange diffchange-inline">   com  </ins>  /  <ins class="diffchange diffchange-inline">   tna  </ins>  /  <ins class="diffchange diffchange-inline">   1996/vo12no18/vo12no18_mccarthy.htm  </ins>  The Real McCarthy Record]
-<ref>http://ap.google  </ins>  .  <ins class="diffchange diffchange-inline">   com/article/ALeqM5hRq5w8y3umhKx7G6U--ibphSlGxgD916R7200</ref>
+the british isles are a group of islands off the northwest coast of continental europe consisting of great britain, ireland, and a number of smaller surrounding islands and islets. "british isles," encyclopaedia britannica. the term "british isles" can be confusing ( see british isles (terminology) ) and is objectionable to some people in ireland.<ref name="myers"> an irishman's diary myers , <del class="diffchange diffchange-inline"> kevin; the irish times (subscription needed) 09/03/2000, accessed july 2006 'millions of people from these islands - oh how angry we get when people call them the british isles' </ref> see </del> the terminology section below for details of the controversy .''
+although there is sparse knowledge about the avar language, scholars generally posit that the extinct language of the eurasian avars belonged to the subgroup ,price, glanville. encyclopedia of the languages of europe (2000) p 68.marcantonio, angela. the uralic language family (2002) p 24.rna-tas, andrs. hungarians and europe in the early middle ages (1999) p 116. and the language itself is referred to as ''' turkic avar''' in order to distinguish it from the spoken by the modern .<ref>e. j. '''' (2002) p <del class="diffchange diffchange-inline"> 127.</ref><ref>for </del> references on the classification of turkic avar , see the main article <del class="diffchange diffchange-inline"> on oghur languages.</ref> based on the reports </del> of , a greek historian, some scholars affirm a linguistic connection between the terms hungarus and onogur . angela marcantonio, the uralic language family: facts, myths and statistics, wiley-blackwell, 2002, p . <del class="diffchange diffchange-inline"> 24 </del> however, it is generally accepted that at least the leading stratum of the avars spoke a chuvash-type turkic language.<ref>andrs rna-tas, hungarians and europe in the early middle ages , central european university press, 1999, pp.115 </ref>
+hubbard coined the name dianetics from the greek stems dia, meaning "through," and nous, meaning "mind," resulting in a word similar to the already-existing greek adjective dianotik-os -, meaning "mental" . the suffix "-etics" appears to have been inspired by cybernetics , a vogue idea at the time ( indeed, hubbard explicitly made this connection in a 1949 magazine article <ref> hubbard, "terra incognita: the mind", the explorers journal, winter 1949 / spring 1950 < / ref>) .
 
 
 """
@@ -58,7 +49,7 @@ from autocorrect import spell
 
 
 
-pickle_path = sys.argv[1]
+crawl_path = sys.argv[1]
 cache_path = sys.argv[2]
 out_prefix = sys.argv[3]
 
@@ -80,51 +71,69 @@ TOKENIZER = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=cache_path)
 
 
 
-
-
+def rm_refs(x):
+    REF_RE = '<ref([-\w=" <>]+)?>.*?<([ ]+)?\/([ ]+)?ref>'
+    x = re.sub(REF_RE, ' ', x)
+    # leading </ref>
+    if '</ref>' in x:
+        x = re.sub(REF_RE, ' ', '<ref>' + x)
+    # trailing <ref>
+    if '<ref' in x:
+        x = re.sub(REF_RE, ' ', x + '</ref>')
+    return x
+    
 def clean_wikitext(token_list):    
     x = ' '.join(token_list)
 
-    # preemptively delete <ref>'s, etc from source to avoid "p. 34" type stuff from getting in
-    x = re.sub('<[\w=" ]+>.*?<\/\w+>', ' ', x)
+    # preemptively remove <ref>'s (including uncompleted)
+    x = x.strip()
+    x = rm_refs(x)
+    # collapse multispaces
+    x = re.sub('[ ]+', ' ', x)
 
     parse = mwparserfromhell.parse(x)
     plaintext = parse.strip_code()
-    
-    # rm [[text]] and [text]
-    plaintext = re.sub('\[?\[.*?\]\]?', '', plaintext)
-    # rm {{text}} and {text}
-    plaintext = re.sub('\{?\{.*?\}\}?', '', plaintext)
-    # collapse multispaces 
+    plaintext = rm_refs(plaintext) # get refs again? some things missed
+    # collapse multispaces
     plaintext = re.sub('[ ]+', ' ', plaintext)
-    # remove urls
-    plaintext = re.sub('(?P<url>https?://[^\\s]+)', '', plaintext)
-    # remove wiki headings (sometimes mwparserfromhell misses these)
-    plaintext = re.sub('==(.*)?==', '', plaintext)
-    # remove leftover table bits
-    plaintext = re.sub('\|?thumb( )?\|(.*)?(right|left)( )?(\|?)', '', plaintext)
-    plaintext = plaintext.replace('thumb|', '')
-    # empty parens
-    plaintext = plaintext.replace('()', '')
-    # ignore timestamp sentences
-    if 'retrieved on' in plaintext.lower():
+    # parse again to hit complicatd nested wikicode like 21055249
+    parse = mwparserfromhell.parse(plaintext)
+    plaintext = parse.strip_code()
+
+    # ignore lines starting with ! or | (likely table artifacts)
+    if plaintext.startswith('?') or plaintext.startswith('|'):
         plaintext = ''
+
+    # ignore lines without text, e.g. ( , , , , ) or ]]
+    if not re.findall('\w', plaintext):
+        plaintext = ''
+
+    # parse AGAIN again to hit remaining links e.g. 377258469
+    plaintext = plaintext.replace('[ ', '[').replace(' ]', ']')
+    parse = mwparserfromhell.parse(plaintext)
+    plaintext = parse.strip_code()
+    # at this point just rm all brackets
+    plaintext = plaintext.replace(']', '').replace('[', '')
+    # rm html
+    plaintext = re.sub('http\S+', '', plaintext)
+    # rm parents with nothing in them, e.g. (; )
+    plaintext = re.sub('\([^\w]*\)', '', plaintext)
+    # rm remining <del>, <ins> (valid tags should already have been taken parsed)
+    plaintext = re.sub('<\/?(del|ins)([-\w=" <>]+)?>', '', plaintext)
     # fuck stars
     plaintext = plaintext.replace('*', '')
-
-    # ignore lines without text, e.g. ( , , , , )
-    if not re.findall('\w', ''.join(plaintext)):
-        plaintext = ''
-
-    # rm examples starting with ! or | 
-    plaintext = plaintext.strip()
-    if plaintext.startswith('?') or plaintext.startswith('|'):
+    # rm table fragments
+    plaintext = re.sub('(right[ ]?\||thumb[ ]?\||frame[ ]?\||\d+px[ ]?\|)', '', plaintext)
+    # ignore timestamp sentences
+    if 'retrieved on' in plaintext.lower():
         plaintext = ''
 
     # remove tabs and newlines (those is our deliminators beeyotch)
     plaintext.replace('\t', ' ')
     plaintext.replace('\n', ' ')
     plaintext.replace('\r', '')
+    # collapse multispaces (again again)
+    plaintext = re.sub('[ ]+', ' ', plaintext).strip()
 
     return plaintext
 
@@ -201,9 +210,12 @@ def sent_generator(revisions):
             CTR_MULTIPLE_EDITS += 1
             continue
             
+        # print(prevs)
         prev_text = clean_wikitext(prevs).lower()
         post_text = clean_wikitext(posts).lower()
-
+        print(prev_text)
+        print(post_text)
+        print()
         # failed cleaning
         if not prev_text or not post_text:
             CTR_FAILED_CLEANING += 1
@@ -296,13 +308,15 @@ def should_keep(prev_raw, prev_tok, post_raw, post_tok, bleu, rev_id):
 print('LOADING PICKLE...')
 
 # revisions = pickle.load(open(pickle_path, 'rb'))
-bytes_in = bytearray(0)
-max_bytes = 2**31 - 1
-input_size = os.path.getsize(pickle_path)
-with open(pickle_path, 'rb') as f_in:
-    for _ in range(0, input_size, max_bytes):
-        bytes_in += f_in.read(max_bytes)
-revisions = pickle.loads(bytes_in)
+# bytes_in = bytearray(0)
+# max_bytes = 2**31 - 1
+# input_size = os.path.getsize(pickle_path)
+# with open(pickle_path, 'rb') as f_in:
+#     for _ in range(0, input_size, max_bytes):
+#         bytes_in += f_in.read(max_bytes)
+# revisions = pickle.loads(bytes_in)
+
+revisions = {l.split('\t')[0]: [x.split('<EDIT-DELIM>') for x in l.split('\t')[1:]] for l in open(crawl_path) if len(l.split('\t')) == 3}
 
 print('EXTRACTING EXAMPLES...')
 
