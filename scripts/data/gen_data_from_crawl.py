@@ -8,21 +8,13 @@ cache_path = sys.argv[2]
 out_prefix = sys.argv[3]
 
 
-ONLY TAKE REVISIONS WITH 1 CHANGED SENTENCE?
+TODO
 
-TODO REMAKDE DATA FROM THE BEGINNING, MAKE SURE TAGS ARE GETTING IN THERE SO YOU CAN DELETE THEM,
-        THEN FIDDLE WITH THE LENGTH THRESHOLD!!
+https://en.wikipedia.org/w/index.php?diff=234761149
 
-# IGNORE IF ONLY URL IS CHANGED, E.G. https://en.wikipedia.org/w/index.php?diff=9779941 (before sent tokenization)
+UNCLOSED PARENS LIKE THIS
+glasnevin, castleknock and blanchardstown) finglas has benefitted greatly from the celtic tiger.
 
-# BETTER URL STRIPPING: http://lcweb2.loc.gov/cgi-bin/query/r?frd/cstdy:@field(DOCID+iq0023
-    use "http\S+" ??
-
-
-
-the british isles are a group of islands off the northwest coast of continental europe consisting of great britain, ireland, and a number of smaller surrounding islands and islets. "british isles," encyclopaedia britannica. the term "british isles" can be confusing ( see british isles (terminology) ) and is objectionable to some people in ireland.<ref name="myers"> an irishman's diary myers , <del class="diffchange diffchange-inline"> kevin; the irish times (subscription needed) 09/03/2000, accessed july 2006 'millions of people from these islands - oh how angry we get when people call them the british isles' </ref> see </del> the terminology section below for details of the controversy .''
-although there is sparse knowledge about the avar language, scholars generally posit that the extinct language of the eurasian avars belonged to the subgroup ,price, glanville. encyclopedia of the languages of europe (2000) p 68.marcantonio, angela. the uralic language family (2002) p 24.rna-tas, andrs. hungarians and europe in the early middle ages (1999) p 116. and the language itself is referred to as ''' turkic avar''' in order to distinguish it from the spoken by the modern .<ref>e. j. '''' (2002) p <del class="diffchange diffchange-inline"> 127.</ref><ref>for </del> references on the classification of turkic avar , see the main article <del class="diffchange diffchange-inline"> on oghur languages.</ref> based on the reports </del> of , a greek historian, some scholars affirm a linguistic connection between the terms hungarus and onogur . angela marcantonio, the uralic language family: facts, myths and statistics, wiley-blackwell, 2002, p . <del class="diffchange diffchange-inline"> 24 </del> however, it is generally accepted that at least the leading stratum of the avars spoke a chuvash-type turkic language.<ref>andrs rna-tas, hungarians and europe in the early middle ages , central european university press, 1999, pp.115 </ref>
-hubbard coined the name dianetics from the greek stems dia, meaning "through," and nous, meaning "mind," resulting in a word similar to the already-existing greek adjective dianotik-os -, meaning "mental" . the suffix "-etics" appears to have been inspired by cybernetics , a vogue idea at the time ( indeed, hubbard explicitly made this connection in a 1949 magazine article <ref> hubbard, "terra incognita: the mind", the explorers journal, winter 1949 / spring 1950 < / ref>) .
 
 
 """
@@ -63,6 +55,8 @@ CTR_TOO_MANY_1_TOKS = 0
 CTR_SPELLING = 0
 CTR_FALSE_POSITIVE = 0
 CTR_LENGTH_RATIO = 0
+CTR_CHEMISTRY = 0
+CTR_DUPS = 0
 
 BERT_MODEL = "bert-base-uncased"
 TOKENIZER = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=cache_path)
@@ -123,11 +117,13 @@ def clean_wikitext(token_list):
     # fuck stars
     plaintext = plaintext.replace('*', '')
     # rm table fragments
-    plaintext = re.sub('(right[ ]?\||thumb[ ]?\||frame[ ]?\||\d+px[ ]?\|)', '', plaintext)
+    plaintext = re.sub('(right[ ]?\||left[ ]?\||thumb[ ]?\||frame[ ]?\||\d+px[ ]?\|)', '', plaintext)
     # ignore timestamp sentences
     if 'retrieved on' in plaintext.lower():
         plaintext = ''
-
+    # msc html missed
+    plaintext = plaintext.replace('<blockquote>', '')
+    
     # remove tabs and newlines (those is our deliminators beeyotch)
     plaintext.replace('\t', ' ')
     plaintext.replace('\n', ' ')
@@ -138,7 +134,7 @@ def clean_wikitext(token_list):
     return plaintext
 
 
-def find_matches(a_list, b_list, delta=5):
+def find_matches(a_list, b_list, delta=3):
     def BLEU(hyp, ref):
         # get ngram stats
         stats = []
@@ -168,7 +164,7 @@ def find_matches(a_list, b_list, delta=5):
     for i in range(len(a_list)):
         neighborhood_bleus = [
             (BLEU(a_list[i].split(), b_list[j].split()), j)
-            for j in range(max(i - delta, 0), min(i + delta, len(b_list) - 1))
+            for j in range(max(i - delta, 0), min(i + delta, len(b_list)))
         ]
         # corner case: len(a_list) >> len(b_list)
         if not neighborhood_bleus:
@@ -184,53 +180,6 @@ def tokenize(s):
     tok_list = TOKENIZER.tokenize(s.strip())
     return ' '.join(tok_list)
 
-
-
-def sent_generator(revisions):
-    global CTR_EMPTY_REV
-    global CTR_MULTIPLE_EDITS
-    global CTR_FAILED_CLEANING
-
-    for rev_id in tqdm(revisions):
-        prevs, posts = revisions[rev_id]
-
-        # empty revision
-        if not prevs or not posts:
-            CTR_EMPTY_REV += 1
-            continue
-            
-        # unicode dat shit
-        if isinstance(prevs[0], bytes):
-            prevs = [x.decode() for x in prevs]
-        if isinstance(posts[0], bytes):
-            posts = [x.decode() for x in posts]
-
-        # multiple edits
-        if len(prevs) > 1 or len(posts) > 1:
-            CTR_MULTIPLE_EDITS += 1
-            continue
-            
-        # print(prevs)
-        prev_text = clean_wikitext(prevs).lower()
-        post_text = clean_wikitext(posts).lower()
-        print(prev_text)
-        print(post_text)
-        print()
-        # failed cleaning
-        if not prev_text or not post_text:
-            CTR_FAILED_CLEANING += 1
-            continue
-
-        prev_sents_raw = sent_tokenize(prev_text)
-        post_sents_raw = sent_tokenize(post_text)
-        
-        prev_sents_tok = [tokenize(s) for s in prev_sents_raw]
-        post_sents_tok = [tokenize(s) for s in post_sents_raw]
-
-        for i, j, score in find_matches(prev_sents_tok, post_sents_tok):
-            yield prev_sents_raw[i], prev_sents_tok[i], post_sents_raw[j], post_sents_tok[j], score, rev_id
-
-        # no sents
 
 
 def is_spelling_diff(d):
@@ -269,12 +218,13 @@ def should_keep(prev_raw, prev_tok, post_raw, post_tok, bleu, rev_id):
     global CTR_LOW_LEVEN
     global CTR_TOO_MANY_1_TOKS
     global CTR_SPELLING
+    global CTR_CHEMISTRY
 
     # KEEP -- exact match
-    if bleu == 100:
+    if bleu == 100 or prev_raw == post_raw:
         return True, None, '0', ['0' for _ in range(len(prev_tok.split()))]
     # clearly not a match
-    if bleu < 10.0:
+    if bleu < 15.0:
         CTR_LOW_BLEU += 1
         return False, None, None, None
     # too close
@@ -298,9 +248,82 @@ def should_keep(prev_raw, prev_tok, post_raw, post_tok, bleu, rev_id):
         CTR_SPELLING += 1
         return False, None, None, None
 
+    # some simple filtering to get out the chemistry "neutral" edits
+    if ' molecules' in prev_raw or ' ions' in prev_raw or ' ionic' in prev_raw or ' atoms' in prev_raw:
+        CTR_CHEMISTRY += 1
+        return False, None, None, None
+
+
     single_word_edit = sum([len(chunk) for tag, chunk in word_diff if tag == '-']) == 1
 
     return True, single_word_edit, '1', tok_labels
+
+
+
+def sent_generator(revisions):
+    global CTR_EMPTY_REV
+    global CTR_MULTIPLE_EDITS
+    global CTR_FAILED_CLEANING
+    global CTR_DUPS
+
+    for rev_id in tqdm(revisions):
+        prevs, posts = revisions[rev_id]
+
+        # empty revision
+        if not prevs or not posts:
+            CTR_EMPTY_REV += 1
+            continue
+            
+        # unicode dat shit
+        if isinstance(prevs[0], bytes):
+            prevs = [x.decode() for x in prevs]
+        if isinstance(posts[0], bytes):
+            posts = [x.decode() for x in posts]
+
+        # multiple edits
+        if len(prevs) > 1 or len(posts) > 1:
+            CTR_MULTIPLE_EDITS += 1
+            continue
+            
+        # print(prevs)
+        prev_text = clean_wikitext(prevs).lower()
+        post_text = clean_wikitext(posts).lower()
+
+        # failed cleaning
+        if not prev_text or not post_text:
+            CTR_FAILED_CLEANING += 1
+            continue
+
+        prev_sents_raw = sent_tokenize(prev_text)
+        post_sents_raw = sent_tokenize(post_text)
+
+        prev_sents_tok = [tokenize(s) for s in prev_sents_raw]
+        post_sents_tok = [tokenize(s) for s in post_sents_raw]
+
+        rev_examples = []
+        for i, j, score in find_matches(prev_sents_tok, post_sents_tok):
+            ex = prev_sents_raw[i], prev_sents_tok[i], post_sents_raw[j], post_sents_tok[j], score, rev_id
+            keep, is_word_edit, sent_label, tok_labels = should_keep(*ex)
+            
+            if keep:
+                rev_examples.append(list(ex) + [is_word_edit, sent_label, tok_labels])
+                
+        # at least 1 changed sentence with no dups
+        # TODO -- test only take examples with 1??
+        rev_prevs = [x[0] for x  in rev_examples]
+        rev_posts = [x[2] for x in rev_examples]
+
+        if sum([x[-2] == '1' for x in rev_examples]) > 0:
+            if len(rev_prevs) == len(set(rev_prevs)) and\
+               len(rev_posts) == len(set(rev_posts)):
+                
+                for x in rev_examples:
+                    yield x
+
+            else:
+                CTR_DUPS += len([x for x in rev_examples if x[-2] == '1'])
+        # no sents
+
 
 
 # load big pickle 
@@ -321,19 +344,21 @@ revisions = {l.split('\t')[0]: [x.split('<EDIT-DELIM>') for x in l.split('\t')[1
 print('EXTRACTING EXAMPLES...')
 
 out = []
-for pre_post_bleu_id in sent_generator(revisions):
-    keep, is_word_edit, sent_label, tok_labels = should_keep(*pre_post_bleu_id)
-    # filtered out
-    if not keep: continue
-
-    prev_raw, prev_tok, post_raw, post_tok, _, rev_id = pre_post_bleu_id
+for example in sent_generator(revisions):
+    [
+        prev_raw, prev_tok, post_raw, post_tok, score, 
+        rev_id, is_word_edit, sent_label, tok_labels
+    ] = example
     length_ratio = len(prev_raw) * 1.0 / len(post_raw)
 
     # # false edit
     # if is_word_edit is not None and sum([int(x) for x in tok_labels]) == 0:
     #     CTR_FALSE_POSITIVE += 1
     #     continue
-
+    # if sent_label == '1':
+    #     print(prev_raw)
+    #     print(post_raw)
+    #     print()
     out.append({
         'is_word_edit': is_word_edit,
         'length_ratio': length_ratio,
@@ -350,7 +375,7 @@ for pre_post_bleu_id in sent_generator(revisions):
     })
 
 # ratio thresholding
-ratios = [x['length_ratio'] for x in out if out['is_word_edit'] is not None]
+ratios = [x['length_ratio'] for x in out if x['is_word_edit'] is not None]
 N = len(ratios) * 1.0 
 mu = np.mean(ratios)
 sd = np.std(ratios)
@@ -398,6 +423,8 @@ print('CTR_TOO_MANY_1_TOKS', CTR_TOO_MANY_1_TOKS)
 print('CTR_SPELLING', CTR_SPELLING)
 print('CTR_FALSE_POSITIVE', CTR_FALSE_POSITIVE)
 print('CTR_LENGTH_RATIO', CTR_LENGTH_RATIO)
+print('CTR_CHEMISTRY', CTR_CHEMISTRY)
+print('CTR_DUPS', CTR_DUPS)
 
 
 
