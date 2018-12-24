@@ -103,7 +103,7 @@ def gen_revisions(rev_ids):
     out = {}
 
     for rev_id in tqdm(rev_ids):
-        print('processing revision id = ' + str(rev_id))
+        print('processing revision id = ' + str(rev_id), file=sys.stderr)
 
         url = 'https://en.wikipedia.org/wiki/?diff=' + str(rev_id)
         prevs_, nexts_ = url2diff(url)
@@ -137,7 +137,7 @@ def go(filename):
             rev_id, 
             '<EDIT-DELIM>'.join(prevs),
             '<EDIT-DELIM>'.join(nexts)
-        ]) + '\n')
+        ]))
 
 
 if __name__ == '__main__':
