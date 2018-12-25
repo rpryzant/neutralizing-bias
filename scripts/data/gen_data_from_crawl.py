@@ -59,6 +59,7 @@ CTR_CHEMISTRY = 0
 CTR_DUPS = 0
 CTR_ONLY_PUNC_CHANGED = 0
 CTR_INVALID_NUM_CHANGED_SENTS = 0
+CTR_NON_EDIT_CHUNKS = 0
 
 
 BERT_MODEL = "bert-base-uncased"
@@ -276,15 +277,20 @@ def sent_generator(revisions):
     global CTR_FAILED_CLEANING
     global CTR_DUPS
     global CTR_INVALID_NUM_CHANGED_SENTS
+    global CTR_NON_EDIT_CHUNKS
 
     for rev_id in tqdm(revisions):
-        prevs, posts = revisions[rev_id]
+        prevs, posts, prev_deleted, posts_added = revisions[rev_id]
 
         # empty revision
         if not prevs or not posts:
             CTR_EMPTY_REV += 1
             continue
-            
+
+        if prev_deleted != ['no_deleted_chunks'] or posts_added != ['no_added_chunks']:
+            CTR_NON_EDIT_CHUNKS += 1
+            continue
+
         # unicode dat shit
         if isinstance(prevs[0], bytes):
             prevs = [x.decode() for x in prevs]
@@ -351,7 +357,7 @@ print('LOADING PICKLE...')
 #         bytes_in += f_in.read(max_bytes)
 # revisions = pickle.loads(bytes_in)
 
-revisions = {l.split('\t')[0]: [x.split('<EDIT-DELIM>') for x in l.split('\t')[1:]] for l in open(crawl_path) if len(l.split('\t')) == 3}
+revisions = {l.split('\t')[0]: [x.strip().split('<EDIT-DELIM>') for x in l.split('\t')[1:]] for l in open(crawl_path) if len(l.split('\t')) == 5}
 
 print('EXTRACTING EXAMPLES...')
 
@@ -441,4 +447,4 @@ print('CTR_CHEMISTRY', CTR_CHEMISTRY)
 print('CTR_DUPS', CTR_DUPS)
 print('CTR_ONLY_PUNC_CHANGED', CTR_ONLY_PUNC_CHANGED)
 print('CTR_INVALID_NUM_CHANGED_SENTS', CTR_INVALID_NUM_CHANGED_SENTS)
-
+print('CTR_NON_EDIT_CHUNKS', CTR_NON_EDIT_CHUNKS)
