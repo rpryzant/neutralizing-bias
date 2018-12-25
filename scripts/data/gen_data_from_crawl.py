@@ -57,6 +57,9 @@ CTR_FALSE_POSITIVE = 0
 CTR_LENGTH_RATIO = 0
 CTR_CHEMISTRY = 0
 CTR_DUPS = 0
+CTR_ONLY_PUNC_CHANGED = 0
+CTR_INVALID_NUM_CHANGED_SENTS = 0
+
 
 BERT_MODEL = "bert-base-uncased"
 TOKENIZER = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=cache_path)
@@ -106,6 +109,7 @@ def clean_wikitext(token_list):
     plaintext = plaintext.replace('[ ', '[').replace(' ]', ']')
     parse = mwparserfromhell.parse(plaintext)
     plaintext = parse.strip_code()
+
     # at this point just rm all brackets
     plaintext = plaintext.replace(']', '').replace('[', '')
     # rm html
@@ -219,6 +223,7 @@ def should_keep(prev_raw, prev_tok, post_raw, post_tok, bleu, rev_id):
     global CTR_TOO_MANY_1_TOKS
     global CTR_SPELLING
     global CTR_CHEMISTRY
+    global CTR_ONLY_PUNC_CHANGED
 
     # KEEP -- exact match
     if bleu == 100 or prev_raw == post_raw:
@@ -235,6 +240,11 @@ def should_keep(prev_raw, prev_tok, post_raw, post_tok, bleu, rev_id):
     tok_diff = diff(prev_tok.split(), post_tok.split())
     tok_labels = get_tok_labels(tok_diff)
     assert len(tok_labels) == len(prev_tok.split())
+
+    changed_text = ''.join([''.join(chunk) for tag, chunk in tok_diff if tag != '='])
+    if not re.search('[a-z]', changed_text):
+        CTR_ONLY_PUNC_CHANGED += 1
+        return False, None, None, None  
 
     # too dissimilar -- less than half of toks shared
     tok_nums = [int(x) for x in tok_labels]
@@ -265,6 +275,7 @@ def sent_generator(revisions):
     global CTR_MULTIPLE_EDITS
     global CTR_FAILED_CLEANING
     global CTR_DUPS
+    global CTR_INVALID_NUM_CHANGED_SENTS
 
     for rev_id in tqdm(revisions):
         prevs, posts = revisions[rev_id]
@@ -313,15 +324,16 @@ def sent_generator(revisions):
         rev_prevs = [x[0] for x  in rev_examples]
         rev_posts = [x[2] for x in rev_examples]
 
-        if sum([x[-2] == '1' for x in rev_examples]) > 0:
+        if sum([x[-2] == '1' for x in rev_examples]) == 1:
             if len(rev_prevs) == len(set(rev_prevs)) and\
                len(rev_posts) == len(set(rev_posts)):
-                
+
                 for x in rev_examples:
                     yield x
-
             else:
                 CTR_DUPS += len([x for x in rev_examples if x[-2] == '1'])
+        else:
+            CTR_INVALID_NUM_CHANGED_SENTS += len([x for x in rev_examples if x[-2] == '1'])
         # no sents
 
 
@@ -355,10 +367,12 @@ for example in sent_generator(revisions):
     # if is_word_edit is not None and sum([int(x) for x in tok_labels]) == 0:
     #     CTR_FALSE_POSITIVE += 1
     #     continue
-    # if sent_label == '1':
-    #     print(prev_raw)
-    #     print(post_raw)
-    #     print()
+    if sent_label == '1':
+        print(rev_id)
+        print(prev_raw)
+        print(post_raw)
+        print()
+
     out.append({
         'is_word_edit': is_word_edit,
         'length_ratio': length_ratio,
@@ -425,6 +439,6 @@ print('CTR_FALSE_POSITIVE', CTR_FALSE_POSITIVE)
 print('CTR_LENGTH_RATIO', CTR_LENGTH_RATIO)
 print('CTR_CHEMISTRY', CTR_CHEMISTRY)
 print('CTR_DUPS', CTR_DUPS)
-
-
+print('CTR_ONLY_PUNC_CHANGED', CTR_ONLY_PUNC_CHANGED)
+print('CTR_INVALID_NUM_CHANGED_SENTS', CTR_INVALID_NUM_CHANGED_SENTS)
 
