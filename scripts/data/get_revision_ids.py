@@ -16,16 +16,21 @@ class Revision():
     def __init__(self):
         self.revid = None
         self.comment = None
-        self.timestamp = None        
+        self.timestamp = None     
+
+        self.INVALID_REV_RE = 'reverted|undid|robot'   
+        self.NPOV_RE = '([- wnv\/\\\:\{\(\[\"\+\'\.\|\_\)\#\=\;\~](rm)?(attribute)?(yes)?(de)?n?pov)|([- n\/\\\:\{\(\[\"\+\'\.\|\_\)\#\;\~]neutral)'
 
     def incomplete(self):
         return not self.revid or not self.comment or not self.timestamp
 
     def is_admissible(self):
         c_lower = self.comment.lower()
-        if 'reverted' in c_lower or 'undid' in c_lower:
+
+
+        if re.search(self.INVALID_REV_RE, c_lower):
             return False
-        if 'pov' in c_lower or 'npov' in c_lower or 'neutral' in c_lower:
+        if re.search(self.NPOV_RE, c_lower):
             if 'pover' in c_lower: # special case: "poverty", "impovershiment", etc
                 return False
             return True
@@ -34,13 +39,16 @@ class Revision():
     def print_out(self):
         print('\t'.join([self.revid, self.comment, self.timestamp]))
 
+SPECIAL_TITLE_RE = "<title>.*?(talk|user|wikipedia)\:"
+
 cur_rev = Revision()
 page_skip = False
 for line in tqdm(open(wiki_xml_path), total=11325433847):
     line = line.strip()
+    line_lower = line.lower()
     if line == '<page>':
         page_skip = False
-    if "<title>" in line and ('user:' in line.lower() or 'talk:' in line.lower()): 
+    if re.search(SPECIAL_TITLE_RE, line_lower):
         page_skip = True
     if page_skip:
         continue
