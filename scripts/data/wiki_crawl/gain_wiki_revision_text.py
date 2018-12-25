@@ -56,7 +56,9 @@ def print_withcolor(idx, l):
 
 
 def html2diff(html):
-    prev_doc, next_doc = [],[]
+    prev_changed, next_changed = [],[]
+    prev_deleted, next_added = [],[]
+
     soup = BeautifulSoup(html, 'html')
     nodes = soup.find_all(class_=re.compile(r'(diff-deletedline)|(diff-addedline)|(diff-empty)'))
     div_p = re.compile(r'<div.*?>(.*)</div>', re.DOTALL)
@@ -69,17 +71,26 @@ def html2diff(html):
         node_prev = nodes[i]
         node_next = nodes[i + 1]
 
-        if not node_prev.div or not node_next.div:
+        # seperate  revisions into chunks that were modified,
+        # chunks that were purely deleted and chunks that were purely added
+        if not node_prev.div and not node_next.div:
             continue
+        elif not node_prev.div:
+            next_match = re.match(div_p, node_next.div.prettify(formatter=None))
+            if next_match:
+                next_added.append(next_match.group(1).strip())
+        elif not node_next.div:
+            prev_match = re.match(div_p, node_prev.div.prettify(formatter=None))
+            if prev_match:
+                prev_deleted.append(prev_match.group(1).strip())
+        else:
+            prev_match = re.match(div_p, node_prev.div.prettify(formatter=None))
+            next_match = re.match(div_p, node_next.div.prettify(formatter=None))
+            if prev_match and next_match:
+                prev_changed.append(prev_match.group(1).strip())
+                next_changed.append(next_match.group(1).strip())
 
-        prev_match = re.match(div_p, node_prev.div.prettify(formatter=None))
-        next_match = re.match(div_p, node_next.div.prettify(formatter=None))
-
-        if prev_match and next_match:
-            prev_doc.append(prev_match.group(1).strip())
-            next_doc.append(next_match.group(1).strip())
-
-    return prev_doc, next_doc
+    return prev_changed, next_changed, prev_deleted, next_added
 
 
 def url2diff(url):
@@ -89,7 +100,7 @@ def url2diff(url):
         return html2diff(html)
     except Exception as e:
         print(e, file=sys.stderr)
-        return [], []
+        return [], [], [], []
 
 
 def wiki_text_clean(text):
@@ -106,7 +117,7 @@ def gen_revisions(rev_ids):
         print('processing revision id = ' + str(rev_id), file=sys.stderr)
 
         url = 'https://en.wikipedia.org/wiki/?diff=' + str(rev_id)
-        prevs_, nexts_ = url2diff(url)
+        prevs_, nexts_, prev_deleted, next_added = url2diff(url)
 
         if len(prevs_) != len(nexts_):
             print('ERROR: corpus sizes not equal!', file=sys.stderr)
@@ -117,11 +128,14 @@ def gen_revisions(rev_ids):
         for pre, post in zip(prevs_, nexts_):
             prevs.append( wiki_text_clean(pre) )
             nexts.append( wiki_text_clean(post) )
+        prevs_deleted = [wiki_text_clean(pre) for pre in (prev_deleted or ['no_deleted_chunks'])]
+        nexts_added = [wiki_text_clean(nxt) for nxt in (next_added or ['no_added_chunks'])]
+
 
         if len(prevs) > 0 and len(nexts) > 0:
             print('...success!', file=sys.stderr)
             success += 1
-            yield rev_id, prevs, nexts
+            yield rev_id, prevs, nexts, prevs_deleted, nexts_added
 
     print('failures: ', rev_size - success, file=sys.stderr)
 
@@ -132,11 +146,13 @@ def go(filename):
     with open(filename, 'r') as f:
         rev_ids = [l.split('\t')[0] for l in f]
 
-    for rev_id, prevs, nexts in gen_revisions(rev_ids):
+    for rev_id, prevs, nexts, prev_deleted, next_added in gen_revisions(rev_ids):
         print('\t'.join([
             rev_id, 
             '<EDIT-DELIM>'.join(prevs),
-            '<EDIT-DELIM>'.join(nexts)
+            '<EDIT-DELIM>'.join(nexts),
+            '<EDIT-DELIM>'.join(prev_deleted),
+            '<EDIT-DELIM>'.join(next_added)
         ]))
 
 
