@@ -290,7 +290,7 @@ def sent_generator(revisions):
         if prev_deleted != ['no_deleted_chunks'] or posts_added != ['no_added_chunks']:
             CTR_NON_EDIT_CHUNKS += 1
             continue
-
+        print(prev_deleted, posts_added)
         # unicode dat shit
         if isinstance(prevs[0], bytes):
             prevs = [x.decode() for x in prevs]
@@ -373,11 +373,11 @@ for example in sent_generator(revisions):
     # if is_word_edit is not None and sum([int(x) for x in tok_labels]) == 0:
     #     CTR_FALSE_POSITIVE += 1
     #     continue
-    if sent_label == '1':
-        print(rev_id)
-        print(prev_raw)
-        print(post_raw)
-        print()
+    # if sent_label == '1':
+    #     print(rev_id)
+    #     print(prev_raw)
+    #     print(post_raw)
+    #     print()
 
     out.append({
         'is_word_edit': is_word_edit,
