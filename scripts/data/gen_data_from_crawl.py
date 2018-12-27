@@ -1,7 +1,7 @@
 """
 generates a TSV parallel corpus from a crawl (the output of gain_wiki_revision.py)
 
-python gen_data_from_crawl.py wiki_crawl/final_data.pkl CACHE OUT
+python gen_data_from_crawl.py final_crawl.tsv CACHE/ tst
 
 pickle_path = sys.argv[1]
 cache_path = sys.argv[2]
