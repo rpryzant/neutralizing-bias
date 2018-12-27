@@ -6,6 +6,8 @@ space for msc papers of interest, possible ideas we can draw from, or related wo
 - http://stanford.edu/~robinjia/pdf/naacl2018-drg.pdf, https://github.com/lijuncen/Sentiment-and-Style-Transfer
 - https://web.stanford.edu/~jurafsky/pubs/neutrality.pdf
 - [Approaching Neural Grammatical Error Correction as a Low-Resource Machine Translation Task](http://aclweb.org/anthology/N18-1055). Good ideas here, maybe try some?
+- [A Multilayer Convolutional Encoder-Decoder Neural Network
+for Grammatical Error Correction](https://arxiv.org/pdf/1801.08831.pdf): rescoring functions that might be good? handcrafted features + LM
 
 
 TO READ
