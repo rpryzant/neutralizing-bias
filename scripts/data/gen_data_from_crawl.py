@@ -290,7 +290,7 @@ def sent_generator(revisions):
         if prev_deleted != ['no_deleted_chunks'] or posts_added != ['no_added_chunks']:
             CTR_NON_EDIT_CHUNKS += 1
             continue
-        print(prev_deleted, posts_added)
+
         # unicode dat shit
         if isinstance(prevs[0], bytes):
             prevs = [x.decode() for x in prevs]
