@@ -1,7 +1,7 @@
 """
 generates a TSV parallel corpus from a crawl (the output of gain_wiki_revision.py)
 
-python gen_data_from_crawl.py wiki_crawl/final_data.pkl CACHE OUT
+python gen_data_from_crawl.py final_crawl.tsv CACHE/ tst
 
 pickle_path = sys.argv[1]
 cache_path = sys.argv[2]
@@ -373,11 +373,11 @@ for example in sent_generator(revisions):
     # if is_word_edit is not None and sum([int(x) for x in tok_labels]) == 0:
     #     CTR_FALSE_POSITIVE += 1
     #     continue
-    if sent_label == '1':
-        print(rev_id)
-        print(prev_raw)
-        print(post_raw)
-        print()
+    # if sent_label == '1':
+    #     print(rev_id)
+    #     print(prev_raw)
+    #     print(post_raw)
+    #     print()
 
     out.append({
         'is_word_edit': is_word_edit,
