@@ -182,6 +182,9 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion):
     }
 
     for step, batch in enumerate(eval_dataloader):
+        if step > 1:
+            continue
+
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids = batch
@@ -214,10 +217,8 @@ def classification_accuracy(logits, labels):
 def is_ranking_hit(probs, labels, top=1):
     # get rid of padding idx
     [probs, labels] = list(zip(*[(p, l)  for p, l in zip(probs, labels) if l != NUM_TOK_LABELS - 1 ]))
-
     probs_indices = list(zip(np.array(probs)[:, 1], range(len(labels))))
     [_, top_indices] = list(zip(*sorted(probs_indices, reverse=True)[:top]))
-
     if sum([labels[i] for i in top_indices]) > 0:
         return 1
     else:
@@ -257,6 +258,7 @@ optimizer = make_optimizer(model, int((num_train_examples * EPOCHS) / TRAIN_BATC
 
 weight_mask = torch.ones(NUM_TOK_LABELS)
 weight_mask[-1] = 0
+
 if CUDA:
     weight_mask = weight_mask.cuda()
     tok_criterion = CrossEntropyLoss(weight=weight_mask).cuda()

@@ -1,5 +1,5 @@
-# python build_eval_classifier.py ../../data/v3/full/biased.train.pre ../../data/v3/full/biased.train.post ../../data/v3/full/vocab /Users/rpryzant/persuasion/data/v3/full/eval_classifier
-# python build_eval_classifier.py ../../data/v3/words/biased.train.pre ../../data/v3/words/biased.train.post ../../data/v3/words/vocab /Users/rpryzant/persuasion/data/v3/words/eval_classifier
+# python build_eval_classifier.py ../../data/v4/full/biased.train.pre ../../data/v4/full/biased.train.post ../../data/v4/full/vocab /Users/rpryzant/persuasion/data/v4/full/eval_classifier
+# python build_eval_classifier.py ../../data/v4/word/biased.train.pre ../../data/v4/word/biased.train.post ../../data/v4/word/vocab /Users/rpryzant/persuasion/data/v4/word/eval_classifier
 
 
 # builds the classifier needed for "classifier eval" metric
