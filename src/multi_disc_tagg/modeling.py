@@ -34,14 +34,22 @@ class BertForReplacementCLS(PreTrainedBertModel):
         super(BertForReplacementCLS, self).__init__(config)
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, replace_num_labels)        
+        self.classifier = nn.Linear(config.hidden_size, replace_num_labels)
+
+        self.tok_dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.tok_classifier = nn.Linear(config.hidden_size, tok_num_labels)
+
         self.apply(self.init_bert_weights)
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
         sequence_output, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+
+        sequence_output = self.tok_dropout(sequence_output)
+        tok_logits = self.tok_classifier(sequence_output)
+
         pooled_output = self.dropout(pooled_output)
         replace_logits = self.classifier(pooled_output)
-        return replace_logits, None
+        return replace_logits, tok_logits
 
 
 class BertForReplacementTOK(PreTrainedBertModel):
@@ -53,6 +61,9 @@ class BertForReplacementTOK(PreTrainedBertModel):
         self.activation = nn.Tanh()
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, replace_num_labels)        
+
+        self.tok_dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.tok_classifier = nn.Linear(config.hidden_size, tok_num_labels)
 
         self.apply(self.init_bert_weights)
 
@@ -71,7 +82,10 @@ class BertForReplacementTOK(PreTrainedBertModel):
         x = self.dropout(x)
         replace_logits = self.classifier(x)
 
-        return replace_logits, None
+        sequence_output = self.tok_dropout(sequence_output)
+        tok_logits = self.tok_classifier(sequence_output)
+
+        return replace_logits, tok_logits
 
 
 
