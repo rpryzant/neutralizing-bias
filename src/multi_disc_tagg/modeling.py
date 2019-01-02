@@ -41,7 +41,7 @@ class BertForReplacementCLS(PreTrainedBertModel):
 
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, tok_indices=None):
         sequence_output, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
 
         sequence_output = self.tok_dropout(sequence_output)
@@ -67,12 +67,12 @@ class BertForReplacementTOK(PreTrainedBertModel):
 
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, tok_indices=None):
         sequence_output, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
         
         # select all the thingies inside
         pooled_output = []
-        for tensor, label_index in zip(sequence_output, labels):
+        for tensor, label_index in zip(sequence_output, tok_indices):
             pooled_output.append(tensor[label_index])
 
         pooled_output = torch.stack(pooled_output)

@@ -203,18 +203,21 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion, tokenize
     }
 
     for step, batch in enumerate(eval_dataloader):
+        if step > 2:
+            continue
+
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids, replace_ids = batch
 
         with torch.no_grad():
-            if tok_preds = None:
+            if tok_preds is None:
                 bias_indices = np.where(tok_label_ids.cpu().numpy() == 1)[1]
             else:
                 batch_size = eval_dataloader.batch_size
                 bias_indices = tok_preds[batch_size * step : (batch_size * step) + batch_size]
 
-            replacement_logits, tok_logits = model(input_ids, segment_ids, input_mask, labels=bias_indices)
+            replacement_logits, tok_logits = model(input_ids, segment_ids, input_mask, tok_indices=bias_indices)
 
             replacement_loss = cls_criterion(replacement_logits.view(-1, len(tokenizer.vocab)+1), replace_ids.view(-1))
             tok_loss = tok_criterion(tok_logits.view(-1, NUM_TOK_LABELS), tok_label_ids.view(-1))
@@ -236,11 +239,11 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion, tokenize
 def classification_accuracy(logits, labels, prior=None):
     probs = softmax(np.array(logits), axis=1)
     preds = np.argmax(probs, axis=1)
-    
-    # TODO CALC MANUALLY!!
-
-    return metrics.accuracy_score(labels, preds)
-
+    acc = sum([
+        1 if (pi == li and priori == 1) else 0 
+        for (pi, li, priori) in zip(preds, labels, (prior or [1] * len(preds)))
+    ]) * 1.0 / len(preds)
+    return acc
 
 def is_ranking_hit(probs, labels, top=1):
     # get rid of padding idx
@@ -254,7 +257,6 @@ def is_ranking_hit(probs, labels, top=1):
 
 def tag_accuracy(logits, bias_labels, tok_labels, top=1):
     probs = softmax(np.array(logits)[:, :, : NUM_TOK_LABELS - 1], axis=2)
-
     hits = [
         is_ranking_hit(prob_dist, tok_label, top=top) 
         for prob_dist, tok_label, bias_label in zip(probs, tok_labels, bias_labels)
@@ -277,26 +279,14 @@ def make_optimizer(model, num_train_steps):
     return optimizer
 
 
-def train(model, mode, train_dataloader, writer, epochs, num_train_steps, num_tok_labels, num_replacement_labels, name=''):
+def train(model, mode, train_dataloader, cls_criterion, tok_criterion, writer, epochs, num_train_steps, num_tok_labels, num_replacement_labels, name=''):
     optimizer = make_optimizer(model, num_train_steps)
-
-    weight_mask = torch.ones(NUM_TOK_LABELS)
-    weight_mask[-1] = 0
-
-    if CUDA:
-        weight_mask = weight_mask.cuda()
-        tok_criterion = CrossEntropyLoss(weight=weight_mask).cuda()
-        cls_criterion = CrossEntropyLoss()
-    else:
-        tok_criterion = CrossEntropyLoss(weight=weight_mask)
-        cls_criterion = CrossEntropyLoss()
 
     model.train()
     train_step = 0
     for epoch in range(epochs):
         print('STARTING EPOCH ', epoch)
         for step, batch in enumerate(train_dataloader):
-            print(step)
             if CUDA:
                 batch = tuple(x.cuda() for x in batch)
             input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids, replace_ids = batch
@@ -326,6 +316,8 @@ def train(model, mode, train_dataloader, writer, epochs, num_train_steps, num_to
             writer.add_scalar('train/%s_loss' % name, loss.data[0], train_step)
             train_step += 1
     
+
+def write_results()
 
 print('LOADING DATA...')
 tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
@@ -390,17 +382,28 @@ else:
 if CUDA:
     model = model.cuda()
 
-if 'multi' in mode:
-    train(tok_model, 'multi', train_dataloader, writer, EPOCHS, num_train_steps,
-        num_tok_labels=NUM_TOK_LABELS,
-        num_replacement_labels=num_replacement_labels)
+weight_mask = torch.ones(NUM_TOK_LABELS)
+weight_mask[-1] = 0
+if CUDA:
+    weight_mask = weight_mask.cuda()
+    tok_criterion = CrossEntropyLoss(weight=weight_mask).cuda()
+    cls_criterion = CrossEntropyLoss()
 else:
-    train(tok_model, 'tok', train_dataloader, writer, EPOCHS, num_train_steps,
-        num_tok_labels=NUM_TOK_LABELS,
-        num_replacement_labels=num_replacement_labels, name='tok_model')
-    train(replace_model, 'replace', train_dataloader, writer, EPOCHS, num_train_steps,
-        num_tok_labels=NUM_TOK_LABELS,
-        num_replacement_labels=num_replacement_labels, name='replace_model')
+    tok_criterion = CrossEntropyLoss(weight=weight_mask)
+    cls_criterion = CrossEntropyLoss()
+
+# if 'multi' in mode:
+#     train(tok_model, 'multi', train_dataloader, cls_criterion, tok_criterion, writer, EPOCHS, num_train_steps,
+#         num_tok_labels=NUM_TOK_LABELS,
+#         num_replacement_labels=num_replacement_labels)
+# else:
+#     train(tok_model, 'tok', train_dataloader, cls_criterion, tok_criterion, writer, EPOCHS, num_train_steps,
+#         num_tok_labels=NUM_TOK_LABELS,
+#         num_replacement_labels=num_replacement_labels, name='tok_model')
+#     train(replace_model, 'replace', train_dataloader, cls_criterion, tok_criterion, writer, EPOCHS, num_train_steps,
+#         num_tok_labels=NUM_TOK_LABELS,
+#         num_replacement_labels=num_replacement_labels, name='replace_model')
+
 
 eval_dataloader, num_eval_examples = get_dataloader(
     TEST_TEXT, TEST_TEXT_POST, TEST_TOK_LABELS, TEST_BIAS_LABELS,
@@ -408,13 +411,13 @@ eval_dataloader, num_eval_examples = get_dataloader(
     test=True)
 
 # tok results
-tok_results = run_inference(tok_model, eval_dataloader, tokenizer)
+tok_results = run_inference(tok_model, eval_dataloader, cls_criterion, tok_criterion, tokenizer)
 tok_acc, tok_hits = tag_accuracy(tok_results['tok_logits'], tok_results['bias_labels'], tok_results['tok_labels'], top=1)
 writer.add_scalar('eval/tok_acc', tok_acc, 0)
 writer.add_scalar('eval/tok_loss', np.mean(tok_results['tok_loss']), 0)
 
 # raw replace results (as if there was no tok prediction)
-raw_replacement_results = run_inference(replace_model, eval_dataloader, tokenizer)
+raw_replacement_results = run_inference(replace_model, eval_dataloader, cls_criterion, tok_criterion, tokenizer)
 raw_replacement_acc = classification_accuracy(
     raw_replacement_results['replacement_logits'], 
     raw_replacement_results['replacement_labels'])
@@ -422,10 +425,9 @@ writer.add_scalar('eval/raw_replacement_acc', raw_replacement_acc, 0)
 writer.add_scalar('eval/raw_replacement_loss', np.mean(raw_replacement_results['replacement_loss']), 0)
 
 # multi replace results (use prev tok prediction)
-tok_probs = softmax(np.array(logits)[:, :, : NUM_TOK_LABELS - 1], axis=2)
-# TODO get tok preds
-tok_preds = None
-true_replacement_results = run_inference(replace_model, eval_dataloader, tokenizer, tok_preds=tok_preds)
+tok_probs = softmax(np.array(tok_results['tok_logits'])[:, :, : NUM_TOK_LABELS - 1], axis=2)
+tok_preds = np.argmax(tok_probs[:, :, 1], axis=1) # take token with highest positive prob in each sequence
+true_replacement_results = run_inference(replace_model, eval_dataloader, cls_criterion, tok_criterion, tokenizer, tok_preds=tok_preds)
 true_replacement_acc = classification_accuracy(
     true_replacement_results['replacement_logits'], 
     true_replacement_results['replacement_labels'],
@@ -434,7 +436,9 @@ writer.add_scalar('eval/true_replacement_acc', true_replacement_acc, 0)
 writer.add_scalar('eval/true_replacement_loss', np.mean(true_replacement_results['replacement_loss']), 0)
 
 # write predictions etc
-write_predictions(eval_dataloader, tok_results, true_replacement_results, WORKING_DIRs)
+# replacement token
+# predicted token distrubtion (+ whether it was a hit)
+# attention distributions
 
 
 # print('INITIAL EVAL...')
