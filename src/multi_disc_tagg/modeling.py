@@ -1,7 +1,7 @@
 from pytorch_pretrained_bert.modeling import PreTrainedBertModel, BertModel
 import torch
 import torch.nn as nn
-
+import numpy as np
 
 class BertForMultitask(PreTrainedBertModel):
 
@@ -42,14 +42,18 @@ class BertForReplacementCLS(PreTrainedBertModel):
         self.apply(self.init_bert_weights)
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, tok_indices=None):
-        sequence_output, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+        # attn probs are [batch, heads, origin token, distribution]
+        sequence_output, pooled_output, layerwise_attn_probs = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+
+        # attn probs are [layer, batch, heads, origin token, distribution]
+        attn_probs = np.array([x.detach().cpu().numpy() for x in layerwise_attn_probs])
 
         sequence_output = self.tok_dropout(sequence_output)
         tok_logits = self.tok_classifier(sequence_output)
 
         pooled_output = self.dropout(pooled_output)
         replace_logits = self.classifier(pooled_output)
-        return replace_logits, tok_logits
+        return replace_logits, tok_logits, attn_probs
 
 
 class BertForReplacementTOK(PreTrainedBertModel):
@@ -68,8 +72,10 @@ class BertForReplacementTOK(PreTrainedBertModel):
         self.apply(self.init_bert_weights)
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, tok_indices=None):
-        sequence_output, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
-        
+        sequence_output, pooled_output, layerwise_attn_probs = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+        # attn probs are [layer, batch, heads, origin token, distribution]
+        attn_probs = np.array([x.detach().cpu().numpy() for x in layerwise_attn_probs])
+
         # select all the thingies inside
         pooled_output = []
         for tensor, label_index in zip(sequence_output, tok_indices):
@@ -85,7 +91,7 @@ class BertForReplacementTOK(PreTrainedBertModel):
         sequence_output = self.tok_dropout(sequence_output)
         tok_logits = self.tok_classifier(sequence_output)
 
-        return replace_logits, tok_logits
+        return replace_logits, tok_logits, attn_probs
 
 
 

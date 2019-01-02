@@ -53,14 +53,14 @@ NUM_TOK_LABELS = 3
 
 BERT_MODEL = "bert-base-uncased"
 
-TRAIN_BATCH_SIZE = 2#32
+TRAIN_BATCH_SIZE = 32
 TEST_BATCH_SIZE = 16
 
-EPOCHS = 3
+EPOCHS = 2
 
 LEARNING_RATE = 5e-5
 
-MAX_SEQ_LEN = 4#100
+MAX_SEQ_LEN = 100
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -201,6 +201,7 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion, tokenize
 
         'bias_labels': []
     }
+    model.eval()
 
     for step, batch in enumerate(eval_dataloader):
         if step > 2:
@@ -217,8 +218,7 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion, tokenize
                 batch_size = eval_dataloader.batch_size
                 bias_indices = tok_preds[batch_size * step : (batch_size * step) + batch_size]
 
-            replacement_logits, tok_logits = model(input_ids, segment_ids, input_mask, tok_indices=bias_indices)
-
+            replacement_logits, tok_logits, attn_probs = model(input_ids, segment_ids, input_mask, tok_indices=bias_indices)
             replacement_loss = cls_criterion(replacement_logits.view(-1, len(tokenizer.vocab)+1), replace_ids.view(-1))
             tok_loss = tok_criterion(tok_logits.view(-1, NUM_TOK_LABELS), tok_label_ids.view(-1))
             
@@ -231,8 +231,12 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion, tokenize
         out['bias_labels'] += bias_label_ids.detach().cpu().numpy().tolist()
 
         out['tok_loss'].append(float(tok_loss.cpu().numpy()))
-        out['tok_logits'] += tok_logits.detach().cpu().numpy().tolist()
+        # mask logits for metric stuff. also only take the class we're interested in (positive)
+        tok_logits = tok_logits.detach().cpu().numpy()[:, :, 1] + (1.0 - input_mask.detach().cpu().numpy()) * -10000.0
+        out['tok_logits'] += tok_logits.tolist()
         out['tok_labels'] += tok_label_ids.cpu().numpy().tolist()
+
+    model.train()
 
     return out
 
@@ -248,7 +252,7 @@ def classification_accuracy(logits, labels, prior=None):
 def is_ranking_hit(probs, labels, top=1):
     # get rid of padding idx
     [probs, labels] = list(zip(*[(p, l)  for p, l in zip(probs, labels) if l != NUM_TOK_LABELS - 1 ]))
-    probs_indices = list(zip(np.array(probs)[:, 1], range(len(labels))))
+    probs_indices = list(zip(np.array(probs), range(len(labels))))
     [_, top_indices] = list(zip(*sorted(probs_indices, reverse=True)[:top]))
     if sum([labels[i] for i in top_indices]) > 0:
         return 1
@@ -256,7 +260,7 @@ def is_ranking_hit(probs, labels, top=1):
         return 0
 
 def tag_accuracy(logits, bias_labels, tok_labels, top=1):
-    probs = softmax(np.array(logits)[:, :, : NUM_TOK_LABELS - 1], axis=2)
+    probs = softmax(np.array(logits), axis=1)
     hits = [
         is_ranking_hit(prob_dist, tok_label, top=top) 
         for prob_dist, tok_label, bias_label in zip(probs, tok_labels, bias_labels)
@@ -287,13 +291,16 @@ def train(model, mode, train_dataloader, cls_criterion, tok_criterion, writer, e
     for epoch in range(epochs):
         print('STARTING EPOCH ', epoch)
         for step, batch in enumerate(train_dataloader):
+            if step > 3:
+                continue
+
             if CUDA:
                 batch = tuple(x.cuda() for x in batch)
             input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids, replace_ids = batch
 
             bias_indices = np.where(tok_label_ids.cpu().numpy() == 1)[1]
 
-            replace_logits, tok_logits = model(input_ids, segment_ids, input_mask, labels=bias_indices)
+            replace_logits, tok_logits, attn_probs = model(input_ids, segment_ids, input_mask, tok_indices=bias_indices)
 
             replacement_loss = cls_criterion(replace_logits.view(-1, num_replacement_labels), replace_ids.view(-1))
             tok_loss = tok_criterion(tok_logits.view(-1, num_tok_labels), tok_label_ids.view(-1))
@@ -317,7 +324,7 @@ def train(model, mode, train_dataloader, cls_criterion, tok_criterion, writer, e
             train_step += 1
     
 
-def write_results()
+# def write_results()
 
 print('LOADING DATA...')
 tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
@@ -392,17 +399,17 @@ else:
     tok_criterion = CrossEntropyLoss(weight=weight_mask)
     cls_criterion = CrossEntropyLoss()
 
-# if 'multi' in mode:
-#     train(tok_model, 'multi', train_dataloader, cls_criterion, tok_criterion, writer, EPOCHS, num_train_steps,
-#         num_tok_labels=NUM_TOK_LABELS,
-#         num_replacement_labels=num_replacement_labels)
-# else:
-#     train(tok_model, 'tok', train_dataloader, cls_criterion, tok_criterion, writer, EPOCHS, num_train_steps,
-#         num_tok_labels=NUM_TOK_LABELS,
-#         num_replacement_labels=num_replacement_labels, name='tok_model')
-#     train(replace_model, 'replace', train_dataloader, cls_criterion, tok_criterion, writer, EPOCHS, num_train_steps,
-#         num_tok_labels=NUM_TOK_LABELS,
-#         num_replacement_labels=num_replacement_labels, name='replace_model')
+if 'multi' in mode:
+    train(tok_model, 'multi', train_dataloader, cls_criterion, tok_criterion, writer, EPOCHS, num_train_steps,
+        num_tok_labels=NUM_TOK_LABELS,
+        num_replacement_labels=num_replacement_labels)
+else:
+    train(tok_model, 'tok', train_dataloader, cls_criterion, tok_criterion, writer, EPOCHS, num_train_steps,
+        num_tok_labels=NUM_TOK_LABELS,
+        num_replacement_labels=num_replacement_labels, name='tok_model')
+    train(replace_model, 'replace', train_dataloader, cls_criterion, tok_criterion, writer, EPOCHS, num_train_steps,
+        num_tok_labels=NUM_TOK_LABELS,
+        num_replacement_labels=num_replacement_labels, name='replace_model')
 
 
 eval_dataloader, num_eval_examples = get_dataloader(
@@ -425,8 +432,8 @@ writer.add_scalar('eval/raw_replacement_acc', raw_replacement_acc, 0)
 writer.add_scalar('eval/raw_replacement_loss', np.mean(raw_replacement_results['replacement_loss']), 0)
 
 # multi replace results (use prev tok prediction)
-tok_probs = softmax(np.array(tok_results['tok_logits'])[:, :, : NUM_TOK_LABELS - 1], axis=2)
-tok_preds = np.argmax(tok_probs[:, :, 1], axis=1) # take token with highest positive prob in each sequence
+tok_probs = softmax(np.array(tok_results['tok_logits']), axis=1)
+tok_preds = np.argmax(tok_probs, axis=1) # take token with highest positive prob in each sequence
 true_replacement_results = run_inference(replace_model, eval_dataloader, cls_criterion, tok_criterion, tokenizer, tok_preds=tok_preds)
 true_replacement_acc = classification_accuracy(
     true_replacement_results['replacement_logits'], 
@@ -435,12 +442,50 @@ true_replacement_acc = classification_accuracy(
 writer.add_scalar('eval/true_replacement_acc', true_replacement_acc, 0)
 writer.add_scalar('eval/true_replacement_loss', np.mean(true_replacement_results['replacement_loss']), 0)
 
-# write predictions etc
-# replacement token
-# predicted token distrubtion (+ whether it was a hit)
-# attention distributions
 
 
+# write results
+results_file = open(WORKING_DIR + '/results.txt', 'w')
+
+replacement_logits = true_replacement_results['replacement_logits']
+for i, batch in enumerate(eval_dataloader):
+    input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids, replace_ids = batch    
+    batch_size = eval_dataloader.batch_size
+
+    true_insertions = np.where(tok_label_ids.cpu().numpy() == 1)[1]
+
+    predicted_tok_dists = tok_probs[i * batch_size : (i * batch_size) + batch_size]
+    if len(predicted_tok_dists) == 0: # corner case: cut inference short so len(tok_probs) < len(eval data)
+        continue
+    predicted_insertions = tok_preds[i * batch_size : (i * batch_size) + batch_size]
+    pred_replace_ids = np.argmax(softmax(
+        np.array(replacement_logits[i * batch_size : (i * batch_size) + batch_size]), 
+    axis=1), axis=1)
+
+    for id_seq, gold_tok_labels, gold_tok_insertion, pred_tok_dist, pred_tok_insertion, gold_replacement_id, pred_replacement_id in zip(
+        input_ids.cpu().numpy(), tok_label_ids.cpu().numpy(), true_insertions, predicted_tok_dists, 
+        predicted_insertions, replace_ids.cpu().numpy(), pred_replace_ids):
+
+        tok_seq = tokenizer.convert_ids_to_tokens(id_seq)
+        if gold_replacement_id == num_replacement_labels - 1:
+            gold_replace_tok = '<del>'
+        else:
+            gold_replace_tok = tokenizer.convert_ids_to_tokens([gold_replacement_id])[0]
+        if pred_replacement_id == num_replacement_labels - 1:
+            gold_replace_tok = '<del>'
+        else:
+            pred_replace_tok = tokenizer.convert_ids_to_tokens([pred_replacement_id])[0]
+
+        print('#' * 80, file=results_file)
+        print('SEQ: \t\t', ' '.join(tok_seq), file=results_file)
+        print('GOLD DIST: \t', gold_tok_labels, file=results_file)
+        print('PRED DIST: \t', [round(float(x), 2) for x in pred_tok_dist], file=results_file)
+        print('GOLD INS: \t', gold_tok_insertion, file=results_file)
+        print('PRED INS: \t', pred_tok_insertion, file=results_file)
+        print('GOLD TOK: \t', gold_replace_tok, file=results_file)
+        print('PRED TOK: \t', pred_replace_tok, file=results_file)
+
+results_file.close()
 # print('INITIAL EVAL...')
 # model.eval()
 # results = run_inference(model, eval_dataloader, cls_criterion, tok_criterion, tokenizer=tokenizer)
