@@ -9,13 +9,9 @@ out_prefix = sys.argv[3]
 
 
 TODO
-
-https://en.wikipedia.org/w/index.php?diff=234761149
-
-UNCLOSED PARENS LIKE THIS
-glasnevin, castleknock and blanchardstown) finglas has benefitted greatly from the celtic tiger.
-
-
+- SPELLCHECK BOTH WAYS
+- better multisentence filtering -- this fails
+        https://en.wikipedia.org/w/index.php?diff=197052737
 
 """
 import sys
@@ -191,13 +187,13 @@ def is_spelling_diff(d):
     """takes a word diff as arg"""
     global SPELLCHECKER
 
-        # only look at the one-word diffs
+    # only look at the one-word diffs
     if sum([len(chunk) for tag, chunk in d if tag == '-']) > 1:
         return False
 
     for i, (tag, words) in enumerate(d):
         if tag == '-' and i+1 < len(d) - 1 and len(words) == 1 and d[i+1][0] == '+':
-            # is one-word spelling replacement
+            # is one-word spelling replacement (post correction)
             correction = spell(words[0])
             if not correction == words[0] and correction in ' '.join(d[i+1][1]):
                 return True

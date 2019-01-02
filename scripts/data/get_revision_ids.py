@@ -17,8 +17,8 @@ class Revision():
         self.revid = None
         self.comment = None
         self.timestamp = None     
-
-        self.INVALID_REV_RE = 'reverted|undid|robot'   
+        # und = "undo/undid" prefix
+        self.INVALID_REV_RE = 'revert|undo|undid|robot'   
         self.NPOV_RE = '([- wnv\/\\\:\{\(\[\"\+\'\.\|\_\)\#\=\;\~](rm)?(attribute)?(yes)?(de)?n?pov)|([- n\/\\\:\{\(\[\"\+\'\.\|\_\)\#\;\~]neutral)'
 
     def incomplete(self):
