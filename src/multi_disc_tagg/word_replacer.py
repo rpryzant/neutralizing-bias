@@ -204,9 +204,6 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion, tokenize
     model.eval()
 
     for step, batch in enumerate(eval_dataloader):
-        if step > 2:
-            continue
-
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids, replace_ids = batch
@@ -291,9 +288,6 @@ def train(model, mode, train_dataloader, cls_criterion, tok_criterion, writer, e
     for epoch in range(epochs):
         print('STARTING EPOCH ', epoch)
         for step, batch in enumerate(train_dataloader):
-            if step > 3:
-                continue
-
             if CUDA:
                 batch = tuple(x.cuda() for x in batch)
             input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids, replace_ids = batch
@@ -483,8 +477,8 @@ for i, batch in enumerate(eval_dataloader):
         print('PRED DIST: \t', [round(float(x), 2) for x in pred_tok_dist], file=results_file)
         print('GOLD INS: \t', gold_tok_insertion, file=results_file)
         print('PRED INS: \t', pred_tok_insertion, file=results_file)
-        print('GOLD TOK: \t', gold_replace_tok, file=results_file)
-        print('PRED TOK: \t', pred_replace_tok, file=results_file)
+        print('GOLD TOK: \t', gold_replace_tok.encode('utf-8'), file=results_file)
+        print('PRED TOK: \t', pred_replace_tok.encode('utf-8'), file=results_file)
 
 results_file.close()
 # print('INITIAL EVAL...')
