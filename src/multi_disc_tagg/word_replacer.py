@@ -387,7 +387,8 @@ else:
     raise Exception("unknown mode type:", mode)
 
 if CUDA:
-    model = model.cuda()
+    tok_model = tok_model.cuda()
+    replace_model = replace_model.cuda()
 
 weight_mask = torch.ones(NUM_TOK_LABELS)
 weight_mask[-1] = 0
