@@ -100,7 +100,7 @@ NUM_TOK_LABELS = 3
 
 BERT_MODEL = "bert-base-uncased"
 
-TRAIN_BATCH_SIZE = 32
+TRAIN_BATCH_SIZE = 24
 TEST_BATCH_SIZE = 16
 
 EPOCHS = 2
@@ -327,7 +327,7 @@ def make_optimizer(model, num_train_steps):
     return optimizer
 
 
-def train(model, mode, train_dataloader, cls_criterion, tok_criterion, writer, epochs, num_train_steps, num_tok_labels, num_replacement_labels, name=''):
+def train(model, mode, train_dataloader, cls_criterion, tok_criterion, writer, epochs, num_train_steps, num_tok_labels, num_replacement_labels):
     optimizer = make_optimizer(model, num_train_steps)
 
     model.train()
@@ -359,9 +359,9 @@ def train(model, mode, train_dataloader, cls_criterion, tok_criterion, writer, e
             optimizer.step()
             model.zero_grad()
 
-            writer.add_scalar('train/%s_replacement_loss' % name, replacement_loss.data[0], train_step)
-            writer.add_scalar('train/%s_tok_loss' % name, tok_loss if isinstance(tok_loss, int) else tok_loss.data[0], train_step)
-            writer.add_scalar('train/%s_loss' % name, loss.data[0], train_step)
+            writer.add_scalar('train/replacement_loss', replacement_loss.data[0], train_step)
+            writer.add_scalar('train/tok_loss', tok_loss if isinstance(tok_loss, int) else tok_loss.data[0], train_step)
+
             train_step += 1
     
 
@@ -376,7 +376,6 @@ train_dataloader, num_train_examples = get_dataloader(
     tokenizer, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
 writer = SummaryWriter(WORKING_DIR)
 num_train_steps = int((num_train_examples * EPOCHS) / TRAIN_BATCH_SIZE)
-
 
 
 print('BUILDING MODEL...')
@@ -452,19 +451,20 @@ elif mode == 'seperate_tok_attn':
 else:
     raise Exception("unknown mode type:", mode)
 
-if CUDA:
-    tok_model = tok_model.cuda()
-    replace_model = replace_model.cuda()
 
 weight_mask = torch.ones(NUM_TOK_LABELS)
 weight_mask[-1] = 0
 if CUDA:
     weight_mask = weight_mask.cuda()
     tok_criterion = CrossEntropyLoss(weight=weight_mask).cuda()
-    cls_criterion = CrossEntropyLoss()
+    cls_criterion = CrossEntropyLoss().cuda()
 else:
     tok_criterion = CrossEntropyLoss(weight=weight_mask)
     cls_criterion = CrossEntropyLoss()
+
+if CUDA:
+    tok_model = tok_model.cuda()
+    replace_model = replace_model.cuda()
 
 if 'multi' in mode:
     train(tok_model, 'multi', train_dataloader, cls_criterion, tok_criterion, writer, EPOCHS, num_train_steps,
@@ -473,16 +473,24 @@ if 'multi' in mode:
 else:
     train(tok_model, 'tok', train_dataloader, cls_criterion, tok_criterion, writer, EPOCHS, num_train_steps,
         num_tok_labels=NUM_TOK_LABELS,
-        num_replacement_labels=num_replacement_labels, name='tok_model')
+        num_replacement_labels=num_replacement_labels)
+
+    # if CUDA: 
+    #     tok_model = tok_model.cpu()
+    #     replace_model = replace_model.cuda()
     train(replace_model, 'replace', train_dataloader, cls_criterion, tok_criterion, writer, EPOCHS, num_train_steps,
         num_tok_labels=NUM_TOK_LABELS,
-        num_replacement_labels=num_replacement_labels, name='replace_model')
+        num_replacement_labels=num_replacement_labels)
 
 
 eval_dataloader, num_eval_examples = get_dataloader(
     TEST_TEXT, TEST_TEXT_POST, TEST_TOK_LABELS, TEST_BIAS_LABELS,
     tokenizer, TEST_BATCH_SIZE, WORKING_DIR + '/test_data.pkl',
     test=True)
+
+# if CUDA:
+#     replace_model = replace_model.cpu()
+#     tok_model = tok_model.cuda()
 
 # tok results
 tok_results = run_inference(tok_model, eval_dataloader, cls_criterion, tok_criterion, tokenizer)
