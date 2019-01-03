@@ -33,7 +33,10 @@ if not os.path.exists(working_dir):
     os.makedirs(working_dir)
 
 
-assert mode in ['seperate_cls', 'seperate_tok', 'multi_from_cls', 'multi_from_tok']
+assert mode in [
+    'seperate_cls', 'seperate_tok', 'multi_from_cls', 'multi_from_tok',
+    'multi_tok_attn'
+]
 
 
 TRAIN_TEXT = train_data_prefix + '.train.pre'
@@ -288,6 +291,8 @@ def train(model, mode, train_dataloader, cls_criterion, tok_criterion, writer, e
     for epoch in range(epochs):
         print('STARTING EPOCH ', epoch)
         for step, batch in enumerate(train_dataloader):
+            if step > 3:
+                continue
             if CUDA:
                 batch = tuple(x.cuda() for x in batch)
             input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids, replace_ids = batch
@@ -330,8 +335,6 @@ train_dataloader, num_train_examples = get_dataloader(
 writer = SummaryWriter(WORKING_DIR)
 num_train_steps = int((num_train_examples * EPOCHS) / TRAIN_BATCH_SIZE)
 
-
-assert mode in ['seperate_cls', 'seperate_tok', 'multi_from_cls', 'multi_from_tok']
 
 
 print('BUILDING MODEL...')
@@ -377,6 +380,15 @@ elif mode == 'seperate_cls':
         tok_num_labels=NUM_TOK_LABELS,
         replace_num_labels=num_replacement_labels,
         cache_dir=WORKING_DIR + '/cache')
+elif mode == 'multi_tok_attn':
+    tok_model = modeling.BertForReplacementTOKAttnClassifier.from_pretrained(
+        BERT_MODEL,
+        cls_num_labels=NUM_BIAS_LABELS,
+        tok_num_labels=NUM_TOK_LABELS,
+        replace_num_labels=num_replacement_labels,
+        cache_dir=WORKING_DIR + '/cache',
+        attn_type='bert')
+    replace_model = tok_model
 else:
     raise Exception("unknown mode type:", mode)
 
