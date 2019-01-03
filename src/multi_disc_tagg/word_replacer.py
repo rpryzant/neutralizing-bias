@@ -24,18 +24,62 @@ import sklearn.metrics as metrics
 
 import modeling
 
+import argparse
 
-train_data_prefix = sys.argv[1]
-test_data_prefix = sys.argv[2]
-mode = sys.argv[3]
-working_dir = sys.argv[4]
+
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--train",
+    help="train prefix",
+    required=True
+)
+parser.add_argument(
+    "--test",
+    help="test prefix",
+    required=True
+)
+parser.add_argument(
+    "--mode",
+    help="model type",
+    type=str
+)
+parser.add_argument(
+    "--working_dir",
+    help="train continuously on one batch of data",
+    type=str
+)
+parser.add_argument(
+    "--attn_type",
+    help="bilinear, bert",
+    type=str, default=''
+)
+parser.add_argument(
+    "--attn_dropout",
+    help="use dropout on bert attn",
+    action='store_true'
+)
+parser.add_argument(
+    "--compress_heads",
+    help="compress bert attention heads with matrix",
+    action='store_true'
+)
+
+args = parser.parse_args()
+
+
+train_data_prefix = args.train
+test_data_prefix = args.test
+mode = args.mode
+working_dir = args.working_dir
 if not os.path.exists(working_dir):
     os.makedirs(working_dir)
 
 
 assert mode in [
     'seperate_cls', 'seperate_tok', 'multi_from_cls', 'multi_from_tok',
-    'multi_tok_attn'
+    'multi_tok_attn', 'seperate_tok_attn'
 ]
 
 
@@ -63,7 +107,7 @@ EPOCHS = 2
 
 LEARNING_RATE = 5e-5
 
-MAX_SEQ_LEN = 5#100
+MAX_SEQ_LEN = 100
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -291,8 +335,6 @@ def train(model, mode, train_dataloader, cls_criterion, tok_criterion, writer, e
     for epoch in range(epochs):
         print('STARTING EPOCH ', epoch)
         for step, batch in enumerate(train_dataloader):
-            if step > 3:
-                continue
             if CUDA:
                 batch = tuple(x.cuda() for x in batch)
             input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids, replace_ids = batch
@@ -387,8 +429,26 @@ elif mode == 'multi_tok_attn':
         tok_num_labels=NUM_TOK_LABELS,
         replace_num_labels=num_replacement_labels,
         cache_dir=WORKING_DIR + '/cache',
-        attn_type='bert')
+        attn_type=args.attn_type,
+        args=args)
     replace_model = tok_model
+elif mode == 'seperate_tok_attn':
+    tok_model = modeling.BertForReplacementTOKAttnClassifier.from_pretrained(
+        BERT_MODEL,
+        cls_num_labels=NUM_BIAS_LABELS,
+        tok_num_labels=NUM_TOK_LABELS,
+        replace_num_labels=num_replacement_labels,
+        cache_dir=WORKING_DIR + '/cache',
+        attn_type=args.attn_type,
+        args=args)
+    replace_model = modeling.BertForReplacementTOKAttnClassifier.from_pretrained(
+        BERT_MODEL,
+        cls_num_labels=NUM_BIAS_LABELS,
+        tok_num_labels=NUM_TOK_LABELS,
+        replace_num_labels=num_replacement_labels,
+        cache_dir=WORKING_DIR + '/cache',
+        attn_type=args.attn_type,
+        args=args)
 else:
     raise Exception("unknown mode type:", mode)
 

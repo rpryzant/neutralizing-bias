@@ -99,7 +99,7 @@ class BertForReplacementTOK(PreTrainedBertModel):
 
 class BertForReplacementTOKAttnClassifier(PreTrainedBertModel):
     def __init__(self, config, cls_num_labels=2, tok_num_labels=2, replace_num_labels=30522,
-        attn_type='bilinear'):
+        attn_type='bilinear', args=None):
         super(BertForReplacementTOKAttnClassifier, self).__init__(config)
         self.bert = BertModel(config)
 
@@ -117,7 +117,8 @@ class BertForReplacementTOKAttnClassifier(PreTrainedBertModel):
         if attn_type == 'bilinear':
             self.vocab_attn = ops.BilinearAttention(config.hidden_size, 'bahdanau')
         elif attn_type == 'bert':
-            self.vocab_attn = ops.BertAttention(config)
+            self.vocab_attn = ops.BertAttention(config, 
+                dropout_scores=args.attn_dropout, compress_heads=args.compress_heads)
 
         self.apply(self.init_bert_weights)
 
@@ -135,15 +136,16 @@ class BertForReplacementTOKAttnClassifier(PreTrainedBertModel):
 
         vocab = torch.cat((self.bert.embeddings.word_embeddings.weight, self.del_embedding.weight), 0)
         batch_size = pooled_output.shape[0]
-        vocab = vocab.unsqueeze(0).repeat(batch_size, 1, 1)
+        vocab = vocab.unsqueeze(0)
 
-        if self.attn_type == 'bilinear':
-            replace_logits = self.vocab_attn(query=pooled_output, keys=vocab)
-        elif self.attn_type == 'bert':
-            replace_logits = self.vocab_attn(query=pooled_output, keys=vocab)
+        # unroll the batch because duplicating won't fit in memory :(
+        replace_logits_tmp = []
+        for selected_output in pooled_output:
+            replace_logits_tmp.append(
+                self.vocab_attn(query=selected_output.unsqueeze(0), keys=vocab)
+            )
 
-        print(replace_logits)
-        print(replace_logits.shape); quit()
+        replace_logits = torch.stack(replace_logits_tmp)
         # x = self.dense(pooled_output)
         # x = self.activation(x)
         # x = self.dropout(x)

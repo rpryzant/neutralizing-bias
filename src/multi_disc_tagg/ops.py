@@ -44,7 +44,7 @@ class BilinearAttention(nn.Module):
         if mask is not None:
             attn_scores = attn_scores.masked_fill(mask, -float('inf'))
             
-        return attn_scores
+        return attn_scores.squeeze()
 
     def dot(self, keys, query):
         """
@@ -64,7 +64,7 @@ class BilinearAttention(nn.Module):
 
 
 class BertAttention(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, dropout_scores=True, compress_heads=True):
         super(BertAttention, self).__init__()
         if config.hidden_size % config.num_attention_heads != 0:
             raise ValueError(
@@ -79,6 +79,10 @@ class BertAttention(nn.Module):
         self.value = nn.Linear(config.hidden_size, self.all_head_size)
 
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
+        self.dropout_scores = dropout_scores
+
+        self.head_compressor = nn.Linear(config.num_attention_heads, 1)
+        self.compress_heads = compress_heads
 
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
@@ -94,7 +98,6 @@ class BertAttention(nn.Module):
 
         # there's just one query vector and transpose_for_scores expects a sequence of them
         query_layer = self.transpose_for_scores(mixed_query_layer.unsqueeze(1))
-        print('here', mixed_key_layer.shape)
         key_layer = self.transpose_for_scores(mixed_key_layer)
         value_layer = self.transpose_for_scores(mixed_value_layer)
 
@@ -104,5 +107,16 @@ class BertAttention(nn.Module):
         if attention_mask is not None:
             # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
             attention_scores = attention_scores + attention_mask
+
+        if self.compress_heads:
+            attention_scores = attention_scores.permute(0, 2, 3, 1)
+            attention_scores = self.head_compressor(attention_scores)
+            attention_scores = attention_scores.squeeze()
+        else:
+            attention_scores = torch.mean(attention_scores, dim=1)
+            attention_scores = attention_scores.squeeze()
+
+        if self.dropout_scores:
+            attention_scores = self.dropout(attention_scores)
 
         return attention_scores
