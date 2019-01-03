@@ -60,7 +60,7 @@ EPOCHS = 2
 
 LEARNING_RATE = 5e-5
 
-MAX_SEQ_LEN = 100
+MAX_SEQ_LEN = 5#100
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -442,41 +442,44 @@ writer.add_scalar('eval/true_replacement_loss', np.mean(true_replacement_results
 # write results
 results_file = open(WORKING_DIR + '/results.txt', 'w')
 
-replacement_logits = true_replacement_results['replacement_logits']
+pred_replace_ids = np.argmax(softmax(np.array(true_replacement_results['replacement_logits']), axis=1), axis=1)
+
 for i, batch in enumerate(eval_dataloader):
     input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids, replace_ids = batch    
     batch_size = eval_dataloader.batch_size
 
-    true_insertions = np.where(tok_label_ids.cpu().numpy() == 1)[1]
+    input_id_seqs = input_ids.cpu().numpy()
 
-    predicted_tok_dists = tok_probs[i * batch_size : (i * batch_size) + batch_size]
-    if len(predicted_tok_dists) == 0: # corner case: cut inference short so len(tok_probs) < len(eval data)
-        continue
-    predicted_insertions = tok_preds[i * batch_size : (i * batch_size) + batch_size]
-    pred_replace_ids = np.argmax(softmax(
-        np.array(replacement_logits[i * batch_size : (i * batch_size) + batch_size]), 
-    axis=1), axis=1)
+    batch_gold_insertions = np.where(tok_label_ids.cpu().numpy() == 1)[1]
+    batch_pred_insertions = tok_preds[i * batch_size : (i * batch_size) + batch_size]
 
-    for id_seq, gold_tok_labels, gold_tok_insertion, pred_tok_dist, pred_tok_insertion, gold_replacement_id, pred_replacement_id in zip(
-        input_ids.cpu().numpy(), tok_label_ids.cpu().numpy(), true_insertions, predicted_tok_dists, 
-        predicted_insertions, replace_ids.cpu().numpy(), pred_replace_ids):
+    batch_gold_distributions = tok_label_ids.cpu().numpy()
+    batch_pred_distributions = tok_probs[i * batch_size : (i * batch_size) + batch_size]
+
+    batch_gold_replacements = replace_ids.cpu().numpy()
+    batch_pred_replacements = pred_replace_ids[i * batch_size : (i * batch_size) + batch_size]
+
+    for id_seq, gold_insertion, pred_insertion, gold_dist, pred_dist, gold_replace_id, pred_replace_id in zip(
+        input_id_seqs, batch_gold_insertions, batch_pred_insertions,
+        batch_gold_distributions, batch_pred_distributions,
+        batch_gold_replacements, batch_pred_replacements):
 
         tok_seq = tokenizer.convert_ids_to_tokens(id_seq)
-        if gold_replacement_id == num_replacement_labels - 1:
+        if gold_replace_id == num_replacement_labels - 1:
             gold_replace_tok = '<del>'
         else:
-            gold_replace_tok = tokenizer.convert_ids_to_tokens([gold_replacement_id])[0]
-        if pred_replacement_id == num_replacement_labels - 1:
-            gold_replace_tok = '<del>'
+            gold_replace_tok = tokenizer.convert_ids_to_tokens([gold_replace_id])[0]
+        if pred_replace_id == num_replacement_labels - 1:
+            pred_replace_tok = '<del>'
         else:
-            pred_replace_tok = tokenizer.convert_ids_to_tokens([pred_replacement_id])[0]
+            pred_replace_tok = tokenizer.convert_ids_to_tokens([pred_replace_id])[0]
 
         print('#' * 80, file=results_file)
         print('SEQ: \t\t', ' '.join(tok_seq), file=results_file)
-        print('GOLD DIST: \t', gold_tok_labels, file=results_file)
-        print('PRED DIST: \t', [round(float(x), 2) for x in pred_tok_dist], file=results_file)
-        print('GOLD INS: \t', gold_tok_insertion, file=results_file)
-        print('PRED INS: \t', pred_tok_insertion, file=results_file)
+        print('GOLD DIST: \t', gold_dist, file=results_file)
+        print('PRED DIST: \t', [round(float(x), 2) for x in pred_dist], file=results_file)
+        print('GOLD INS: \t', gold_insertion, file=results_file)
+        print('PRED INS: \t', pred_insertion, file=results_file)
         print('GOLD TOK: \t', gold_replace_tok.encode('utf-8'), file=results_file)
         print('PRED TOK: \t', pred_replace_tok.encode('utf-8'), file=results_file)
 
