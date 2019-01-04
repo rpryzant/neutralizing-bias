@@ -41,21 +41,10 @@ parser.add_argument(
     type=str
 )
 parser.add_argument(
-    "--attn_type",
-    help="bilinear, bert",
-    type=str, default=''
-)
-parser.add_argument(
-    "--attn_dropout",
-    help="use dropout on bert attn",
+    "--tok_enrich",
+    help="enrich src encoded vecs that need to be changed",
     action='store_true'
 )
-parser.add_argument(
-    "--compress_heads",
-    help="compress bert attention heads with matrix",
-    action='store_true'
-)
-
 args = parser.parse_args()
 
 
@@ -247,7 +236,7 @@ def get_dataloader(data_path, post_data_path, tok_labels_path, bias_labels_path,
         torch.tensor(train_examples['pre_lens'], dtype=torch.long),
         torch.tensor(train_examples['post_in_ids'], dtype=torch.long),
         torch.tensor(train_examples['post_out_ids'], dtype=torch.long),
-        torch.tensor(train_examples['tok_label_ids'], dtype=torch.long),
+        torch.tensor(train_examples['tok_label_ids'], dtype=torch.float),  # for masking
         torch.tensor(train_examples['replace_ids'], dtype=torch.long))
 
     train_dataloader = DataLoader(
@@ -267,7 +256,7 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, criterion):
             batch = tuple(x.cuda() for x in batch)
         pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
 
-        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len)
+        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, tok_label_id)
         loss = criterion(post_logits.contiguous().view(-1, len(tok2id)), post_out_id.contiguous().view(-1))
 
         loss.backward()
@@ -344,7 +333,7 @@ def run_eval(model, dataloader, tok2id, out_file_path):
         max_len = min(MAX_SEQ_LEN, pre_len[0].detach().cpu().numpy() + 5)
 
         with torch.no_grad():
-            predicted_toks = model.inference_forward(pre_id, post_start_id, pre_mask, pre_len, max_len)
+            predicted_toks = model.inference_forward(pre_id, post_start_id, pre_mask, pre_len, max_len, tok_label_id)
 #            loss = criterion(post_logits.contiguous().view(-1, len(tok2id)), post_out_id.contiguous().view(-1))
 
 #        losses.append(loss.detach().cpu().numpy())
@@ -375,11 +364,16 @@ eval_dataloader, num_eval_examples = get_dataloader(
     tok2id, TEST_BATCH_SIZE, WORKING_DIR + '/test_data.pkl',
     test=True)
 
-model = seq2seq_model.Seq2Seq(
-    vocab_size=len(tok2id),
-    hidden_size=256,
-    emb_dim=256,
-    dropout=0.2)
+if args.tok_enrich:
+    model = seq2seq_model.Seq2SeqEnrich(
+        vocab_size=len(tok2id), hidden_size=256,
+        emb_dim=256, dropout=0.2)
+else:
+    model = seq2seq_model.Seq2Seq(
+        vocab_size=len(tok2id), hidden_size=256,
+        emb_dim=256, dropout=0.2)
+
+
 model_parameters = filter(lambda p: p.requires_grad, model.parameters())
 params = sum([np.prod(p.size()) for p in model_parameters])
 print('NUM PARAMS: ', params)

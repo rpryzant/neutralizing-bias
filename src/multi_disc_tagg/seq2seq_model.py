@@ -244,7 +244,7 @@ class Seq2Seq(nn.Module):
             param.data.uniform_(-initrange, initrange)
     
     
-    def forward(self, pre_id, post_in_id, pre_mask, pre_len):
+    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None):
         src_emb = self.embeddings(pre_id)
         
         src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
@@ -269,7 +269,7 @@ class Seq2Seq(nn.Module):
         return logits, probs
 
 
-    def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len):
+    def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist):
         global CUDA
         """ argmax decoding """
         # Initialize target with <s> for every sentence
@@ -284,13 +284,50 @@ class Seq2Seq(nn.Module):
         for i in range(max_len):
             # run input through the model
             with torch.no_grad():
-                decoder_logit, word_probs = self.forward(pre_id, tgt_input, pre_mask, pre_len)
+                decoder_logit, word_probs = self.forward(pre_id, tgt_input, pre_mask, pre_len, tok_dist)
             next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
             tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
             # move to cpu because otherwise quickly runs out of mem
 #            out_logits.append(decoder_logit[:, -1, :].detach().cpu())
 
         return tgt_input#, torch.stack(out_logits).permute(1, 0, 2)
+
+
+class Seq2SeqEnrich(Seq2Seq):
+    def __init__(self, vocab_size, hidden_size, emb_dim, dropout):
+        super(Seq2SeqEnrich, self).__init__(
+            vocab_size, hidden_size, emb_dim, dropout)        
         
+        self.enrich_input = torch.ones(hidden_size)
+        self.enricher = nn.Linear(hidden_size, hidden_size)
         
+    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist):
+        src_emb = self.embeddings(pre_id)
+        src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
+        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
+        c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+
+        # make a "change this token" embedding and add it to the
+        # src_output token that should be changed
+        enrichment = self.enricher(self.enrich_input).repeat(
+            src_outputs.shape[0], src_outputs.shape[1], 1)
+        enrichment = tok_dist.unsqueeze(2) * enrichment
+        src_outputs = src_outputs + enrichment
+
+        tgt_emb = self.embeddings(post_in_id)
+        tgt_outputs, _ = self.decoder(tgt_emb, (h_t, c_t), src_outputs, pre_mask)
+
+        tgt_outputs_reshape = tgt_outputs.contiguous().view(
+            tgt_outputs.size()[0] * tgt_outputs.size()[1],
+            tgt_outputs.size()[2])
+        logits = self.output_projection(tgt_outputs_reshape)
+        logits = logits.view(
+            tgt_outputs.size()[0],
+            tgt_outputs.size()[1],
+            logits.size()[1])
+
+        probs = self.softmax(logits)
         
+        return logits, probs
+        
+
