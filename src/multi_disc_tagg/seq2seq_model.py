@@ -295,10 +295,15 @@ class Seq2Seq(nn.Module):
 
 class Seq2SeqEnrich(Seq2Seq):
     def __init__(self, vocab_size, hidden_size, emb_dim, dropout):
+        global CUDA
+
         super(Seq2SeqEnrich, self).__init__(
             vocab_size, hidden_size, emb_dim, dropout)        
         
         self.enrich_input = torch.ones(hidden_size)
+        if CUDA:
+            self.enrich_input = self.enrich_input.cuda()
+
         self.enricher = nn.Linear(hidden_size, hidden_size)
         
     def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist):
