@@ -13,7 +13,8 @@ from tensorboardX import SummaryWriter
 import torch.optim as optim
 import torch.nn as nn
 import numpy as np
-
+from collections import Counter
+import math
 
 import seq2seq_model
 
@@ -84,14 +85,46 @@ NUM_BIAS_LABELS = 2
 NUM_TOK_LABELS = 3
 
 TRAIN_BATCH_SIZE = 128
-TEST_BATCH_SIZE = 16
+TEST_BATCH_SIZE = 128
 
 EPOCHS = 100
 
 MAX_SEQ_LEN = 100
 
 CUDA = (torch.cuda.device_count() > 0)
+                                                                
+def bleu_stats(hypothesis, reference):
+    """Compute statistics for BLEU."""
+    stats = []
+    stats.append(len(hypothesis))
+    stats.append(len(reference))
+    for n in range(1, 5):
+        s_ngrams = Counter(
+            [tuple(hypothesis[i:i + n]) for i in range(len(hypothesis) + 1 - n)]
+        )
+        r_ngrams = Counter(
+            [tuple(reference[i:i + n]) for i in range(len(reference) + 1 - n)]
+        )
+        stats.append(max([sum((s_ngrams & r_ngrams).values()), 0]))
+        stats.append(max([len(hypothesis) + 1 - n, 0]))
+    return stats
 
+def bleu(stats):
+    """Compute BLEU given n-gram statistics."""
+    if len(list(filter(lambda x: x == 0, stats))) > 0:
+        return 0
+    (c, r) = stats[:2]
+    log_bleu_prec = sum(
+        [math.log(float(x) / y) for x, y in zip(stats[2::2], stats[3::2])]
+    ) / 4.
+    return math.exp(min([0, 1 - float(r) / c]) + log_bleu_prec)
+
+def get_bleu(hypotheses, reference):
+    """Get validation BLEU score for dev set."""
+    stats = np.array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+    for hyp, ref in zip(hypotheses, reference):
+        stats += np.array(bleu_stats(hyp, ref))
+        return 100 * bleu(stats)
 
 def get_tok_labels(s_diff):
     tok_labels = []
@@ -226,6 +259,8 @@ def get_dataloader(data_path, post_data_path, tok_labels_path, bias_labels_path,
     return train_dataloader, len(train_examples['pre_ids'])
 
 def train_for_epoch(model, dataloader, tok2id, optimizer, criterion):
+    global CUDA
+
     losses = []
     for step, batch in enumerate(train_dataloader):
         if CUDA:
@@ -236,16 +271,20 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, criterion):
         loss = criterion(post_logits.contiguous().view(-1, len(tok2id)), post_out_id.contiguous().view(-1))
 
         loss.backward()
+        norm = nn.utils.clip_grad_norm_(model.parameters(), 3.0)
         optimizer.step()
         model.zero_grad()
 
-        losses.append(loss.detach().numpy())
+        losses.append(loss.detach().cpu().numpy())
 
     return losses
 
 
 def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dist, id2tok, out_file):
     out_hits = []
+    preds_for_bleu = []
+    golds_for_bleu = []
+
     for src_seq, gold_seq, pred_seq, gold_replace, gold_dist in zip(
         src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dist):
 
@@ -274,12 +313,16 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dis
             out_hits.append(1)
         else:
             out_hits.append(0)
-            
-    return out_hits
+
+        preds_for_bleu.append(pred_seq.split())
+        golds_for_bleu.append(gold_seq.split())
+
+    return out_hits, preds_for_bleu, golds_for_bleu
 
 
 def run_eval(model, dataloader, tok2id, out_file_path):
     global MAX_SEQ_LEN
+    global CUDA
 
     id2tok = {x: tok for (tok, x) in tok2id.items()}
 
@@ -291,6 +334,7 @@ def run_eval(model, dataloader, tok2id, out_file_path):
 
     losses = []
     hits = []
+    preds, golds = [], []
     for step, batch in enumerate(train_dataloader):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
@@ -300,21 +344,23 @@ def run_eval(model, dataloader, tok2id, out_file_path):
         max_len = min(MAX_SEQ_LEN, pre_len[0].detach().cpu().numpy() + 5)
 
         with torch.no_grad():
-            predicted_toks, post_logits = model.inference_forward(pre_id, post_start_id, pre_mask, pre_len, max_len)
-            loss = criterion(post_logits.contiguous().view(-1, len(tok2id)), post_out_id.contiguous().view(-1))
+            predicted_toks = model.inference_forward(pre_id, post_start_id, pre_mask, pre_len, max_len)
+#            loss = criterion(post_logits.contiguous().view(-1, len(tok2id)), post_out_id.contiguous().view(-1))
 
-        losses.append(loss.detach().numpy())
-        hits += dump_outputs(
+#        losses.append(loss.detach().cpu().numpy())
+        new_hits, new_preds, new_golds = dump_outputs(
             pre_id.detach().cpu().numpy(), 
             post_out_id.detach().cpu().numpy(), 
             predicted_toks.detach().cpu().numpy(), 
             replace_id.detach().cpu().numpy(), 
             tok_label_id.detach().cpu().numpy(), 
             id2tok, out_file)
-
+        hits += new_hits
+        preds += new_preds
+        golds += new_golds
     out_file.close()
 
-    return losses, hits
+    return [-1], hits, preds, golds
 
 
 tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
@@ -334,6 +380,10 @@ model = seq2seq_model.Seq2Seq(
     hidden_size=256,
     emb_dim=256,
     dropout=0.2)
+model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+params = sum([np.prod(p.size()) for p in model_parameters])
+print('NUM PARAMS: ', params)
+
 
 writer = SummaryWriter(WORKING_DIR)
 optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -344,7 +394,8 @@ criterion = nn.CrossEntropyLoss(weight=weight_mask)
 
 if CUDA:
     weight_mask = weight_mask.cuda()
-    loss_criterion = loss_criterion.cuda()
+    criterion = criterion.cuda()
+    model = model.cuda()
 
 for epoch in range(EPOCHS):
     print('EPOCH ', epoch)
@@ -355,8 +406,9 @@ for epoch in range(EPOCHS):
     print('EVAL...')
 
     model.eval()
-    losses, hits = run_eval(model, eval_dataloader, tok2id, WORKING_DIR + '/results_%d.txt' % epoch)
-    writer.add_scalar('eval/loss', np.mean(losses), epoch)
+    losses, hits, preds, golds = run_eval(model, eval_dataloader, tok2id, WORKING_DIR + '/results_%d.txt' % epoch)
+    writer.add_scalar('eval/bleu', get_bleu(preds, golds), epoch)
+#    writer.add_scalar('eval/loss', np.mean(losses), epoch)
     writer.add_scalar('eval/true_hits', np.mean(hits), epoch)
 
 
