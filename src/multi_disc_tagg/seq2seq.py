@@ -262,7 +262,7 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, criterion):
     global CUDA
 
     losses = []
-    for step, batch in enumerate(train_dataloader):
+    for step, batch in enumerate(tqdm(dataloader)):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
@@ -335,7 +335,7 @@ def run_eval(model, dataloader, tok2id, out_file_path):
     losses = []
     hits = []
     preds, golds = [], []
-    for step, batch in enumerate(train_dataloader):
+    for step, batch in enumerate(tqdm(dataloader)):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
