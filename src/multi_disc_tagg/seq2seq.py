@@ -83,12 +83,12 @@ WORKING_DIR = working_dir
 NUM_BIAS_LABELS = 2
 NUM_TOK_LABELS = 3
 
-TRAIN_BATCH_SIZE = 3
+TRAIN_BATCH_SIZE = 128
 TEST_BATCH_SIZE = 16
 
-EPOCHS = 2
+EPOCHS = 100
 
-MAX_SEQ_LEN = 5#100
+MAX_SEQ_LEN = 100
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -106,12 +106,9 @@ def get_tok_labels(s_diff):
     return tok_labels
 
 
-def get_examples(text_path, text_post_path, tok_labels_path, bias_labels_path, tokenizer, possible_labels, max_seq_len):
+def get_examples(text_path, text_post_path, tok_labels_path, bias_labels_path, tok2id, possible_labels, max_seq_len):
     label2id = {label: i for i, label in enumerate(possible_labels)}
     label2id['mask'] = len(label2id)
-
-    tok2id = tokenizer.vocab
-    tok2id['<del>'] = len(tok2id)
     
     def pad(id_arr, pad_idx):
         return id_arr + ([pad_idx] * (max_seq_len - len(id_arr)))
@@ -179,10 +176,10 @@ def get_examples(text_path, text_post_path, tok_labels_path, bias_labels_path, t
         out['replace_ids'].append(replace_id)
 
     print('SKIPPED ', skipped)
-    return out, tok2id
+    return out
 
 
-def get_dataloader(data_path, post_data_path, tok_labels_path, bias_labels_path, tokenizer, batch_size, pickle_path=None, test=False):
+def get_dataloader(data_path, post_data_path, tok_labels_path, bias_labels_path, tok2id, batch_size, pickle_path=None, test=False):
     def collate(data):
         # sort by length for packing/padding
         data.sort(key=lambda x: x[2], reverse=True)
@@ -198,17 +195,18 @@ def get_dataloader(data_path, post_data_path, tok_labels_path, bias_labels_path,
         return data
 
     if pickle_path is not None and os.path.exists(pickle_path):
-        train_examples, tok2id = pickle.load(open(pickle_path, 'rb'))
+        train_examples = pickle.load(open(pickle_path, 'rb'))
     else:
-        train_examples, tok2id = get_examples(
+        train_examples = get_examples(
             text_path=data_path, 
             text_post_path=post_data_path,
             tok_labels_path=tok_labels_path,
             bias_labels_path=bias_labels_path,
-            tokenizer=tokenizer,
+            tok2id=tok2id,
             possible_labels=["0", "1"],
             max_seq_len=MAX_SEQ_LEN)
-        pickle.dump((train_examples, tok2id), open(pickle_path, 'wb'))
+
+        pickle.dump(train_examples, open(pickle_path, 'wb'))
 
     train_data = TensorDataset(
         torch.tensor(train_examples['pre_ids'], dtype=torch.long),
@@ -225,68 +223,141 @@ def get_dataloader(data_path, post_data_path, tok_labels_path, bias_labels_path,
         collate_fn=collate,
         batch_size=batch_size)
 
-    return train_dataloader, len(train_examples['pre_ids']), tok2id
+    return train_dataloader, len(train_examples['pre_ids'])
 
-def train(model, dataloader, epochs, writer, tok2id):
-    global CUDA
+def train_for_epoch(model, dataloader, tok2id, optimizer, criterion):
+    losses = []
+    for step, batch in enumerate(train_dataloader):
+        if CUDA:
+            batch = tuple(x.cuda() for x in batch)
+        pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
 
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len)
+        loss = criterion(post_logits.contiguous().view(-1, len(tok2id)), post_out_id.contiguous().view(-1))
+
+        loss.backward()
+        optimizer.step()
+        model.zero_grad()
+
+        losses.append(loss.detach().numpy())
+
+    return losses
+
+
+def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dist, id2tok, out_file):
+    out_hits = []
+    for src_seq, gold_seq, pred_seq, gold_replace, gold_dist in zip(
+        src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dist):
+
+        src_seq = [id2tok[x] for x in src_seq]
+        gold_seq = [id2tok[x] for x in gold_seq]
+        pred_seq = [id2tok[x] for x in pred_seq[1:]]
+        gold_seq = gold_seq[:gold_seq.index('[SEP]')]
+        if '[SEP]' in pred_seq:
+            pred_seq = pred_seq[:pred_seq.index('[SEP]')]
+        src_seq = ' '.join(src_seq).replace('[PAD]', '').strip()
+        gold_seq = ' '.join(gold_seq).replace('[PAD]', '').strip()
+        pred_seq = ' '.join(pred_seq).replace('[PAD]', '').strip()
+
+        gold_replace = id2tok[gold_replace]
+        pred_replace = [chunk for tag, chunk in diff(src_seq.split(), pred_seq.split()) if tag == '+']
+        
+        print('#' * 80, file=out_file)
+        print('IN SEQ: \t', src_seq, file=out_file)
+        print('GOLD SEQ: \t', gold_seq, file=out_file)
+        print('PRED SEQ:\t', pred_seq, file=out_file)
+        print('GOLD DIST: \t', list(gold_dist), file=out_file)
+        print('GOLD TOK: \t', gold_replace.encode('utf-8'), file=out_file)
+        print('PRED TOK: \t', pred_replace, file=out_file)
+
+        if gold_seq == pred_seq:
+            out_hits.append(1)
+        else:
+            out_hits.append(0)
+            
+    return out_hits
+
+
+def run_eval(model, dataloader, tok2id, out_file_path):
+    global MAX_SEQ_LEN
+
+    id2tok = {x: tok for (tok, x) in tok2id.items()}
 
     weight_mask = torch.ones(len(tok2id))
     weight_mask[0] = 0
     criterion = nn.CrossEntropyLoss(weight=weight_mask)
 
-    if CUDA:
-        weight_mask = weight_mask.cuda()
-        loss_criterion = loss_criterion.cuda()
+    out_file = open(out_file_path, 'w')
 
-    model.train()
-    train_step = 0
-    for epoch in range(epochs):
-        print('STARTING EPOCH ', epoch)
-        for step, batch in enumerate(train_dataloader):
-            while True:
-                if CUDA:
-                    batch = tuple(x.cuda() for x in batch)
-                pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
+    losses = []
+    hits = []
+    for step, batch in enumerate(train_dataloader):
+        if CUDA:
+            batch = tuple(x.cuda() for x in batch)
+        pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
 
-                post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len)
-                loss = criterion(post_logits.contiguous().view(-1, len(tok2id)), post_out_id.contiguous().view(-1))
-                print(pre_id)
-                print(post_in_id)
-                print(post_out_id)                
-                print(post_probs.detach().numpy().argmax(axis=-1))
-                print(loss)
+        post_start_id = tok2id['[CLS]']
+        max_len = min(MAX_SEQ_LEN, pre_len[0].detach().cpu().numpy() + 5)
 
-                loss.backward()
-                optimizer.step()
-                model.zero_grad()
+        with torch.no_grad():
+            predicted_toks, post_logits = model.inference_forward(pre_id, post_start_id, pre_mask, pre_len, max_len)
+            loss = criterion(post_logits.contiguous().view(-1, len(tok2id)), post_out_id.contiguous().view(-1))
 
-                writer.add_scalar('train/loss', loss.data[0], train_step)
-                train_step += 1
-    
+        losses.append(loss.detach().numpy())
+        hits += dump_outputs(
+            pre_id.detach().cpu().numpy(), 
+            post_out_id.detach().cpu().numpy(), 
+            predicted_toks.detach().cpu().numpy(), 
+            replace_id.detach().cpu().numpy(), 
+            tok_label_id.detach().cpu().numpy(), 
+            id2tok, out_file)
 
+    out_file.close()
+
+    return losses, hits
 
 
 tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
+tok2id = tokenizer.vocab
+tok2id['<del>'] = len(tok2id)
 
-train_dataloader, num_train_examples, tok2id = get_dataloader(
+train_dataloader, num_train_examples = get_dataloader(
     TRAIN_TEXT, TRAIN_TEXT_POST, TRAIN_TOK_LABELS, TRAIN_BIAS_LABELS, 
-    tokenizer, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
-eval_dataloader, num_eval_examples, _ = get_dataloader(
+    tok2id, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
+eval_dataloader, num_eval_examples = get_dataloader(
     TEST_TEXT, TEST_TEXT_POST, TEST_TOK_LABELS, TEST_BIAS_LABELS,
-    tokenizer, TEST_BATCH_SIZE, WORKING_DIR + '/test_data.pkl',
+    tok2id, TEST_BATCH_SIZE, WORKING_DIR + '/test_data.pkl',
     test=True)
 
 model = seq2seq_model.Seq2Seq(
     vocab_size=len(tok2id),
-    hidden_size=64,#256,
-    emb_dim=64,#256,
+    hidden_size=256,
+    emb_dim=256,
     dropout=0.2)
 
 writer = SummaryWriter(WORKING_DIR)
-train(model, train_dataloader, 1, writer, tok2id)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 
+weight_mask = torch.ones(len(tok2id))
+weight_mask[0] = 0
+criterion = nn.CrossEntropyLoss(weight=weight_mask)
+
+if CUDA:
+    weight_mask = weight_mask.cuda()
+    loss_criterion = loss_criterion.cuda()
+
+for epoch in range(EPOCHS):
+    print('EPOCH ', epoch)
+    print('TRAIN...')
+    model.train()
+    losses = train_for_epoch(model, train_dataloader, tok2id, optimizer, criterion)
+    writer.add_scalar('train/loss', np.mean(losses), epoch)
+    print('EVAL...')
+
+    model.eval()
+    losses, hits = run_eval(model, eval_dataloader, tok2id, WORKING_DIR + '/results_%d.txt' % epoch)
+    writer.add_scalar('eval/loss', np.mean(losses), epoch)
+    writer.add_scalar('eval/true_hits', np.mean(hits), epoch)
 
 
 
