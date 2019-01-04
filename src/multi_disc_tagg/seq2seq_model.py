@@ -285,11 +285,9 @@ class Seq2Seq(nn.Module):
             # run input through the model
             with torch.no_grad():
                 decoder_logit, word_probs = self.forward(pre_id, tgt_input, pre_mask, pre_len)
-            decoder_argmax = word_probs.detach().cpu().numpy().argmax(axis=-1)
-            next_preds = Variable(torch.from_numpy(decoder_argmax[:, -1]))
-            if CUDA:
-                next_preds = next_preds.cuda()
+            next_preds = torch.max(word_probs, dim=2)[1][:, -1]
             tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
+
             # move to cpu because otherwise quickly runs out of mem
 #            out_logits.append(decoder_logit[:, -1, :].detach().cpu())
 

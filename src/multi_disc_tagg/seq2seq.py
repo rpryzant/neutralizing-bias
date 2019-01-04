@@ -89,7 +89,7 @@ TEST_BATCH_SIZE = 128
 
 EPOCHS = 100
 
-MAX_SEQ_LEN = 100
+MAX_SEQ_LEN = 80
 
 CUDA = (torch.cuda.device_count() > 0)
                                                                 
