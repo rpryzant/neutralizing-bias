@@ -45,6 +45,11 @@ parser.add_argument(
     help="enrich src encoded vecs that need to be changed",
     action='store_true'
 )
+parser.add_argument(
+    "--no_del",
+    help="no <del> tok for deletions",
+    action='store_true'
+)
 args = parser.parse_args()
 
 
@@ -129,6 +134,8 @@ def get_tok_labels(s_diff):
 
 
 def get_examples(text_path, text_post_path, tok_labels_path, bias_labels_path, tok2id, possible_labels, max_seq_len):
+    global args
+
     label2id = {label: i for i, label in enumerate(possible_labels)}
     label2id['mask'] = len(label2id)
     
@@ -155,8 +162,10 @@ def get_examples(text_path, text_post_path, tok_labels_path, bias_labels_path, t
             replace_id = tok2id[replace_token]
         except StopIteration:
             # add deletion token into data
-            post_tokens.insert(tok_labels.index('1'), '<del>')
-            replace_id = tok2id['<del>']
+            replace_id = tok2id['<del>']    
+            if not args.no_del:
+                post_tokens.insert(tok_labels.index('1'), '<del>')
+
         except KeyError:
             skipped += 1
             continue
