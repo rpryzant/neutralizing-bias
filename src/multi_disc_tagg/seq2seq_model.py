@@ -212,7 +212,7 @@ class StackedAttentionLSTM(nn.Module):
 
 
 class Seq2Seq(nn.Module):
-    def __init__(self, vocab_size, hidden_size, emb_dim, dropout):
+    def __init__(self, vocab_size, hidden_size, emb_dim, dropout, embeddings_path='', freeze_embeddings=False):
         super(Seq2Seq, self).__init__()        
 
         self.vocab_size = vocab_size
@@ -220,7 +220,13 @@ class Seq2Seq(nn.Module):
         self.emb_dim = emb_dim
         self.dropout = dropout
         self.pad_id = 0
-        
+
+        # set self.emb_dim from data                
+        if embeddings_path:
+            emb_matrix = torch.FloatTensor([
+                [float(x) for x in line.strip().split()[1:]] for line in open(embeddings_path)
+            ])
+            self.emb_dim = emb_matrix.shape[1]
         self.embeddings = nn.Embedding(self.vocab_size, self.emb_dim, self.pad_id)
 
         self.encoder = LSTMEncoder(
@@ -233,10 +239,16 @@ class Seq2Seq(nn.Module):
         self.output_projection = nn.Linear(self.hidden_dim, self.vocab_size)
         
         self.softmax = nn.Softmax(dim=-1)
-        
+
         self.init_weights()
-        
-        
+
+        # re-init embs from data
+        if embeddings_path:
+            self.embeddings.weight.data.copy_(emb_matrix)
+            if freeze_embeddings:
+                self.embeddings.weight.requires_grad = False
+
+                
     def init_weights(self):
         """Initialize weights."""
         initrange = 0.1
@@ -294,19 +306,23 @@ class Seq2Seq(nn.Module):
 
 
 class Seq2SeqEnrich(Seq2Seq):
-    def __init__(self, vocab_size, hidden_size, emb_dim, dropout):
+    def __init__(self, vocab_size, hidden_size, emb_dim, dropout, embeddings_path='', freeze_embeddings=False):
         global CUDA
 
         super(Seq2SeqEnrich, self).__init__(
-            vocab_size, hidden_size, emb_dim, dropout)        
-        
+            vocab_size, hidden_size, emb_dim, dropout, embeddings_path, freeze_embeddings)        
+
         self.enrich_input = torch.ones(hidden_size)
         if CUDA:
             self.enrich_input = self.enrich_input.cuda()
 
         self.enricher = nn.Linear(hidden_size, hidden_size)
-        
+        # because init_weights was called in super and dont want to fuq up embeddings
+        self.enricher.data.uniform_(-0.1, 0.1)  
+
+
     def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist):
+        print(self.embeddings.weight)
         src_emb = self.embeddings(pre_id)
         src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
         h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)

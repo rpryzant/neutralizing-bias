@@ -31,23 +31,28 @@ parser.add_argument(
     required=True
 )
 parser.add_argument(
-    "--mode",
-    help="model type",
-    type=str
-)
-parser.add_argument(
     "--working_dir",
     help="train continuously on one batch of data",
-    type=str
+    type=str, required=True
 )
 parser.add_argument(
-    "--tok_enrich",
-    help="enrich src encoded vecs that need to be changed",
+    "--embeddings",
+    help="optional pretrained embeddings file",
+    type=str, default=''
+)
+parser.add_argument(
+    "--freeze_embeddings",
+    help="freeze pretrained embeddings",
     action='store_true'
 )
 parser.add_argument(
-    "--no_del",
-    help="no <del> tok for deletions",
+    "--no_tok_enrich",
+    help="turn off src enrichment",
+    action='store_true'
+)
+parser.add_argument(
+    "--add_del_tok",
+    help="add a <del> tok for deletions",
     action='store_true'
 )
 args = parser.parse_args()
@@ -57,7 +62,7 @@ BERT_MODEL = "bert-base-uncased"
 
 train_data_prefix = args.train
 test_data_prefix = args.test
-mode = args.mode
+
 working_dir = args.working_dir
 if not os.path.exists(working_dir):
     os.makedirs(working_dir)
@@ -163,7 +168,7 @@ def get_examples(text_path, text_post_path, tok_labels_path, bias_labels_path, t
         except StopIteration:
             # add deletion token into data
             replace_id = tok2id['<del>']    
-            if not args.no_del:
+            if args.add_del_tok:
                 post_tokens.insert(tok_labels.index('1'), '<del>')
 
         except KeyError:
@@ -373,14 +378,18 @@ eval_dataloader, num_eval_examples = get_dataloader(
     tok2id, TEST_BATCH_SIZE, WORKING_DIR + '/test_data.pkl',
     test=True)
 
-if args.tok_enrich:
-    model = seq2seq_model.Seq2SeqEnrich(
-        vocab_size=len(tok2id), hidden_size=256,
-        emb_dim=256, dropout=0.2)
-else:
+if args.no_tok_enrich:
     model = seq2seq_model.Seq2Seq(
         vocab_size=len(tok2id), hidden_size=256,
-        emb_dim=256, dropout=0.2)
+        emb_dim=256, dropout=0.2, 
+        embeddings_path=args.embeddings,
+        freeze_embeddings=args.freeze_embeddings)
+else:
+    model = seq2seq_model.Seq2SeqEnrich(
+        vocab_size=len(tok2id), hidden_size=256,
+        emb_dim=256, dropout=0.2, 
+        embeddings_path=args.embeddings,
+        freeze_embeddings=args.freeze_embeddings)
 
 
 model_parameters = filter(lambda p: p.requires_grad, model.parameters())
