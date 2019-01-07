@@ -1,11 +1,15 @@
 import math
 import numpy as np
+import copy
 
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
+from pytorch_pretrained_bert.modeling import BertModel
+
+from args import ARGS
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -212,7 +216,7 @@ class StackedAttentionLSTM(nn.Module):
 
 
 class Seq2Seq(nn.Module):
-    def __init__(self, vocab_size, hidden_size, emb_dim, dropout, embeddings_path='', freeze_embeddings=False):
+    def __init__(self, vocab_size, hidden_size, emb_dim, dropout):
         super(Seq2Seq, self).__init__()        
 
         self.vocab_size = vocab_size
@@ -221,17 +225,12 @@ class Seq2Seq(nn.Module):
         self.dropout = dropout
         self.pad_id = 0
 
-        # set self.emb_dim from data                
-        if embeddings_path:
-            emb_matrix = torch.FloatTensor([
-                [float(x) for x in line.strip().split()[1:]] for line in open(embeddings_path)
-            ])
-            self.emb_dim = emb_matrix.shape[1]
         self.embeddings = nn.Embedding(self.vocab_size, self.emb_dim, self.pad_id)
-
         self.encoder = LSTMEncoder(
             self.emb_dim, self.hidden_dim, layers=1, bidirectional=True, dropout=self.dropout)
-        self.ctx_bridge = nn.Linear(self.hidden_dim, self.hidden_dim)
+
+                                                
+        self.bridge = nn.Linear(768 if ARGS.bert_encoder else self.hidden_dim, self.hidden_dim)
         
         self.decoder = StackedAttentionLSTM(
             self.emb_dim, self.hidden_dim, layers=1, dropout=self.dropout)
@@ -242,13 +241,28 @@ class Seq2Seq(nn.Module):
 
         self.init_weights()
 
-        # re-init embs from data
-        if embeddings_path:
-            self.embeddings.weight.data.copy_(emb_matrix)
-            if freeze_embeddings:
-                self.embeddings.weight.requires_grad = False
-
+        # pretrained embs from bert (after init to avoid overwrite)
+        if ARGS.bert_word_embeddings or ARGS.bert_full_embeddings or ARGS.bert_encoder:
+            model = BertModel.from_pretrained(
+                'bert-base-uncased',
+                ARGS.working_dir + '/cache')
                 
+            if ARGS.bert_word_embeddings:
+                self.embeddings = copy.deepcopy(model.embeddings.word_embeddings)
+                
+            if ARGS.bert_full_embeddings:
+                self.embeddings = copy.deepcopy(model.embeddings)
+
+            if ARGS.bert_encoder:
+                self.encoder = model
+                # share bert word embeddings with decoder
+                self.embeddings = model.embeddings.word_embeddings
+
+        if ARGS.freeze_embeddings:
+            for param in self.embeddings.parameters():
+                param.requires_grad = False
+
+
     def init_weights(self):
         """Initialize weights."""
         initrange = 0.1
@@ -257,14 +271,22 @@ class Seq2Seq(nn.Module):
     
     
     def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None):
-        src_emb = self.embeddings(pre_id)
-        
-        src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
-        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
-        c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+        if ARGS.bert_encoder:
+            src_outputs, _, _ = self.encoder(
+                pre_id, 
+                attention_mask=1 - pre_mask,
+                output_all_encoded_layers=False)
+            src_outputs = self.bridge(src_outputs)        
+            h_t = src_outputs[:, -1]
+            c_t = src_outputs[:, -1]
+        else:
+            src_emb = self.embeddings(pre_id)
+            src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
+            src_outputs = self.bridge(src_outputs)
+            h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
+            c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
 
         tgt_emb = self.embeddings(post_in_id)
-
         tgt_outputs, _ = self.decoder(tgt_emb, (h_t, c_t), src_outputs, pre_mask)
 
         tgt_outputs_reshape = tgt_outputs.contiguous().view(
@@ -306,27 +328,35 @@ class Seq2Seq(nn.Module):
 
 
 class Seq2SeqEnrich(Seq2Seq):
-    def __init__(self, vocab_size, hidden_size, emb_dim, dropout, embeddings_path='', freeze_embeddings=False):
+    def __init__(self, vocab_size, hidden_size, emb_dim, dropout):
         global CUDA
-
         super(Seq2SeqEnrich, self).__init__(
-            vocab_size, hidden_size, emb_dim, dropout, embeddings_path, freeze_embeddings)        
+            vocab_size, hidden_size, emb_dim, dropout)        
 
         self.enrich_input = torch.ones(hidden_size)
         if CUDA:
             self.enrich_input = self.enrich_input.cuda()
 
         self.enricher = nn.Linear(hidden_size, hidden_size)
-        # because init_weights was called in super and dont want to fuq up embeddings
-        self.enricher.data.uniform_(-0.1, 0.1)  
+        # # because init_weights was called in super and dont want to fuq up embeddings
+        # self.enricher.weight.data.uniform_(-0.1, 0.1)  
 
 
     def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist):
-        print(self.embeddings.weight)
-        src_emb = self.embeddings(pre_id)
-        src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
-        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
-        c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+        if ARGS.bert_encoder:
+            src_outputs, _, _ = self.encoder(
+                pre_id, 
+                attention_mask=1 - pre_mask,
+                output_all_encoded_layers=False)
+            src_outputs = self.bridge(src_outputs)        
+            h_t = src_outputs[:, -1]
+            c_t = src_outputs[:, -1]
+        else:
+            src_emb = self.embeddings(pre_id)
+            src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
+            src_outputs = self.bridge(src_outputs)
+            h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
+            c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
 
         # make a "change this token" embedding and add it to the
         # src_output token that should be changed

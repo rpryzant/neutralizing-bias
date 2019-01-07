@@ -32,9 +32,14 @@ def cos_dist(word1, word2):
     return torch.nn.functional.cosine_similarity(embeddings[0], embeddings[1], dim=0)
 
 
-for (tok, idx) in tokenizer.vocab.items():
+# for (tok, idx) in tokenizer.vocab.items():
 
-    vec = model.embeddings.word_embeddings(torch.LongTensor([idx])).squeeze()
-    print(tok + ' ' + ' '.join(str(x) for x in vec.detach().numpy().tolist()))
+#     vec = model.embeddings.word_embeddings(torch.LongTensor([idx])).squeeze()
+#     print(tok + ' ' + ' '.join(str(x) for x in vec.detach().numpy().tolist()))
 
-print('<del>' + ' ' + ' '.join(str(x) for x in np.random.uniform(low=-0.1, high=0.1, size=768).tolist()))
+# print('<del>' + ' ' + ' '.join(str(x) for x in np.random.uniform(low=-0.1, high=0.1, size=768).tolist()))
+
+# POSITIONAL EMBEDDINGS
+
+position_embeddings
+

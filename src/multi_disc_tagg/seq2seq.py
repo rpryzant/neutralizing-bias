@@ -1,6 +1,5 @@
 # python seq2seq.py --train ../../data/v4/tok/biased --test ../../data/v4/tok/biased --working_dir TEST/
 
-import argparse
 from collections import defaultdict
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 from tqdm import tqdm
@@ -16,79 +15,41 @@ import numpy as np
 from collections import Counter
 import math
 
+from pytorch_pretrained_bert.modeling import BertEmbeddings
+from pytorch_pretrained_bert.optimization import BertAdam
+
+
 import seq2seq_model
-
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--train",
-    help="train prefix",
-    required=True
-)
-parser.add_argument(
-    "--test",
-    help="test prefix",
-    required=True
-)
-parser.add_argument(
-    "--working_dir",
-    help="train continuously on one batch of data",
-    type=str, required=True
-)
-parser.add_argument(
-    "--embeddings",
-    help="optional pretrained embeddings file",
-    type=str, default=''
-)
-parser.add_argument(
-    "--freeze_embeddings",
-    help="freeze pretrained embeddings",
-    action='store_true'
-)
-parser.add_argument(
-    "--no_tok_enrich",
-    help="turn off src enrichment",
-    action='store_true'
-)
-parser.add_argument(
-    "--add_del_tok",
-    help="add a <del> tok for deletions",
-    action='store_true'
-)
-args = parser.parse_args()
+from args import ARGS
 
 
 BERT_MODEL = "bert-base-uncased"
 
-train_data_prefix = args.train
-test_data_prefix = args.test
+train_data_prefix = ARGS.train
+test_data_prefix = ARGS.test
 
-working_dir = args.working_dir
+working_dir = ARGS.working_dir
 if not os.path.exists(working_dir):
     os.makedirs(working_dir)
 
 
 TRAIN_TEXT = train_data_prefix + '.train.pre'
 TRAIN_TEXT_POST = train_data_prefix + '.train.post'
-TRAIN_TOK_LABELS = train_data_prefix + '.train.tok_labels'
-TRAIN_BIAS_LABELS = train_data_prefix + '.train.seq_labels'
 
 TEST_TEXT = test_data_prefix + '.test.pre'
 TEST_TEXT_POST = test_data_prefix + '.test.post'
-TEST_TOK_LABELS = test_data_prefix + '.test.tok_labels'
-TEST_BIAS_LABELS = test_data_prefix + '.test.seq_labels'
 
 WORKING_DIR = working_dir
 
 NUM_BIAS_LABELS = 2
 NUM_TOK_LABELS = 3
 
-TRAIN_BATCH_SIZE = 128
-TEST_BATCH_SIZE = 128
+TRAIN_BATCH_SIZE = 80
+TEST_BATCH_SIZE = 80
 
-EPOCHS = 100
+EPOCHS = 60
 
-MAX_SEQ_LEN = 80
+MAX_SEQ_LEN = 70
 
 CUDA = (torch.cuda.device_count() > 0)
                                                                 
@@ -138,8 +99,17 @@ def get_tok_labels(s_diff):
     return tok_labels
 
 
-def get_examples(text_path, text_post_path, tok_labels_path, bias_labels_path, tok2id, possible_labels, max_seq_len):
-    global args
+def noise_seq(seq, drop_prob=0.25, shuf_dist=3):
+    # from https://arxiv.org/pdf/1711.00043.pdf
+    def perm(i):
+        return i[0] + (shuf_dist + 1) * np.random.random()
+    seq = [x for x in seq if np.random.random() > drop_prob]
+    seq = [x for _, x in sorted(enumerate(seq), key=perm)]
+    return seq
+
+
+def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len, noise=False):
+    global ARGS
 
     label2id = {label: i for i, label in enumerate(possible_labels)}
     label2id['mask'] = len(label2id)
@@ -154,7 +124,7 @@ def get_examples(text_path, text_post_path, tok_labels_path, bias_labels_path, t
         'tok_label_ids': [], 'replace_ids': []
     }
 
-    for i, (line, post_line, tok_labels, bias_label) in enumerate(tqdm(zip(open(text_path), open(text_post_path), open(tok_labels_path), open(bias_labels_path)))):
+    for i, (line, post_line) in enumerate(tqdm(zip(open(text_path), open(text_post_path)))):
         # ignore the unbiased sentences with tagging -- TODO -- toggle this?    
         tokens = line.strip().split() # Pre-tokenized
         post_tokens = post_line.strip().split()
@@ -168,7 +138,7 @@ def get_examples(text_path, text_post_path, tok_labels_path, bias_labels_path, t
         except StopIteration:
             # add deletion token into data
             replace_id = tok2id['<del>']    
-            if args.add_del_tok:
+            if ARGS.add_del_tok:
                 post_tokens.insert(tok_labels.index('1'), '<del>')
 
         except KeyError:
@@ -183,11 +153,14 @@ def get_examples(text_path, text_post_path, tok_labels_path, bias_labels_path, t
             tok_labels = tok_labels[:max_seq_len - 1]
 
         # use cls/sep as start/end...whelp lol
-        post_input_tokens = ['[CLS]'] + post_tokens
-        post_output_tokens = post_tokens + ['[SEP]']
+        post_input_tokens = ['行'] + post_tokens
+        post_output_tokens = post_tokens + ['止'] 
 
         try:
-            pre_ids = pad([tok2id[x] for x in tokens], 0)
+            pre_ids = [tok2id[x] for x in tokens]
+            if noise:
+                pre_ids = noise_seq(pre_ids)
+            pre_ids = pad(pre_ids, 0)
             post_in_ids = pad([tok2id[x] for x in post_input_tokens], 0)
             post_out_ids = pad([tok2id[x] for x in post_output_tokens], 0)
             tok_label_ids = pad([label2id[l] for l in tok_labels], 0)
@@ -199,7 +172,8 @@ def get_examples(text_path, text_post_path, tok_labels_path, bias_labels_path, t
         input_mask = pad([0] * len(tokens), 1)
         pre_len = len(tokens)
 
-        if 1 not in tok_label_ids: # make sure its a real edit
+        # make sure its a real edit (only if we're not autoencoding)
+        if (text_path != text_post_path) and 1 not in tok_label_ids: 
             skipped += 1
             continue
 
@@ -215,7 +189,7 @@ def get_examples(text_path, text_post_path, tok_labels_path, bias_labels_path, t
     return out
 
 
-def get_dataloader(data_path, post_data_path, tok_labels_path, bias_labels_path, tok2id, batch_size, pickle_path=None, test=False):
+def get_dataloader(data_path, post_data_path, tok2id, batch_size, pickle_path=None, test=False, noise=False):
     def collate(data):
         # sort by length for packing/padding
         data.sort(key=lambda x: x[2], reverse=True)
@@ -236,11 +210,10 @@ def get_dataloader(data_path, post_data_path, tok_labels_path, bias_labels_path,
         train_examples = get_examples(
             text_path=data_path, 
             text_post_path=post_data_path,
-            tok_labels_path=tok_labels_path,
-            bias_labels_path=bias_labels_path,
             tok2id=tok2id,
             possible_labels=["0", "1"],
-            max_seq_len=MAX_SEQ_LEN)
+            max_seq_len=MAX_SEQ_LEN,
+            noise=noise)
 
         pickle.dump(train_examples, open(pickle_path, 'wb'))
 
@@ -266,6 +239,8 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, criterion):
 
     losses = []
     for step, batch in enumerate(tqdm(dataloader)):
+        if step > 3:
+            continue
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
@@ -366,30 +341,42 @@ def run_eval(model, dataloader, tok2id, out_file_path):
     return [-1], hits, preds, golds
 
 
+
+
+
+
+
+# # # # # # # # ## # # # ## # # DATA # # # # # # # # ## # # # ## # #
 tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
 tok2id = tokenizer.vocab
 tok2id['<del>'] = len(tok2id)
 
+
+if ARGS.pretrain_data: 
+    pretrain_dataloader, num_pretrain_examples = get_dataloader(
+        ARGS.pretrain_data, ARGS.pretrain_data, 
+        tok2id, TRAIN_BATCH_SIZE, WORKING_DIR + '/pretrain_data.pkl',
+        noise=True)
+
 train_dataloader, num_train_examples = get_dataloader(
-    TRAIN_TEXT, TRAIN_TEXT_POST, TRAIN_TOK_LABELS, TRAIN_BIAS_LABELS, 
+    TRAIN_TEXT, TRAIN_TEXT_POST, 
     tok2id, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
 eval_dataloader, num_eval_examples = get_dataloader(
-    TEST_TEXT, TEST_TEXT_POST, TEST_TOK_LABELS, TEST_BIAS_LABELS,
+    TEST_TEXT, TEST_TEXT_POST,
     tok2id, TEST_BATCH_SIZE, WORKING_DIR + '/test_data.pkl',
     test=True)
 
-if args.no_tok_enrich:
+
+
+# # # # # # # # ## # # # ## # # MODELS # # # # # # # # ## # # # ## # #
+if ARGS.no_tok_enrich:
     model = seq2seq_model.Seq2Seq(
-        vocab_size=len(tok2id), hidden_size=256,
-        emb_dim=256, dropout=0.2, 
-        embeddings_path=args.embeddings,
-        freeze_embeddings=args.freeze_embeddings)
+        vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
+        emb_dim=768, dropout=0.2)
 else:
     model = seq2seq_model.Seq2SeqEnrich(
-        vocab_size=len(tok2id), hidden_size=256,
-        emb_dim=256, dropout=0.2, 
-        embeddings_path=args.embeddings,
-        freeze_embeddings=args.freeze_embeddings)
+        vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
+        emb_dim=768, dropout=0.2)
 
 
 model_parameters = filter(lambda p: p.requires_grad, model.parameters())
@@ -397,8 +384,29 @@ params = sum([np.prod(p.size()) for p in model_parameters])
 print('NUM PARAMS: ', params)
 
 
+
+# # # # # # # # ## # # # ## # # OPTIMIZERS, ETC # # # # # # # # ## # # # ## # #
 writer = SummaryWriter(WORKING_DIR)
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+if ARGS.bert_encoder:
+    param_optimizer = list(model.named_parameters())
+    no_decay = ['bias', 'gamma', 'beta']
+    optimizer_grouped_parameters = [
+        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
+        {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
+    ]
+
+    num_train_steps = (num_train_examples * 40)
+    if ARGS.pretrain_data: 
+        num_train_steps += (num_pretrain_examples * ARGS.pretrain_epochs)
+
+    optimizer = BertAdam(optimizer_grouped_parameters,
+                         lr=5e-5,
+                         warmup=0.1,
+                         t_total=num_train_steps)
+
+else:
+    optimizer = optim.Adam(model.parameters(), lr=0.0003)
 
 weight_mask = torch.ones(len(tok2id))
 weight_mask[0] = 0
@@ -408,6 +416,27 @@ if CUDA:
     weight_mask = weight_mask.cuda()
     criterion = criterion.cuda()
     model = model.cuda()
+
+
+
+# # # # # # # # # # # PRETRAINING (optional) # # # # # # # # # # # # # # # #
+if ARGS.pretrain_data:
+    print('PRETRAINING...')
+    for epoch in range(ARGS.pretrain_epochs):
+        model.train()
+        losses = train_for_epoch(model, pretrain_dataloader, tok2id, optimizer, criterion)
+        writer.add_scalar('pretrain/loss', np.mean(losses), epoch)
+
+
+
+# # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
+print('INITIAL EVAL...')
+model.eval()
+losses, hits, preds, golds = run_eval(model, eval_dataloader, tok2id, WORKING_DIR + '/results_initial.txt')
+writer.add_scalar('eval/bleu', get_bleu(preds, golds), epoch)
+writer.add_scalar('eval/true_hits', np.mean(hits), epoch)
+
+
 
 for epoch in range(EPOCHS):
     print('EPOCH ', epoch)
