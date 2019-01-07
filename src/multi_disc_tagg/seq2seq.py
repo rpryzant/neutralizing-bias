@@ -269,9 +269,9 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dis
         src_seq = [id2tok[x] for x in src_seq]
         gold_seq = [id2tok[x] for x in gold_seq]
         pred_seq = [id2tok[x] for x in pred_seq[1:]]
-        gold_seq = gold_seq[:gold_seq.index('[SEP]')]
-        if '[SEP]' in pred_seq:
-            pred_seq = pred_seq[:pred_seq.index('[SEP]')]
+        gold_seq = gold_seq[:gold_seq.index('止')]
+        if '止' in pred_seq:
+            pred_seq = pred_seq[:pred_seq.index('止')]
         src_seq = ' '.join(src_seq).replace('[PAD]', '').strip()
         gold_seq = ' '.join(gold_seq).replace('[PAD]', '').strip()
         pred_seq = ' '.join(pred_seq).replace('[PAD]', '').strip()
