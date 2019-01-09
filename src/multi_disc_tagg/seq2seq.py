@@ -44,8 +44,12 @@ WORKING_DIR = working_dir
 NUM_BIAS_LABELS = 2
 NUM_TOK_LABELS = 3
 
-TRAIN_BATCH_SIZE = 80
-TEST_BATCH_SIZE = 80
+if ARGS.bert_encoder:
+    TRAIN_BATCH_SIZE = 16
+    TEST_BATCH_SIZE = 16
+else:
+    TRAIN_BATCH_SIZE = 80
+    TEST_BATCH_SIZE = 80
 
 EPOCHS = 60
 
@@ -239,8 +243,6 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, criterion):
 
     losses = []
     for step, batch in enumerate(tqdm(dataloader)):
-        if step > 3:
-            continue
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
@@ -278,14 +280,16 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dis
 
         gold_replace = id2tok[gold_replace]
         pred_replace = [chunk for tag, chunk in diff(src_seq.split(), pred_seq.split()) if tag == '+']
-        
-        print('#' * 80, file=out_file)
-        print('IN SEQ: \t', src_seq, file=out_file)
-        print('GOLD SEQ: \t', gold_seq, file=out_file)
-        print('PRED SEQ:\t', pred_seq, file=out_file)
-        print('GOLD DIST: \t', list(gold_dist), file=out_file)
-        print('GOLD TOK: \t', gold_replace.encode('utf-8'), file=out_file)
-        print('PRED TOK: \t', pred_replace, file=out_file)
+        try:
+            print('#' * 80, file=out_file)
+            print('IN SEQ: \t', src_seq.encode('utf-8'), file=out_file)
+            print('GOLD SEQ: \t', gold_seq.encode('utf-8'), file=out_file)
+            print('PRED SEQ:\t', pred_seq.encode('utf-8'), file=out_file)
+            print('GOLD DIST: \t', list(gold_dist), file=out_file)
+            print('GOLD TOK: \t', gold_replace.encode('utf-8'), file=out_file)
+            print('PRED TOK: \t', pred_replace, file=out_file)
+        except UnicodeEncodeError:
+            pass
 
         if gold_seq == pred_seq:
             out_hits.append(1)
@@ -317,7 +321,7 @@ def run_eval(model, dataloader, tok2id, out_file_path):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
-
+        
         post_start_id = tok2id['[CLS]']
         max_len = min(MAX_SEQ_LEN, pre_len[0].detach().cpu().numpy() + 5)
 
@@ -433,8 +437,8 @@ if ARGS.pretrain_data:
 print('INITIAL EVAL...')
 model.eval()
 losses, hits, preds, golds = run_eval(model, eval_dataloader, tok2id, WORKING_DIR + '/results_initial.txt')
-writer.add_scalar('eval/bleu', get_bleu(preds, golds), epoch)
-writer.add_scalar('eval/true_hits', np.mean(hits), epoch)
+writer.add_scalar('eval/bleu', get_bleu(preds, golds), 0)
+writer.add_scalar('eval/true_hits', np.mean(hits), 0)
 
 
 
@@ -443,14 +447,14 @@ for epoch in range(EPOCHS):
     print('TRAIN...')
     model.train()
     losses = train_for_epoch(model, train_dataloader, tok2id, optimizer, criterion)
-    writer.add_scalar('train/loss', np.mean(losses), epoch)
+    writer.add_scalar('train/loss', np.mean(losses), epoch+1)
     print('EVAL...')
 
     model.eval()
     losses, hits, preds, golds = run_eval(model, eval_dataloader, tok2id, WORKING_DIR + '/results_%d.txt' % epoch)
-    writer.add_scalar('eval/bleu', get_bleu(preds, golds), epoch)
+    writer.add_scalar('eval/bleu', get_bleu(preds, golds), epoch+1)
 #    writer.add_scalar('eval/loss', np.mean(losses), epoch)
-    writer.add_scalar('eval/true_hits', np.mean(hits), epoch)
+    writer.add_scalar('eval/true_hits', np.mean(hits), epoch+1)
 
 
 
