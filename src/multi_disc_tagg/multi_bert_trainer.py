@@ -2,8 +2,7 @@
 """
 train bert 
 
-python multi_bert_trainer.py data/balanced_token/ multi_targeted TEST
-
+python multi_bert_trainer.py --train ../../data/v4/tok/biased --test ../../data/v4/tok/biased --working_dir TEST/
 """
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from pytorch_pretrained_bert.optimization import BertAdam
@@ -19,16 +18,40 @@ import numpy as np
 from pytorch_pretrained_bert.modeling import BertForTokenClassification
 from torch.nn import CrossEntropyLoss
 from tensorboardX import SummaryWriter
-
+import argparse
 import sklearn.metrics as metrics
 
 import modeling
+from data import get_dataloader
 
 
-train_data_prefix = sys.argv[1]
-test_data_prefix = sys.argv[2]
-mode = sys.argv[3]
-working_dir = sys.argv[4]
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--train",
+    help="train prefix",
+    required=True
+)
+parser.add_argument(
+    "--test",
+    help="test prefix",
+    required=True
+)
+parser.add_argument(
+    "--working_dir",
+    help="train continuously on one batch of data",
+    type=str, required=True
+)
+parser.add_argument(
+    "--extra_features",
+    help="train continuously on one batch of data",
+    action='store_true'
+)
+ARGS = parser.parse_args()
+
+train_data_prefix = ARGS.train
+test_data_prefix = ARGS.test
+mode = 'tagging_always'#sys.argv[3]
+working_dir = ARGS.working_dir
 if not os.path.exists(working_dir):
     os.makedirs(working_dir)
 
@@ -37,12 +60,10 @@ assert mode in ['multi_always', 'multi_targeted', 'classification', 'tagging_alw
 
 
 TRAIN_TEXT = train_data_prefix + '.train.pre'
-TRAIN_TOK_LABELS = train_data_prefix + '.train.tok_labels'
-TRAIN_BIAS_LABELS = train_data_prefix + '.train.seq_labels'
+TRAIN_TEXT_POST = train_data_prefix + '.train.post'
 
 TEST_TEXT = test_data_prefix + '.test.pre'
-TEST_TOK_LABELS = test_data_prefix + '.test.tok_labels'
-TEST_BIAS_LABELS = test_data_prefix + '.test.seq_labels'
+TEST_TEXT_POST = test_data_prefix + '.test.post'
 
 WORKING_DIR = working_dir
 
@@ -54,11 +75,11 @@ BERT_MODEL = "bert-base-uncased"
 TRAIN_BATCH_SIZE = 32
 TEST_BATCH_SIZE = 16
 
-EPOCHS = 5
+EPOCHS = 3
 
 LEARNING_RATE = 5e-5
 
-MAX_SEQ_LEN = 100
+MAX_SEQ_LEN = 70
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -66,85 +87,6 @@ if CUDA:
     print('USING CUDA')
 
 
-def get_examples(text_path, tok_labels_path, bias_labels_path, tokenizer, possible_labels, max_seq_len):
-    label2id = {label: i for i, label in enumerate(possible_labels)}
-    label2id['mask'] = len(label2id)
-
-    def pad(id_arr, pad_idx):
-        return id_arr + ([pad_idx] * (max_seq_len - len(id_arr)))
-
-    skipped = 0 
-
-    out = {'tokens': [], 'input_ids': [], 'segment_ids': [], 'input_masks': [], 'tok_label_ids': [], 'bias_label_ids': []}
-
-    for i, (line, tok_labels, bias_label) in enumerate(tqdm(zip(open(text_path), open(tok_labels_path), open(bias_labels_path)))):
-        # ignore the unbiased sentences with tagging -- TODO -- toggle this?    
-        tokens = line.strip().split() # Pre-tokenized
-        tok_labels = tok_labels.strip().split()
-
-        if len(tokens) != len(tok_labels):
-            skipped += 1
-            continue
-
-        # account for [CLS] and [SEP]
-        if len(tokens) > max_seq_len - 2:
-            tokens = tokens[:max_seq_len - 2]
-            tok_labels = tok_labels[:max_seq_len - 2]
-
-        tokens = ['[CLS]'] + tokens + ['[SEP]']
-
-        try:
-            input_ids = pad(tokenizer.convert_tokens_to_ids(tokens), 0)
-        except KeyError:
-            # TODO FUCK THIS ENCODING BUG!!!
-            skipped += 1
-            continue
-
-        segment_ids = pad([0 for _ in range(len(tokens))], 0)
-        input_mask = pad([1] * len(tokens), 0)
-        # Mask out [CLS] token in front too
-        tok_label_ids = pad([label2id['mask']] + [label2id[l] for l in tok_labels], label2id['mask'])
-        bias_label_id = label2id[bias_label.strip()]
-
-        assert len(input_ids) == len(segment_ids) == len(input_mask) == len(tok_label_ids) == max_seq_len
-
-        out['tokens'].append(tokens)
-        out['input_ids'].append(input_ids)
-        out['segment_ids'].append(segment_ids)
-        out['input_masks'].append(input_mask)
-        out['tok_label_ids'].append(tok_label_ids)
-        out['bias_label_ids'].append(bias_label_id)
-
-    print('SKIPPED ', skipped)
-    return out
-
-
-def get_dataloader(data_path, tok_labels_path, bias_labels_path, tokenizer, batch_size, pickle_path=None):
-    if pickle_path is not None and os.path.exists(pickle_path):
-        train_examples = pickle.load(open(pickle_path, 'rb'))
-    else:
-        train_examples = get_examples(
-            text_path=data_path, 
-            tok_labels_path=tok_labels_path,
-            bias_labels_path=bias_labels_path,
-            tokenizer=tokenizer,
-            possible_labels=["0", "1"],
-            max_seq_len=MAX_SEQ_LEN)
-        pickle.dump(train_examples, open(pickle_path, 'wb'))
-
-    train_data = TensorDataset(
-        torch.tensor(train_examples['input_ids'], dtype=torch.long),
-        torch.tensor(train_examples['input_masks'], dtype=torch.long),
-        torch.tensor(train_examples['segment_ids'], dtype=torch.long),
-        torch.tensor(train_examples['bias_label_ids'], dtype=torch.long),
-        torch.tensor(train_examples['tok_label_ids'], dtype=torch.long))
-
-    train_dataloader = DataLoader(
-        train_data,
-        sampler=RandomSampler(train_data),
-        batch_size=batch_size)
-
-    return train_dataloader, len(train_examples['input_ids'])
 
 def make_optimizer(model, num_train_steps):
     param_optimizer = list(model.named_parameters())
@@ -169,10 +111,6 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion):
     out = {
         'input_toks': [],
 
-        'bias_loss': [],
-        'bias_logits': [],
-        'bias_labels': [],
-        
         'tok_loss': [],
         'tok_logits': [],
         'tok_labels': [],
@@ -181,29 +119,25 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion):
         'labeling_hits': []
     }
 
-    for step, batch in enumerate(eval_dataloader):
+    for step, batch in enumerate(tqdm(eval_dataloader)):
         if step > 1:
             continue
 
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
-        input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids = batch
+        pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
 
         with torch.no_grad():
-            bias_logits, tok_logits = model(input_ids, segment_ids, input_mask)
-            bias_loss = cls_criterion(bias_logits.view(-1, NUM_BIAS_LABELS), bias_label_ids.view(-1))
-            tok_loss = tok_criterion(tok_logits.view(-1, NUM_TOK_LABELS), tok_label_ids.view(-1))
+            bias_logits, tok_logits = model(pre_id, attention_mask=pre_mask)
+            tok_loss = tok_criterion(
+                tok_logits.contiguous().view(-1, NUM_TOK_LABELS), 
+                tok_label_id.contiguous().view(-1).type('torch.LongTensor'))
             
-        out['input_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in input_ids.cpu().numpy()]
-        
-        out['bias_loss'].append(float(bias_loss.cpu().numpy()))
-        out['bias_logits'] += bias_logits.detach().cpu().numpy().tolist()
-        out['bias_labels'] += bias_label_ids.cpu().numpy().tolist()
-
+        out['input_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in pre_id.cpu().numpy()]
 
         out['tok_loss'].append(float(tok_loss.cpu().numpy()))
         out['tok_logits'] += tok_logits.detach().cpu().numpy().tolist()
-        out['tok_labels'] += tok_label_ids.cpu().numpy().tolist()
+        out['tok_labels'] += tok_label_id.cpu().numpy().tolist()
 
     return out
 
@@ -224,32 +158,46 @@ def is_ranking_hit(probs, labels, top=1):
     else:
         return 0
 
-def tag_accuracy(logits, bias_labels, tok_labels, top=1):
+def tag_accuracy(logits, tok_labels, top=1):
     probs = softmax(np.array(logits)[:, :, : NUM_TOK_LABELS - 1], axis=2)
 
     hits = [
         is_ranking_hit(prob_dist, tok_label, top=top) 
-        for prob_dist, tok_label, bias_label in zip(probs, tok_labels, bias_labels)
-        if bias_label == 1
+        for prob_dist, tok_label in zip(probs, tok_labels)
     ]
     return sum(hits) * 1.0 / len(hits)
 
 
 print('LOADING DATA...')
 tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
+tok2id = tokenizer.vocab
+tok2id['<del>'] = len(tok2id)
+
 train_dataloader, num_train_examples = get_dataloader(
-    TRAIN_TEXT, TRAIN_TOK_LABELS, TRAIN_BIAS_LABELS, 
-    tokenizer, TRAIN_BATCH_SIZE, WORKING_DIR + '/train_data.pkl')
+    TRAIN_TEXT, TRAIN_TEXT_POST, 
+    tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/train_data.pkl')
 eval_dataloader, num_eval_examples = get_dataloader(
-    TEST_TEXT, TEST_TOK_LABELS, TEST_BIAS_LABELS,
-    tokenizer, TEST_BATCH_SIZE, WORKING_DIR + '/test_data.pkl')
+    TEST_TEXT, TEST_TEXT_POST,
+    tok2id, TEST_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/test_data.pkl',
+    test=True)
+
+
 
 print('BUILDING MODEL...')
-model = modeling.BertForMultitask.from_pretrained(
-    BERT_MODEL,
-    cls_num_labels=NUM_BIAS_LABELS,
-    tok_num_labels=NUM_TOK_LABELS,
-    cache_dir=WORKING_DIR + '/cache')
+if ARGS.extra_features:
+    model = modeling.BertForMultitaskWithFeatures.from_pretrained(
+            BERT_MODEL,
+            cls_num_labels=NUM_BIAS_LABELS,
+            tok_num_labels=NUM_TOK_LABELS,
+            cache_dir=WORKING_DIR + '/cache',
+            tok2id=tok2id)
+else:
+    model = modeling.BertForMultitask.from_pretrained(
+        BERT_MODEL,
+        cls_num_labels=NUM_BIAS_LABELS,
+        tok_num_labels=NUM_TOK_LABELS,
+        cache_dir=WORKING_DIR + '/cache',
+        tok2id=tok2id)
 if CUDA:
     model = model.cuda()
 
@@ -275,11 +223,8 @@ writer = SummaryWriter(WORKING_DIR)
 print('INITIAL EVAL...')
 model.eval()
 results = run_inference(model, eval_dataloader, cls_criterion, tok_criterion)
-bias_acc = classification_accuracy(results['bias_logits'], results['bias_labels'])
-tok_acc = tag_accuracy(results['tok_logits'], results['bias_labels'], results['tok_labels'], top=1)
-writer.add_scalar('eval/bias_loss', np.mean(results['bias_loss']), 0)
+tok_acc = tag_accuracy(results['tok_logits'], results['tok_labels'], top=1)
 writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), 0)
-writer.add_scalar('eval/bias_acc', bias_acc, 0)
 writer.add_scalar('eval/tok_acc', tok_acc, 0)
 
 print('TRAINING...')
@@ -287,37 +232,31 @@ model.train()
 train_step = 0
 for epoch in range(EPOCHS):
     print('STARTING EPOCH ', epoch)
-    for step, batch in enumerate(train_dataloader):
+    for step, batch in enumerate(tqdm(train_dataloader)):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
-        input_ids, input_mask, segment_ids, bias_label_ids, tok_label_ids = batch
-        bias_logits, tok_logits = model(input_ids, segment_ids, input_mask)
-        bias_loss = cls_criterion(bias_logits.view(-1, NUM_BIAS_LABELS), bias_label_ids.view(-1))
+        pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
 
-        # only backprop on biased examples if so
-        tok_losses = []
-        for tok_log, tok_lab, bias_lab in zip(tok_logits, tok_label_ids, bias_label_ids):
-            if mode in ['multi_targeted', 'tagging_targeted'] and int(bias_lab.detach().cpu().numpy()) == 0:
-                continue
-            tok_losses.append(tok_criterion(tok_log.view(-1, NUM_TOK_LABELS), tok_lab.view(-1)))
-        if not tok_losses:
-            tok_loss = 0
-        else:
-            tok_loss = sum(tok_losses) / len(tok_losses)
-    
-        if mode in ['multi_always', 'multi_targeted']:
-            loss = bias_loss + tok_loss
-        elif mode == 'classification':
-            loss = bias_loss
-        elif mode in ['tagging_always', 'tagging_targeted']:
-            loss = tok_loss
+        bias_logits, tok_logits = model(pre_id, attention_mask=pre_mask)
+        loss = tok_criterion(
+            tok_logits.contiguous().view(-1, NUM_TOK_LABELS), 
+            tok_label_id.contiguous().view(-1).type('torch.LongTensor'))
+
+        # # only backprop on biased examples if so
+        # tok_losses = []
+        # for tok_log, tok_lab, bias_lab in zip(tok_logits, tok_label_ids, bias_label_ids):
+        #     if mode in ['multi_targeted', 'tagging_targeted'] and int(bias_lab.detach().cpu().numpy()) == 0:
+        #         continue
+        #     tok_losses.append(tok_criterion(tok_log.view(-1, NUM_TOK_LABELS), tok_lab.view(-1)))
+        # if not tok_losses:
+        #     tok_loss = 0
+        # else:
+        #     tok_loss = sum(tok_losses) / len(tok_losses)
 
         loss.backward()
         optimizer.step()
         model.zero_grad()
 
-        writer.add_scalar('train/bias_loss', bias_loss.data[0], train_step)
-        writer.add_scalar('train/tok_loss', tok_loss if isinstance(tok_loss, int) else tok_loss.data[0], train_step)
         writer.add_scalar('train/loss', loss.data[0], train_step)
         train_step += 1
 
@@ -325,14 +264,9 @@ for epoch in range(EPOCHS):
     print('EVAL...')
     model.eval()
     results = run_inference(model, eval_dataloader, cls_criterion, tok_criterion)
-    bias_acc = classification_accuracy(results['bias_logits'], results['bias_labels'])
-    tok_acc = tag_accuracy(results['tok_logits'], results['bias_labels'], results['tok_labels'], top=1)
-    writer.add_scalar('eval/bias_loss', np.mean(results['bias_loss']), epoch + 1)
+    tok_acc = tag_accuracy(results['tok_logits'], results['tok_labels'], top=1)
     writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), epoch + 1)
-    writer.add_scalar('eval/bias_acc', bias_acc, epoch + 1)
     writer.add_scalar('eval/tok_acc', tok_acc, epoch + 1)
 
     model.train()
-
-
 
