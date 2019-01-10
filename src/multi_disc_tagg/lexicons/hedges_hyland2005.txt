@@ -1,0 +1,106 @@
+#########################################################################
+# List of hedges
+# extracted from:
+# Ken Hyland. 2005. Metadiscourse: Exploring Interaction in Writing.# Continuum, London and New York.
+#########################################################################
+
+about
+almost
+apparent
+apparently
+appear
+appeared
+appears
+approximately
+around
+assume
+assumed
+certain amount
+certain extent
+certain level
+claim
+claimed
+could
+couldn't
+doubt
+doubtful
+essentially
+estimate
+estimated
+feel
+felt
+frequently
+from our perspective
+generally
+guess
+in general
+in most cases
+in most instances
+in our view
+indicate
+indicated
+largely
+likely
+mainly
+may
+maybe
+might
+mostly
+often
+on the whole
+ought
+perhaps
+plausible
+plausibly
+possible
+possibly
+postulate
+postulated
+presumable
+probable
+probably
+relatively
+roughly
+seems
+should
+sometimes
+somewhat
+suggest
+suggested
+suppose
+suspect
+tend to
+tends to
+typical
+typically
+uncertain
+uncertainly
+unclear
+unclearly
+unlikely
+usually
+would
+broadly
+tended to
+presumably
+suggests
+from this perspective
+from my perspective
+in my view
+in this view
+in our opinion
+in my opinion
+to my knowledge
+fairly
+quite
+rather
+argue
+argues
+argued
+claims
+feels
+indicates
+supposed
+supposes
+suspects
+postulates

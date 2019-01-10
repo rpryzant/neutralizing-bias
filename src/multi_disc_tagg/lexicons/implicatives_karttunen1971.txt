@@ -1,0 +1,38 @@
+#########################################################################
+# List of implicative verbs
+# extracted from:
+# Lauri Karttunen. 1971. Implicative verbs. Language, 47(2):340–358.
+#########################################################################
+
+manage
+remember
+bother
+get
+dare
+care
+venture
+condescend
+happen
+fit
+careful
+misfortune
+sense
+succeed
+deign
+forget
+fail
+neglect
+decline
+avoid
+refrain
+choose
+able
+can
+cause
+force
+prevent
+preclude
+keep
+allow
+hesitate
+attempt
