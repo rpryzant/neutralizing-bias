@@ -54,11 +54,11 @@ class BertForMultitaskWithFeatures(PreTrainedBertModel):
 
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
-        features = self.featurizer.featurize_batch(input_ids.detach().cpu().numpy())
+        features = self.featurizer.featurize_batch(
+            input_ids.detach().cpu().numpy(), padded_len=input_ids.shape[1])
 
-
-
-        sequence_output, pooled_output, attn_maps = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+        sequence_output, pooled_output, attn_maps = self.bert(
+            input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
         sequence_output = self.cls_dropout(sequence_output)
         pooled_output = self.tok_dropout(pooled_output)
         
