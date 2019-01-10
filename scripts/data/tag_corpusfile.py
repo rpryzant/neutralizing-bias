@@ -1,6 +1,9 @@
 """
 use stanford coreNLP to make POS + RELATION tags for a copusfile
 
+!!!!!!!!! NOTE: failed lines will simple output "SKIPPED"
+
+
 python tag_corpusfile.py ../../data/v4/tok/biased.train.pre ../../src/multi_disc_tagg/stanford_parser/ test_prefix
 
 might need to 
@@ -65,7 +68,13 @@ def words_from_toks(toks):
 
 def pos_rel_from_words(words):
     words_tags_rels = []
-    for tree in parser.raw_parse(' '.join(words)):
+    try:
+        trees = parser.raw_parse(' '.join(words))
+    except:
+        print('SKIPPING...')
+        return ['SKIPPED'], ['SKIPPED']
+
+    for tree in trees:
         conll = tree.to_conll(4)
         conll = [l.split('\t') for l in conll.strip().split('\n')]
         words_tags_rels += [(word, tag, rel) for [word, tag, _, rel] in conll]
