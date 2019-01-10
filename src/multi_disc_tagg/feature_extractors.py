@@ -109,15 +109,6 @@ class Featurizer:
         return out
 
 
-    def pos_features(self, words):
-        tags = [tag for word, tag in nltk.pos_tag(words)]
-        tag_ids = [self.tag2id.get(x, len(self.tag2id)) for x in tags]
-        out = np.zeros((len(words), len(self.tag2id) + 1))
-        for idx, tag_id in enumerate(tag_ids):
-            out[idx, tag_id] = 1
-        return out
-
-
     def parse_features(self, words):
         words_tags_rels = []
         for tree in self.parser.raw_parse(' '.join(words)):
