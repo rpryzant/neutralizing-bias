@@ -3,6 +3,9 @@ use stanford coreNLP to make POS + RELATION tags for a copusfile
 
 python tag_corpusfile.py ../../data/v4/tok/biased.train.pre ../../src/multi_disc_tagg/stanford_parser/ test_prefix
 
+might need to 
+export JAVAHOME=/orange/brew/data/bin/java 
+python tag_corpusfile.py /home/rpryzant/persuasion/data/v5/word_tight/biased.train.pre /home/rpryzant/persuasion/src/multi_disc_tagg/stanford_parser test_prefix
 """
 import sys
 import os
@@ -23,7 +26,7 @@ out_prefix = sys.argv[3]
 os.environ['STANFORDTOOLSDIR'] = stanford_tools_dir
 os.environ['CLASSPATH'] = '%s/stanford-parser-full-2015-12-09/stanford-parser.jar:%s/stanford-parser-full-2015-12-09/stanford-parser-3.6.0-models.jar' % (
     stanford_tools_dir, stanford_tools_dir)
-
+os.environ['JAVAHOME'] = '/orange/brew/data/bin/java:' + os.environ['JAVAHOME']
 
 
 # http://universaldependencies.org/docsv1/en/dep/index.html
