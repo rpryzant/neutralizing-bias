@@ -55,8 +55,8 @@ class Featurizer:
         self.rel2id = {x: i for i, x in enumerate(UD_RELATIONS)}
         self.rel2id['<UNK>'] = len(self.rel2id)
 
-        self.parser = StanfordDependencyParser(
-            model_path="edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz")    
+        # self.parser = StanfordDependencyParser(
+        #     model_path="edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz")    
 
         self.lexicons = {
             'assertives': self.read_lexicon('lexicons/assertives_hooper1975.txt'),
@@ -110,16 +110,17 @@ class Featurizer:
 
 
     def parse_features(self, words):
-        words_tags_rels = []
-        for tree in self.parser.raw_parse(' '.join(words)):
-            conll = tree.to_conll(4)
-            conll = [l.split('\t') for l in conll.strip().split('\n')]
-            words_tags_rels += [(word, tag, rel) for [word, tag, _, rel] in conll]
+        # words_tags_rels = []
+        # for tree in self.parser.raw_parse(' '.join(words)):
+        #     conll = tree.to_conll(4)
+        #     conll = [l.split('\t') for l in conll.strip().split('\n')]
+        #     words_tags_rels += [(word, tag, rel) for [word, tag, _, rel] in conll]
 
         # +1 for missing tags
         out_pos = np.zeros((len(words), len(self.pos2id) + 1))
         out_rels = np.zeros((len(words), len(self.rel2id) + 1))
-        
+        return out_pos, out_rels
+                
         tagi = 0
         for wi, word in enumerate(words):
             if tagi < len(words_tags_rels):
