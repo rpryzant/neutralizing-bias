@@ -57,7 +57,7 @@ EPOCHS = 3
 
 LEARNING_RATE = 5e-5
 
-MAX_SEQ_LEN = 4#70
+MAX_SEQ_LEN = 70
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -93,7 +93,6 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion):
         'tok_logits': [],
         'tok_labels': [],
 
-        'classification_hits': [],
         'labeling_hits': []
     }
 
@@ -103,10 +102,13 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion):
 
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
-        pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
+
+        pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id, rel_ids, pos_ids = batch
 
         with torch.no_grad():
-            bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask)
+            bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask,
+                rel_ids=rel_ids, pos_ids=pos_ids)
+
             tok_loss = tok_criterion(
                 tok_logits.contiguous().view(-1, NUM_TOK_LABELS), 
                 tok_label_id.contiguous().view(-1).type('torch.LongTensor'))
@@ -114,8 +116,11 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion):
         out['input_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in pre_id.cpu().numpy()]
 
         out['tok_loss'].append(float(tok_loss.cpu().numpy()))
-        out['tok_logits'] += tok_logits.detach().cpu().numpy().tolist()
-        out['tok_labels'] += tok_label_id.cpu().numpy().tolist()
+        logits = tok_logits.detach().cpu().numpy()
+        labels = tok_label_id.cpu().numpy()
+        out['tok_logits'] += logits.tolist()
+        out['tok_labels'] += labels.tolist()
+        out['labeling_hits'] += tag_hits(logits, labels)
 
     return out
 
@@ -136,14 +141,14 @@ def is_ranking_hit(probs, labels, top=1):
     else:
         return 0
 
-def tag_accuracy(logits, tok_labels, top=1):
+def tag_hits(logits, tok_labels, top=1):
     probs = softmax(np.array(logits)[:, :, : NUM_TOK_LABELS - 1], axis=2)
 
     hits = [
         is_ranking_hit(prob_dist, tok_label, top=top) 
         for prob_dist, tok_label in zip(probs, tok_labels)
     ]
-    return sum(hits) * 1.0 / len(hits)
+    return hits
 
 
 print('LOADING DATA...')
@@ -210,9 +215,8 @@ writer = SummaryWriter(WORKING_DIR)
 print('INITIAL EVAL...')
 model.eval()
 results = run_inference(model, eval_dataloader, cls_criterion, tok_criterion)
-tok_acc = tag_accuracy(results['tok_logits'], results['tok_labels'], top=1)
 writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), 0)
-writer.add_scalar('eval/tok_acc', tok_acc, 0)
+writer.add_scalar('eval/tok_acc', np.mean(results['labeling_hits']), 0)
 
 print('TRAINING...')
 model.train()
@@ -222,9 +226,9 @@ for epoch in range(EPOCHS):
     for step, batch in enumerate(tqdm(train_dataloader)):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
-        pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
-
-        bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask)
+        pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id, rel_ids, pos_ids = batch
+        bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask, 
+            rel_ids=rel_ids, pos_ids=pos_ids)
         loss = tok_criterion(
             tok_logits.contiguous().view(-1, NUM_TOK_LABELS), 
             tok_label_id.contiguous().view(-1).type('torch.LongTensor'))

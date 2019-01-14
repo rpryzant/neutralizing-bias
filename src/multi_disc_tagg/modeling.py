@@ -26,7 +26,10 @@ class BertForMultitask(PreTrainedBertModel):
         self.apply(self.init_bert_weights)
 
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, rel_ids=None, pos_ids=None):
+        sequence_output, pooled_output, attn_maps = self.bert(
+            input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+
         cls_logits = self.cls_classifier(pooled_output)
         cls_logits = self.cls_dropout(cls_logits)
 
@@ -97,7 +100,7 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
         self.featurizer = feature_extractors.Featurizer(
             tok2id, lexicon_feature_bits=args.lexicon_feature_bits) 
         # TODO -- don't hardcode this...
-        nfeats = 124 if args.lexicon_feature_bits == 1 else 152
+        nfeats = 126 if args.lexicon_feature_bits == 1 else 154
 
         if args.extra_features_method == 'concat':
             self.tok_classifier = ConcatCombine(
@@ -116,9 +119,12 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
         self.apply(self.init_bert_weights)
 
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, rel_ids=None, pos_ids=None):
         features = self.featurizer.featurize_batch(
-            input_ids.detach().cpu().numpy(), padded_len=input_ids.shape[1])
+            input_ids.detach().cpu().numpy(), 
+            rel_ids.detach().cpu().numpy(), 
+            pos_ids.detach().cpu().numpy(), 
+            padded_len=input_ids.shape[1])
         features = torch.tensor(features, dtype=torch.float)
         if CUDA:
             features = features.cuda()
@@ -142,7 +148,7 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
         self.featurizer = feature_extractors.Featurizer(
             tok2id, lexicon_feature_bits=args.lexicon_feature_bits) 
         # TODO -- don't hardcode this...
-        nfeats = 124 if args.lexicon_feature_bits == 1 else 152
+        nfeats = 126 if args.lexicon_feature_bits == 1 else 154
 
         if args.extra_features_method == 'concat':
             if ARGS.share_combiners:
@@ -184,9 +190,12 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
         self.apply(self.init_bert_weights)
 
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, rel_ids=None, pos_ids=None):
         features = self.featurizer.featurize_batch(
-            input_ids.detach().cpu().numpy(), padded_len=input_ids.shape[1])
+            input_ids.detach().cpu().numpy(),
+            rel_ids.detach().cpu().numpy(),
+            pos_ids.detach().cpu().numpy(),
+            padded_len=input_ids.shape[1])
         features = torch.tensor(features, dtype=torch.float)
         if CUDA:
             features = features.cuda()

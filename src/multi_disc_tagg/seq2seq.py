@@ -99,7 +99,7 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, criterion):
     for step, batch in enumerate(tqdm(dataloader)):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
-        pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
+        pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id, _, _ = batch
 
         post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, tok_label_id)
         loss = criterion(post_logits.contiguous().view(-1, len(tok2id)), post_out_id.contiguous().view(-1))
@@ -174,7 +174,7 @@ def run_eval(model, dataloader, tok2id, out_file_path):
     for step, batch in enumerate(tqdm(dataloader)):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
-        pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
+        pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id, _, _ = batch
         
         post_start_id = tok2id['[CLS]']
         max_len = min(MAX_SEQ_LEN, pre_len[0].detach().cpu().numpy() + 5)

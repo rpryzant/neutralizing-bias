@@ -8,35 +8,8 @@ import numpy as np
 
 from nltk.parse.stanford import StanfordDependencyParser
 
-# http://universaldependencies.org/docsv1/en/dep/index.html
-UD_RELATIONS = [
-    'acl', 'acl:relcl', 'advcl', 'advmod', 'amod', 'appos', 'aux',
-    'auxpass', 'case', 'cc', 'cc:preconj', 'ccomp', 'compound',
-    'compound:prt', 'conj', 'cop', 'csubj', 'csubjpass', 'dep',
-    'det', 'det:predet', 'discourse', 'dislocated', 'dobj',
-    'expl', 'foreign', 'goeswith', 'iobj', 'list', 'mark', 'mwe',
-    'name', 'neg', 'nmod', 'nmod:npmod', 'nmod:poss', 'nmod:tmod',
-    'nsubj', 'nsubjpass', 'nummod', 'parataxis', 'punct', 'remnant',
-    'reparandum', 'root', 'vocative', 'xcomp'
-]
 
-
-LEXICONS = [
-    'assertives',
-    'entailed_arg',
-    'entailed',
-    'entailing_arg',
-    'entailing',
-    'factives',
-    'hedges',
-    'implicatives',
-    'negatives',
-    'positives',
-    'npov',
-    'reports',
-    'strong_subjectives',
-    'weak_subjectives' 
-]
+from data import UD_RELATIONS, REL2ID, POS2ID
 
 
 class Featurizer:
@@ -98,8 +71,8 @@ class Featurizer:
         out = []
         for word in words:
             out.append([
-                true if word in self.lexicons[lex_name] else false
-                for lex_name in LEXICONS
+                true if word in lexicon else false 
+                for _, lexicon in self.lexicons.items()
             ])
         out = np.array(out)
 
@@ -108,35 +81,6 @@ class Featurizer:
 
         return out
 
-
-    def parse_features(self, words):
-        # words_tags_rels = []
-        # for tree in self.parser.raw_parse(' '.join(words)):
-        #     conll = tree.to_conll(4)
-        #     conll = [l.split('\t') for l in conll.strip().split('\n')]
-        #     words_tags_rels += [(word, tag, rel) for [word, tag, _, rel] in conll]
-
-        # +1 for missing tags
-        out_pos = np.zeros((len(words), len(self.pos2id) + 1))
-        out_rels = np.zeros((len(words), len(self.rel2id) + 1))
-        return out_pos, out_rels
-                
-        tagi = 0
-        for wi, word in enumerate(words):
-            if tagi < len(words_tags_rels):
-                tagged_word, pos, rel = words_tags_rels[tagi]
-            else:
-                tagged_word = ' skip me '
-
-            if tagged_word == word:
-                out_pos[wi, self.pos2id.get(pos, self.pos2id['<UNK>'])] = 1
-                out_rels[wi, self.rel2id.get(rel, self.rel2id['<UNK>'])] = 1
-                tagi += 1
-            else:
-                out_pos[wi, len(self.pos2id)] = 1
-                out_rels[wi, len(self.rel2id)] = 1
-
-        return out_pos, out_rels
 
     def context_features(self, lex_feats, window_size=2):
         out = []
@@ -154,10 +98,13 @@ class Featurizer:
         return np.array(out)
 
 
-    def features(self, id_seq):
+    def features(self, id_seq, rel_ids, pos_ids):
         if self.pad_id in id_seq:
-            pad_len = len(id_seq[id_seq.index(self.pad_id):])
-            id_seq = id_seq[:id_seq.index(self.pad_id)]
+            pad_idx = id_seq.index(self.pad_id)
+            pad_len = len(id_seq[pad_idx:])
+            id_seq = id_seq[:pad_idx]
+            rel_ids = rel_ids[:pad_idx]
+            pos_ids = pos_ids[:pad_idx]
         else:
             pad_len = 0
 
@@ -173,24 +120,38 @@ class Featurizer:
                 words.append(tok)
                 word_indices.append([i])
 
-        # get features
-        pos_feats, rel_feats = self.parse_features(words)
+        # get expert features
         lex_feats = self.lexicon_features(words, bits=self.lexicon_feature_bits)
         context_feats = self.context_features(lex_feats)
-
-        feats = np.concatenate((pos_feats, rel_feats, lex_feats, context_feats), axis=1)
+        expert_feats = np.concatenate((lex_feats, context_feats), axis=1)
         # break word-features into tokens
         feats = np.concatenate([
             np.repeat(np.expand_dims(word_vec, axis=0), len(indices), axis=0) 
-            for (word_vec, indices) in zip(feats, word_indices)
+            for (word_vec, indices) in zip(expert_feats, word_indices)
         ], axis=0)
+
+        # add in the pos and relational features
+        pos_feats = np.zeros((len(pos_ids), len(POS2ID)))
+        pos_feats[range(len(pos_ids)), pos_ids] = 1
+        rel_feats = np.zeros((len(rel_ids), len(REL2ID)))
+        rel_feats[range(len(rel_ids)), rel_ids] = 1
+        
+        feats = np.concatenate((feats, pos_feats, rel_feats), axis=1)
+
+        # add pad back in                
         feats = np.concatenate((feats, np.zeros((pad_len, feats.shape[1]))))
+        
+        
+        
         return feats
 
 
-    def featurize_batch(self, batch_ids, padded_len=0):
+    def featurize_batch(self, batch_ids, rel_ids, pos_ids, padded_len=0):
         """ takes [batch, len] returns [batch, len, features] """
-        batch_feats = [self.features(list(id_seq)) for id_seq in batch_ids]
+
+        batch_feats = [
+            self.features(list(id_seq), list(rel_ids), list(pos_ids)) 
+            for id_seq, rel_ids, pos_ids in zip(batch_ids, rel_ids, pos_ids)]
         batch_feats = np.array(batch_feats)
         return batch_feats
 
