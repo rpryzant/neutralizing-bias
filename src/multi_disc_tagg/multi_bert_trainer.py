@@ -57,7 +57,7 @@ EPOCHS = 3
 
 LEARNING_RATE = 5e-5
 
-MAX_SEQ_LEN = 70
+MAX_SEQ_LEN = 80
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -255,9 +255,8 @@ for epoch in range(EPOCHS):
     print('EVAL...')
     model.eval()
     results = run_inference(model, eval_dataloader, cls_criterion, tok_criterion)
-    tok_acc = tag_accuracy(results['tok_logits'], results['tok_labels'], top=1)
     writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), epoch + 1)
-    writer.add_scalar('eval/tok_acc', tok_acc, epoch + 1)
+    writer.add_scalar('eval/tok_acc', np.mean(results['labeling_hits']), epoch + 1)
 
     model.train()
 
