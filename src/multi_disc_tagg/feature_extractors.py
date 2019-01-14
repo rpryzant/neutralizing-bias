@@ -140,9 +140,7 @@ class Featurizer:
 
         # add pad back in                
         feats = np.concatenate((feats, np.zeros((pad_len, feats.shape[1]))))
-        
-        
-        
+
         return feats
 
 

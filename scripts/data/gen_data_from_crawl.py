@@ -12,6 +12,7 @@ TODO
 - SPELLCHECK BOTH WAYS
 - better multisentence filtering -- this fails
         https://en.wikipedia.org/w/index.php?diff=197052737
+- THROW OUT BROKEN ENCODING/NON ASCII ETC
 
 """
 import sys

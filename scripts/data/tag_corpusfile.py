@@ -27,7 +27,7 @@ out_path = sys.argv[3]
 os.environ['STANFORDTOOLSDIR'] = stanford_tools_dir
 os.environ['CLASSPATH'] = '%s/stanford-parser-full-2015-12-09/stanford-parser.jar:%s/stanford-parser-full-2015-12-09/stanford-parser-3.6.0-models.jar' % (
     stanford_tools_dir, stanford_tools_dir)
-os.environ['JAVAHOME'] = '/orange/brew/data/bin/java:' + os.environ['JAVAHOME']
+# os.environ['JAVAHOME'] = '/orange/brew/data/bin/java:' + os.environ['JAVAHOME']
 
 
 # http://universaldependencies.org/docsv1/en/dep/index.html
@@ -50,7 +50,7 @@ pos2id = {
 }
 pos2id['<UNK>'] = len(pos2id)
 
-
+print(pos2id); quit()
 
 ############################## TIMOUT
 from functools import wraps
