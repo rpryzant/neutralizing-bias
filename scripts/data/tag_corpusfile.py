@@ -50,7 +50,7 @@ pos2id = {
 }
 pos2id['<UNK>'] = len(pos2id)
 
-print(pos2id); quit()
+
 
 ############################## TIMOUT
 from functools import wraps
@@ -97,6 +97,7 @@ def words_from_toks(toks):
 @timeout(10)
 def pos_rel_from_words(words, word_indices):
     words_tags_rels = []
+    # TODO MOVE THIS OUTSIDE!! CLEAN WORDS OF BROKEN ENCODINGS!!
     try:
         trees = parser.raw_parse(' '.join(words))
     except:
