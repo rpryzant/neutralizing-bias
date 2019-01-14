@@ -1,5 +1,5 @@
 """
-subset data to only include cases where a single token was 
+subset word data data to only include cases where a single token was 
 deleted or replaced
 
 python test.py ../raw/tst.biased > ../raw/tst.tokbiased

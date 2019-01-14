@@ -24,29 +24,7 @@ import sklearn.metrics as metrics
 import modeling
 from data import get_dataloader
 
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--train",
-    help="train prefix",
-    required=True
-)
-parser.add_argument(
-    "--test",
-    help="test prefix",
-    required=True
-)
-parser.add_argument(
-    "--working_dir",
-    help="train continuously on one batch of data",
-    type=str, required=True
-)
-parser.add_argument(
-    "--extra_features",
-    help="train continuously on one batch of data",
-    action='store_true'
-)
-ARGS = parser.parse_args()
+from tagging_args import ARGS
 
 train_data_prefix = ARGS.train
 test_data_prefix = ARGS.test
@@ -79,7 +57,7 @@ EPOCHS = 3
 
 LEARNING_RATE = 5e-5
 
-MAX_SEQ_LEN = 70
+MAX_SEQ_LEN = 4#70
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -128,7 +106,7 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion):
         pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
 
         with torch.no_grad():
-            bias_logits, tok_logits = model(pre_id, attention_mask=pre_mask)
+            bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask)
             tok_loss = tok_criterion(
                 tok_logits.contiguous().view(-1, NUM_TOK_LABELS), 
                 tok_label_id.contiguous().view(-1).type('torch.LongTensor'))
@@ -184,13 +162,22 @@ eval_dataloader, num_eval_examples = get_dataloader(
 
 
 print('BUILDING MODEL...')
-if ARGS.extra_features:
-    model = modeling.BertForMultitaskWithFeatures.from_pretrained(
+if ARGS.extra_features_top:
+    model = modeling.BertForMultitaskWithFeaturesOnTop.from_pretrained(
             BERT_MODEL,
             cls_num_labels=NUM_BIAS_LABELS,
             tok_num_labels=NUM_TOK_LABELS,
             cache_dir=WORKING_DIR + '/cache',
-            tok2id=tok2id)
+            tok2id=tok2id,
+            args=ARGS)
+elif ARGS.extra_features_bottom:
+    model = modeling.BertForMultitaskWithFeaturesOnBottom.from_pretrained(
+            BERT_MODEL,
+            cls_num_labels=NUM_BIAS_LABELS,
+            tok_num_labels=NUM_TOK_LABELS,
+            cache_dir=WORKING_DIR + '/cache',
+            tok2id=tok2id,
+            args=ARGS)
 else:
     model = modeling.BertForMultitask.from_pretrained(
         BERT_MODEL,
@@ -237,7 +224,7 @@ for epoch in range(EPOCHS):
             batch = tuple(x.cuda() for x in batch)
         pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id = batch
 
-        bias_logits, tok_logits = model(pre_id, attention_mask=pre_mask)
+        bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask)
         loss = tok_criterion(
             tok_logits.contiguous().view(-1, NUM_TOK_LABELS), 
             tok_label_id.contiguous().view(-1).type('torch.LongTensor'))
