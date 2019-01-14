@@ -111,7 +111,7 @@ def run_inference(model, eval_dataloader, cls_criterion, tok_criterion):
 
             tok_loss = tok_criterion(
                 tok_logits.contiguous().view(-1, NUM_TOK_LABELS), 
-                tok_label_id.contiguous().view(-1).type('torch.LongTensor'))
+                tok_label_id.contiguous().view(-1).type('torch.cuda.LongTensor' if CUDA else 'torch.LongTensor'))
             
         out['input_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in pre_id.cpu().numpy()]
 
@@ -231,7 +231,7 @@ for epoch in range(EPOCHS):
             rel_ids=rel_ids, pos_ids=pos_ids)
         loss = tok_criterion(
             tok_logits.contiguous().view(-1, NUM_TOK_LABELS), 
-            tok_label_id.contiguous().view(-1).type('torch.LongTensor'))
+            tok_label_id.contiguous().view(-1).type('torch.cuda.LongTensor' if CUDA else 'torch.LongTensor'))
 
         # # only backprop on biased examples if so
         # tok_losses = []
