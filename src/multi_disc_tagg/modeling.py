@@ -57,6 +57,9 @@ class ConcatCombine(nn.Module):
                 nn.Dropout(dropout_prob),
                 nn.Linear(waist_size, out_size),
                 nn.Dropout(dropout_prob))
+        # manually set cuda because module doesn't see these combiners for bottom 
+        if CUDA:
+            self.out = self.out.cuda()
 
     def forward(self, in1, in2):
         return self.out(torch.cat((in1, in2), dim=-1))
@@ -81,7 +84,13 @@ class AddCombine(nn.Module):
             self.out = nn.Linear(hidden_dim, out_dim)
         else:
             self.out = None
-        
+
+        # manually set cuda because module doesn't see these combiners for bottom         
+        if CUDA:
+            self.expand = self.expand.cuda()
+            if out_dim > 0:
+                self.out = self.out.cuda()
+
     def forward(self, hidden, feat):
         combined = self.expand(feat) + hidden
     
@@ -199,7 +208,7 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
         features = torch.tensor(features, dtype=torch.float)
         if CUDA:
             features = features.cuda()
-
+        
         sequence_output, pooled_output, attn_maps = self.bert(
             input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False,
             features=features)

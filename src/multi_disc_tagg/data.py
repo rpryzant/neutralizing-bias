@@ -2,7 +2,7 @@ import os
 import pickle
 from tqdm import tqdm
 from simplediff import diff
-
+import numpy as np
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 import torch
 
