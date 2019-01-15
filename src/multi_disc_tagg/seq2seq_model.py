@@ -68,7 +68,8 @@ class Beam(object):
         self.prevKs = []
 
         # The outputs at each time-step. [time, beam]
-        self.nextYs = [self.tt.LongTensor(size).fill_(self.bos)]
+        self.nextYs = [self.tt.LongTensor(size).fill_(self.pad)]
+        self.nextYs[0][0] = self.bos # TODO CHANGED THIS
 
         # The attentions (matrix) for each time.
         self.attn = []
@@ -143,8 +144,8 @@ class Beam(object):
     def get_hyp(self, k):
         """Get hypotheses."""
         hyp = []
-        # print(len(self.prevKs), len(self.nextYs), len(self.attn))
-        for j in range(len(self.prevKs) - 1, -1, -1):
+        # -2 to include start tok
+        for j in range(len(self.prevKs) - 1, -2, -1):
             hyp.append(self.nextYs[j + 1][k])
             k = self.prevKs[j][k]
 
@@ -478,6 +479,16 @@ class Seq2Seq(nn.Module):
         tgt_input = torch.stack([b.get_current_state() for b in beams]
             ).t().contiguous().view(-1, 1)
 
+        def get_top_hyp():
+            out = []
+            for b in beams:
+                _, ks = b.sort_best()
+                hyps = torch.stack([torch.stack(b.get_hyp(k)) for k in ks])
+                out.append(hyps)
+            # move beam first. output is [beam, batch, len]
+            out = torch.stack(out).transpose(1, 0)
+            return out
+
         for i in range(max_len):
             # run input through the model
             with torch.no_grad():
@@ -490,17 +501,24 @@ class Seq2Seq(nn.Module):
             for bi in range(batch_size):
                 beams[bi].advance(new_tok_probs.data[bi])
 
+            tgt_input = get_top_hyp().contiguous().view(batch_size * beam_width, -1)
+
+        return get_top_hyp()[0].detach().cpu().numpy()
+        ############### V2 THINGS##########
+
             # again, transpose
-            next_input = torch.stack([b.get_current_state() for b in beams]
-                ).t().contiguous().view(-1, 1)
+        #     next_input = torch.stack([b.get_current_state() for b in beams]
+        #         ).t().contiguous().view(-1, 1)
 
-            tgt_input = torch.cat((tgt_input, next_input), dim=1)
+        #     tgt_input = torch.cat((tgt_input, next_input), dim=1)
             
-        # break out into [beam, batch, len]
-        top_beam = tgt_input.view(beam_width, batch_size, -1)[0]
-        return top_beam.detach().cpu().numpy()
+        # # break out into [beam, batch, len]
+        # top_beam = tgt_input.view(beam_width, batch_size, -1)[0]
+        # return top_beam.detach().cpu().numpy()
+        ############### V2 THINGS##########
 
-
+        # actually using the given hyps
+        
 
 
         # allHyp, allScores = [], []
