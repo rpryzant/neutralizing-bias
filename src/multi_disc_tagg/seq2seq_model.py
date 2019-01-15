@@ -425,7 +425,7 @@ class Seq2Seq(nn.Module):
         return src_outputs, h_t, c_t
 
     def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None):
-        tgt_emb = self.embeddings(post_in_id)
+        tgt_emb = self.embeddings(tgt_in_id)
         tgt_outputs, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
 
         tgt_outputs_reshape = tgt_outputs.contiguous().view(
