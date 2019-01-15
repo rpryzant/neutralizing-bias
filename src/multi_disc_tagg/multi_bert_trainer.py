@@ -53,7 +53,7 @@ BERT_MODEL = "bert-base-uncased"
 TRAIN_BATCH_SIZE = 32
 TEST_BATCH_SIZE = 16
 
-EPOCHS = 3
+EPOCHS = 5
 
 LEARNING_RATE = 5e-5
 
