@@ -48,9 +48,8 @@ class Beam(object):
         # The backpointers at each time-step.
         self.prevKs = []
 
-        # The outputs at each time-step.
-        self.nextYs = [self.tt.LongTensor(size).fill_(self.pad)]
-        self.nextYs[0][0] = self.bos
+        # The outputs at each time-step. [time, beam]
+        self.nextYs = [self.tt.LongTensor(size).fill_(self.bos)]
 
         # The attentions (matrix) for each time.
         self.attn = []
@@ -397,25 +396,18 @@ class Seq2Seq(nn.Module):
         for param in self.parameters():
             param.data.uniform_(-initrange, initrange)
     
-    
-    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None):
-        if ARGS.bert_encoder:
-            src_outputs, _, _ = self.encoder(
-                pre_id, 
-                attention_mask=1 - pre_mask,
-                output_all_encoded_layers=False)
-            src_outputs = self.bridge(src_outputs)        
-            h_t = src_outputs[:, -1]
-            c_t = src_outputs[:, -1]
-        else:
-            src_emb = self.embeddings(pre_id)
-            src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
-            src_outputs = self.bridge(src_outputs)
-            h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
-            c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+    def run_encoder(self, pre_id, pre_len, pre_mask):
+        src_emb = self.embeddings(pre_id)
+        src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
+        src_outputs = self.bridge(src_outputs)
+        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
+        c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
 
+        return src_outputs, h_t, c_t
+
+    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None):
         tgt_emb = self.embeddings(post_in_id)
-        tgt_outputs, _ = self.decoder(tgt_emb, (h_t, c_t), src_outputs, pre_mask)
+        tgt_outputs, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
 
         tgt_outputs_reshape = tgt_outputs.contiguous().view(
             tgt_outputs.size()[0] * tgt_outputs.size()[1],
@@ -427,7 +419,14 @@ class Seq2Seq(nn.Module):
             logits.size()[1])
 
         probs = self.softmax(logits)
-        
+
+        return logits, probs
+
+    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None):
+        src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
+        logits, probs = self.run_decoder(
+            src_outputs, (h_t, c_t), post_in_id, pre_mask)
+
         return logits, probs
 
 
@@ -438,16 +437,73 @@ class Seq2Seq(nn.Module):
             return self.inference_forward_greedy(
                 pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist)
 
+        # encode src
+        src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
+
+        # expand everything per beam
+        src_outputs = src_outputs.repeat(beam_width, 1, 1)
+        initial_hidden = (
+            h_t.repeat(beam_width, 1),
+            c_t.repeat(beam_width, 1))
+        pre_mask = pre_mask.repeat(beam_width, 1)
+        pre_len = pre_len.repeat(beam_width)
+        if tok_dist is not None:
+            tok_dist = tok_dist.repeat(beam_width, 1)
+
+        # build initial inputs and beams
+        batch_size = pre_id.shape[0]
+        beams = [Beam(beam_width, self.tok2id, cuda=CUDA) for k in range(batch_size)]
+        tgt_input = torch.stack([b.get_current_state() for b in beams]
+            ).contiguous().view(-1, 1)
+
+        for i in range(max_len):
+            # run input through the model
+            with torch.no_grad():
+                decoder_logit, word_probs = self.run_decoder(
+                    src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist)
+            new_tok_probs = word_probs[:, -1, :].squeeze(1).view(
+                batch_size, beam_width, -1)
+
+            for bi in range(batch_size):
+                beams[bi].advance(new_tok_probs.data[bi])
+            
+            next_input = torch.stack([b.get_current_state() for b in beams]
+                ).contiguous().view(-1, 1)
+
+            tgt_input = torch.cat((tgt_input, next_input), dim=1)
+
+        top_beam = tgt_input.view(
+            batch_size, beam_width, -1).detach().cpu().numpy()[:, 0, :]
+
+        return top_beam
+
+
+
+        # allHyp, allScores = [], []
+        # n_best = 1
+
+        # for b in range(batch_size):
+        #     scores, ks = beams[b].sort_best()
+
+        #     allScores += [scores[:n_best]]
+        #     hyps = zip(*[beams[b].get_hyp(k) for k in ks[:n_best]])
+        #     allHyp += [hyps]
+
+        # # [batch, len] predicted indices
+        # print(np.array([[x[0].detach().cpu().numpy() for x in hyp] for hyp in allHyp]))
+
+
+
+
+
         # run encoder on src
         src_emb = self.embeddings(pre_id)
         src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
         src_outputs = self.bridge(src_outputs)
         h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
         c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
-        context_h = src_outputs.transpose(0, 1) # move seq to first dim
+        context_h = src_outputs.transpose(0, 1) # move seq to first dim        
         batch_size = context_h.size(1)
-        mask = pre_mask.repeat(beam_width, 1)
-
 
         # expand tensors for each beam
         context = Variable(context_h.data.repeat(1, beam_width, 1)).transpose(1, 0) # batch first
@@ -455,7 +511,7 @@ class Seq2Seq(nn.Module):
             Variable(h_t.data.repeat(1, beam_width, 1)),
             Variable(c_t.data.repeat(1, beam_width, 1))
         ]
-        beam = [Beam(beam_width, self.tok2id, cuda=CUDA) for k in range(batch_size)]
+        mask = pre_mask.repeat(beam_width, 1)
 
         batch_idx = list(range(batch_size))
         remaining_sents = batch_size
@@ -472,21 +528,23 @@ class Seq2Seq(nn.Module):
                 mask)
             dec_states = (trg_h_t, trg_c_t)
 
-            out = F.softmax(self.output_projection(trg_h_t))
+            out = F.softmax(self.output_projection(trg_h_t.squeeze(0)))
             word_lk = out.view(beam_width, remaining_sents, -1).transpose(0, 1).contiguous()
 
             active = []
             for b in range(batch_size):
                 if beam[b].done:
                     continue
+
                 idx = batch_idx[b]
                 if not beam[b].advance(word_lk.data[idx]):
                     active += [b]
-                
+
                 for dec_state in dec_states:
                     sent_states = dec_state.view(
                         -1, beam_width, remaining_sents, dec_state.size(2)
                     )[:, :, idx]
+
                     sent_states.data.copy_(
                         sent_states.data.index_select(
                             1, beam[b].get_current_origin()))
@@ -573,22 +631,7 @@ class Seq2SeqEnrich(Seq2Seq):
         # self.enricher.weight.data.uniform_(-0.1, 0.1)  
 
 
-    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist):
-        if ARGS.bert_encoder:
-            src_outputs, _, _ = self.encoder(
-                pre_id, 
-                attention_mask=1 - pre_mask,
-                output_all_encoded_layers=False)
-            src_outputs = self.bridge(src_outputs)        
-            h_t = src_outputs[:, -1]
-            c_t = src_outputs[:, -1]
-        else:
-            src_emb = self.embeddings(pre_id)
-            src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
-            src_outputs = self.bridge(src_outputs)
-            h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
-            c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
-
+    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None):
         # make a "change this token" embedding and add it to the
         # src_output token that should be changed
         enrichment = self.enricher(self.enrich_input).repeat(
@@ -596,8 +639,8 @@ class Seq2SeqEnrich(Seq2Seq):
         enrichment = tok_dist.unsqueeze(2) * enrichment
         src_outputs = src_outputs + enrichment
 
-        tgt_emb = self.embeddings(post_in_id)
-        tgt_outputs, _ = self.decoder(tgt_emb, (h_t, c_t), src_outputs, pre_mask)
+        tgt_emb = self.embeddings(tgt_in_id)
+        tgt_outputs, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
 
         tgt_outputs_reshape = tgt_outputs.contiguous().view(
             tgt_outputs.size()[0] * tgt_outputs.size()[1],
@@ -609,6 +652,15 @@ class Seq2SeqEnrich(Seq2Seq):
             logits.size()[1])
 
         probs = self.softmax(logits)
+        
+        return logits, probs
+
+
+
+    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist):
+        src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
+        logits, probs = self.run_decoder(
+            src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist)
         
         return logits, probs
         

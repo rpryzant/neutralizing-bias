@@ -44,12 +44,15 @@ WORKING_DIR = working_dir
 NUM_BIAS_LABELS = 2
 NUM_TOK_LABELS = 3
 
+BEAM_WIDTH = 5
+
+
 if ARGS.bert_encoder:
     TRAIN_BATCH_SIZE = 16
     TEST_BATCH_SIZE = 16
 else:
     TRAIN_BATCH_SIZE = 80
-    TEST_BATCH_SIZE = 80
+    TEST_BATCH_SIZE = 80 // BEAM_WIDTH
 
 EPOCHS = 60
 
@@ -124,8 +127,9 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dis
 
         src_seq = [id2tok[x] for x in src_seq]
         gold_seq = [id2tok[x] for x in gold_seq]
-        pred_seq = [id2tok[x] for x in pred_seq[1:]]
-        gold_seq = gold_seq[:gold_seq.index('止')]
+        pred_seq = [id2tok[x] for x in pred_seq]#[1:]]
+        if '止' in gold_seq:
+            gold_seq = gold_seq[:gold_seq.index('止')]
         if '止' in pred_seq:
             pred_seq = pred_seq[:pred_seq.index('止')]
         src_seq = ' '.join(src_seq).replace('[PAD]', '').strip()
@@ -159,6 +163,7 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dis
 def run_eval(model, dataloader, tok2id, out_file_path):
     global MAX_SEQ_LEN
     global CUDA
+    global BEAM_WIDTH
 
     id2tok = {x: tok for (tok, x) in tok2id.items()}
 
@@ -176,13 +181,13 @@ def run_eval(model, dataloader, tok2id, out_file_path):
             batch = tuple(x.cuda() for x in batch)
         pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id, _, _ = batch
         
-        post_start_id = tok2id['[CLS]']
+        post_start_id = tok2id['行']
         max_len = min(MAX_SEQ_LEN, pre_len[0].detach().cpu().numpy() + 10)
 
         with torch.no_grad():
             predicted_toks = model.inference_forward(
                 pre_id, post_start_id, pre_mask, pre_len, max_len, tok_label_id,
-                beam_width=5)
+                beam_width=BEAM_WIDTH)
 #            loss = criterion(post_logits.contiguous().view(-1, len(tok2id)), post_out_id.contiguous().view(-1))
 
 #        losses.append(loss.detach().cpu().numpy())
