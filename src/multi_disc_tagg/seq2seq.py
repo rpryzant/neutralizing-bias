@@ -130,7 +130,7 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dis
 
         src_seq = [id2tok[x] for x in src_seq]
         gold_seq = [id2tok[x] for x in gold_seq]
-        pred_seq = [id2tok[x] for x in pred_seq]#[1:]]
+        pred_seq = [id2tok[x] for x in pred_seq[1:]]
         if '止' in gold_seq:
             gold_seq = gold_seq[:gold_seq.index('止')]
         if '止' in pred_seq:
