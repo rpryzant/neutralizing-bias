@@ -6,12 +6,139 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+import torch.nn.functional as F
 
 from pytorch_pretrained_bert.modeling import BertModel
 
 from args import ARGS
 
 CUDA = (torch.cuda.device_count() > 0)
+
+
+
+
+
+
+"""Beam search implementation in PyTorch."""
+#
+#
+#         hyp1#-hyp1---hyp1 -hyp1
+#                 \             /
+#         hyp2 \-hyp2 /-hyp2#hyp2
+#                               /      \
+#         hyp3#-hyp3---hyp3 -hyp3
+#         ========================
+#
+# Takes care of beams, back pointers, and scores.
+class Beam(object):
+    """Ordered beam of candidate outputs."""
+
+    def __init__(self, size, tok2id, cuda=False):
+        """Initialize params."""
+        self.size = size
+        self.done = False
+        self.pad = tok2id['[PAD]']
+        self.bos = tok2id['行']
+        self.eos = tok2id['止']
+        self.tt = torch.cuda if cuda else torch
+
+        # The score for each translation on the beam.
+        self.scores = self.tt.FloatTensor(size).zero_()
+
+        # The backpointers at each time-step.
+        self.prevKs = []
+
+        # The outputs at each time-step.
+        self.nextYs = [self.tt.LongTensor(size).fill_(self.pad)]
+        self.nextYs[0][0] = self.bos
+
+        # The attentions (matrix) for each time.
+        self.attn = []
+
+    # Get the outputs for the current timestep.
+    def get_current_state(self):
+        """Get state of beam."""
+        return self.nextYs[-1]
+
+    # Get the backpointers for the current timestep.
+    def get_current_origin(self):
+        """Get the backpointer to the beam at this step."""
+        return self.prevKs[-1]
+
+    #  Given prob over words for every last beam `wordLk` and attention
+    #   `attnOut`: Compute and update the beam search.
+    #
+    # Parameters:
+    #
+    #     * `wordLk`- probs of advancing from the last step (K x words)
+    #     * `attnOut`- attention at the last step
+    #
+    # Returns: True if beam search is complete.
+
+    def advance(self, workd_lk):
+        """Advance the beam."""
+        num_words = workd_lk.size(1)
+
+        # Sum the previous scores.
+        if len(self.prevKs) > 0:
+            beam_lk = workd_lk + self.scores.unsqueeze(1).expand_as(workd_lk)
+        else:
+            beam_lk = workd_lk[0]
+
+        flat_beam_lk = beam_lk.view(-1)
+
+        bestScores, bestScoresId = flat_beam_lk.topk(self.size, 0, True, True)
+        self.scores = bestScores
+
+        # bestScoresId is flattened beam x word array, so calculate which
+        # word and beam each score came from
+        prev_k = bestScoresId / num_words
+        self.prevKs.append(prev_k)
+        self.nextYs.append(bestScoresId - prev_k * num_words)
+
+        # End condition is when top-of-beam is EOS.
+        if self.nextYs[-1][0] == self.eos:
+            self.done = True
+
+        return self.done
+
+    def sort_best(self):
+        """Sort the beam."""
+        return torch.sort(self.scores, 0, True)
+
+    # Get the score of the best in the beam.
+    def get_best(self):
+        """Get the most likely candidate."""
+        scores, ids = self.sort_best()
+        return scores[1], ids[1]
+
+    # Walk back to construct the full hypothesis.
+    #
+    # Parameters.
+    #
+    #     * `k` - the position in the beam to construct.
+    #
+    # Returns.
+    #
+    #     1. The hypothesis
+    #     2. The attention at each time step.
+    def get_hyp(self, k):
+        """Get hypotheses."""
+        hyp = []
+        # print(len(self.prevKs), len(self.nextYs), len(self.attn))
+        for j in range(len(self.prevKs) - 1, -1, -1):
+            hyp.append(self.nextYs[j + 1][k])
+            k = self.prevKs[j][k]
+
+        return hyp[::-1]
+
+
+
+
+
+
+
+
 
 class BilinearAttention(nn.Module):
     """ bilinear attention layer: score(H_j, q) = H_j^T W_a q
@@ -216,7 +343,7 @@ class StackedAttentionLSTM(nn.Module):
 
 
 class Seq2Seq(nn.Module):
-    def __init__(self, vocab_size, hidden_size, emb_dim, dropout):
+    def __init__(self, vocab_size, hidden_size, emb_dim, dropout, tok2id):
         super(Seq2Seq, self).__init__()        
 
         self.vocab_size = vocab_size
@@ -224,6 +351,7 @@ class Seq2Seq(nn.Module):
         self.emb_dim = emb_dim
         self.dropout = dropout
         self.pad_id = 0
+        self.tok2id = tok2id
 
         self.embeddings = nn.Embedding(self.vocab_size, self.emb_dim, self.pad_id)
         self.encoder = LSTMEncoder(
@@ -303,7 +431,109 @@ class Seq2Seq(nn.Module):
         return logits, probs
 
 
-    def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist):
+    def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, beam_width=1):
+        global CUDA
+
+        if beam_width == 1:
+            return self.inference_forward_greedy(
+                pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist)
+
+        # run encoder on src
+        src_emb = self.embeddings(pre_id)
+        src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
+        src_outputs = self.bridge(src_outputs)
+        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
+        c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+        context_h = src_outputs.transpose(0, 1) # move seq to first dim
+        batch_size = context_h.size(1)
+        mask = pre_mask.repeat(beam_width, 1)
+
+
+        # expand tensors for each beam
+        context = Variable(context_h.data.repeat(1, beam_width, 1)).transpose(1, 0) # batch first
+        dec_states = [
+            Variable(h_t.data.repeat(1, beam_width, 1)),
+            Variable(c_t.data.repeat(1, beam_width, 1))
+        ]
+        beam = [Beam(beam_width, self.tok2id, cuda=CUDA) for k in range(batch_size)]
+
+        batch_idx = list(range(batch_size))
+        remaining_sents = batch_size
+
+        for i in range(max_len):
+            input = torch.stack(
+                [b.get_current_state() for b in beam if not b.done]
+            ).t().contiguous().view(1, -1)
+            trg_emb = self.embeddings(Variable(input).transpose(1, 0))
+            trg_h, (trg_h_t, trg_c_t) = self.decoder(
+                trg_emb, 
+                (dec_states[0].squeeze(0), dec_states[1].squeeze(0)),
+                context,
+                mask)
+            dec_states = (trg_h_t, trg_c_t)
+
+            out = F.softmax(self.output_projection(trg_h_t))
+            word_lk = out.view(beam_width, remaining_sents, -1).transpose(0, 1).contiguous()
+
+            active = []
+            for b in range(batch_size):
+                if beam[b].done:
+                    continue
+                idx = batch_idx[b]
+                if not beam[b].advance(word_lk.data[idx]):
+                    active += [b]
+                
+                for dec_state in dec_states:
+                    sent_states = dec_state.view(
+                        -1, beam_width, remaining_sents, dec_state.size(2)
+                    )[:, :, idx]
+                    sent_states.data.copy_(
+                        sent_states.data.index_select(
+                            1, beam[b].get_current_origin()))
+
+            if not active:
+                break
+
+            # compact active sentences to avoid runnning decoder on completed sents
+            active_idx = torch.LongTensor([batch_idx[k] for k in active])
+            if CUDA: 
+                active_idx = active_idx.cuda()
+            batch_idx = {beam: idx for idx, beam in enumerate(active)}
+
+            def update_active(t):
+                # select only the remaining active sentences
+                view = t.data.contiguous().view(-1, remaining_sents, self.hidden_dim)
+                new_size = list(t.size())
+                new_size[-2] = new_size[-2] * len(active_idx) // remaining_sents
+                return Variable(view.index_select(1, active_idx).view(*new_size))
+
+            dec_states = (
+                update_active(dec_states[0]),
+                update_active(dec_states[1])
+            )
+            dec_out = update_active(trg_h_t)
+            context = update_active(context)
+            
+            remaining_sents = len(active)
+
+
+        # package up
+        allHyp, allScores = [], []
+        n_best = 1
+
+        for b in range(batch_size):
+            scores, ks = beam[b].sort_best()
+
+            allScores += [scores[:n_best]]
+            hyps = zip(*[beam[b].get_hyp(k) for k in ks[:n_best]])
+            allHyp += [hyps]
+
+        # [batch, len] predicted indices
+        return np.array([[x[0].detach().cpu().numpy() for x in hyp] for hyp in allHyp])
+
+
+
+    def inference_forward_greedy(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist):
         global CUDA
         """ argmax decoding """
         # Initialize target with <s> for every sentence
@@ -324,14 +554,15 @@ class Seq2Seq(nn.Module):
             # move to cpu because otherwise quickly runs out of mem
 #            out_logits.append(decoder_logit[:, -1, :].detach().cpu())
 
-        return tgt_input#, torch.stack(out_logits).permute(1, 0, 2)
+        # [batch, len ] predicted indices
+        return tgt_input.detach().cpu().numpy()#, torch.stack(out_logits).permute(1, 0, 2)
 
 
 class Seq2SeqEnrich(Seq2Seq):
-    def __init__(self, vocab_size, hidden_size, emb_dim, dropout):
+    def __init__(self, vocab_size, hidden_size, emb_dim, dropout, tok2id):
         global CUDA
         super(Seq2SeqEnrich, self).__init__(
-            vocab_size, hidden_size, emb_dim, dropout)        
+            vocab_size, hidden_size, emb_dim, dropout, tok2id)
 
         self.enrich_input = torch.ones(hidden_size)
         if CUDA:

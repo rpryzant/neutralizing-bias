@@ -1,4 +1,4 @@
-# python seq2seq.py --train ../../data/v4/tok/biased --test ../../data/v4/tok/biased --working_dir TEST/
+# python seq2seq.py --train ../../data/v5/final/bias --test ../../data/v5/final/bias --working_dir TEST/
 
 from collections import defaultdict
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
@@ -177,17 +177,19 @@ def run_eval(model, dataloader, tok2id, out_file_path):
         pre_id, pre_mask, pre_len, post_in_id, post_out_id, tok_label_id, replace_id, _, _ = batch
         
         post_start_id = tok2id['[CLS]']
-        max_len = min(MAX_SEQ_LEN, pre_len[0].detach().cpu().numpy() + 5)
+        max_len = min(MAX_SEQ_LEN, pre_len[0].detach().cpu().numpy() + 10)
 
         with torch.no_grad():
-            predicted_toks = model.inference_forward(pre_id, post_start_id, pre_mask, pre_len, max_len, tok_label_id)
+            predicted_toks = model.inference_forward(
+                pre_id, post_start_id, pre_mask, pre_len, max_len, tok_label_id,
+                beam_width=5)
 #            loss = criterion(post_logits.contiguous().view(-1, len(tok2id)), post_out_id.contiguous().view(-1))
 
 #        losses.append(loss.detach().cpu().numpy())
         new_hits, new_preds, new_golds = dump_outputs(
             pre_id.detach().cpu().numpy(), 
             post_out_id.detach().cpu().numpy(), 
-            predicted_toks.detach().cpu().numpy(), 
+            predicted_toks, 
             replace_id.detach().cpu().numpy(), 
             tok_label_id.detach().cpu().numpy(), 
             id2tok, out_file)
@@ -230,11 +232,11 @@ eval_dataloader, num_eval_examples = get_dataloader(
 if ARGS.no_tok_enrich:
     model = seq2seq_model.Seq2Seq(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
-        emb_dim=768, dropout=0.2)
+        emb_dim=768, dropout=0.2, tok2id=tok2id)
 else:
     model = seq2seq_model.Seq2SeqEnrich(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
-        emb_dim=768, dropout=0.2)
+        emb_dim=768, dropout=0.2, tok2id=tok2id)
 
 
 model_parameters = filter(lambda p: p.requires_grad, model.parameters())
