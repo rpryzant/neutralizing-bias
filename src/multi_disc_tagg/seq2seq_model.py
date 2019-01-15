@@ -16,7 +16,26 @@ CUDA = (torch.cuda.device_count() > 0)
 
 
 
-
+def tile(x, count, dim=0):
+    """
+    Tiles x on dimension dim count times.
+    """
+    perm = list(range(len(x.size())))
+    if dim != 0:
+        perm[0], perm[dim] = perm[dim], perm[0]
+        x = x.permute(perm).contiguous()
+    out_size = list(x.size())
+    out_size[0] *= count
+    batch = x.size(0)
+    x = x.view(batch, -1) \
+         .transpose(0, 1) \
+         .repeat(count, 1) \
+         .transpose(0, 1) \
+         .contiguous() \
+         .view(*out_size)
+    if dim != 0:
+        x = x.permute(perm).contiguous()
+    return x
 
 
 """Beam search implementation in PyTorch."""
@@ -440,7 +459,9 @@ class Seq2Seq(nn.Module):
         # encode src
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
 
-        # expand everything per beam
+        # expand everything per beam. Order is beam x batch, 
+        #  e.g. [batch, batch, batch] if beam width = 3
+        #  so to unpack we do tensor.view(beam, batch)
         src_outputs = src_outputs.repeat(beam_width, 1, 1)
         initial_hidden = (
             h_t.repeat(beam_width, 1),
@@ -453,29 +474,32 @@ class Seq2Seq(nn.Module):
         # build initial inputs and beams
         batch_size = pre_id.shape[0]
         beams = [Beam(beam_width, self.tok2id, cuda=CUDA) for k in range(batch_size)]
+        # transpose to move beam to first dim
         tgt_input = torch.stack([b.get_current_state() for b in beams]
-            ).contiguous().view(-1, 1)
+            ).t().contiguous().view(-1, 1)
 
         for i in range(max_len):
             # run input through the model
             with torch.no_grad():
                 decoder_logit, word_probs = self.run_decoder(
                     src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist)
+            # tranpose to preserve ordering
             new_tok_probs = word_probs[:, -1, :].squeeze(1).view(
-                batch_size, beam_width, -1)
+                beam_width, batch_size, -1).transpose(1, 0)
 
             for bi in range(batch_size):
                 beams[bi].advance(new_tok_probs.data[bi])
-            
+
+            # again, transpose
             next_input = torch.stack([b.get_current_state() for b in beams]
-                ).contiguous().view(-1, 1)
+                ).t().contiguous().view(-1, 1)
 
             tgt_input = torch.cat((tgt_input, next_input), dim=1)
+            
+        # break out into [beam, batch, len]
+        top_beam = tgt_input.view(beam_width, batch_size, -1)[0]
+        return top_beam.detach().cpu().numpy()
 
-        top_beam = tgt_input.view(
-            batch_size, beam_width, -1).detach().cpu().numpy()[:, 0, :]
-
-        return top_beam
 
 
 
