@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 # python seq2seq.py --train ../../data/v5/final/bias --test ../../data/v5/final/bias --working_dir TEST/
 
 from collections import defaultdict
