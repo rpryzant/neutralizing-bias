@@ -3,10 +3,10 @@ import argparse
 
 
 parser = argparse.ArgumentParser()
+# seq2seq args
 parser.add_argument(
     "--train",
     help="train prefix",
-    required=True
 )
 parser.add_argument(
     "--test",
@@ -18,6 +18,45 @@ parser.add_argument(
     help="train continuously on one batch of data",
     type=str, required=True
 )
+parser.add_argument(
+    "--beam_width",
+    help="beam width for evaluation (1 = greedy)",
+    type=int, default=1
+)
+parser.add_argument(
+    "--batch_size",
+    help="batch size. IF BERT ENCODER SET THIS TO 16",
+    type=int, default=80
+)
+parser.add_argument(
+    "--epochs",
+    help="training epochs",
+    type=int, default=80
+)
+parser.add_argument(
+    "--max_seq_len",
+    type=int, default=70
+)
+parser.add_argument(
+    "--hidden_size",
+    help="hidden size of encoder/decoder",
+    type=int, default=256
+)
+
+# inference only
+parser.add_argument(
+    "--checkpoint",
+    help="model checkpoint to continue from",
+    type=str, default=''
+)
+parser.add_argument(
+    "--token_distribution_file",
+    help="token distributions to use",
+    type=str, default=''
+)
+
+
+# bert settings
 parser.add_argument(
     "--bert_word_embeddings",
     help="use bert pretrained word embeddings",
@@ -38,6 +77,8 @@ parser.add_argument(
     help="freeze pretrained embeddings",
     action='store_true'
 )
+
+# debias settings
 parser.add_argument(
     "--no_tok_enrich",
     help="turn off src enrichment",
@@ -48,6 +89,8 @@ parser.add_argument(
     help="add a <del> tok for deletions",
     action='store_true'
 )
+
+# pretrain settings
 parser.add_argument(
     "--pretrain_data",
     help="dataset for pretraining. NOT A PREFIX!!",
@@ -57,10 +100,5 @@ parser.add_argument(
     "--pretrain_epochs",
     help="dataset for pretraining. NOT A PREFIX!!",
     type=int, default=4
-)
-parser.add_argument(
-    "--hidden_size",
-    help="hidden size of encoder/decoder",
-    type=int, default=256
 )
 ARGS = parser.parse_args()

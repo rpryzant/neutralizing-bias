@@ -53,7 +53,7 @@ def noise_seq(seq, drop_prob=0.25, shuf_dist=3):
 
 
 def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len, 
-        noise=False, add_del_tok=False, rel_path='', pos_path=''):
+        noise=False, add_del_tok=False, rel_path='', pos_path='', ):
     global REL2ID
     global POS2ID
 
@@ -75,10 +75,12 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
         # ignore the unbiased sentences with tagging -- TODO -- toggle this?    
         tokens = line.strip().split() # Pre-tokenized
         post_tokens = post_line.strip().split()
-        tok_diff = diff(tokens, post_tokens)
-        tok_labels = get_tok_labels(tok_diff)
         rels = line_rels.strip().split()
         pos = line_pos.strip().split()
+
+        tok_diff = diff(tokens, post_tokens)
+        tok_labels = get_tok_labels(tok_diff)
+
     
         # make sure everything lines up    
         if len(tokens) != len(tok_labels) or len(tokens) != len(rels) or len(tokens) != len(pos):

@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 from pytorch_pretrained_bert.modeling import BertModel
 
-from args import ARGS
+from seq2seq_args import ARGS
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -39,16 +39,8 @@ def tile(x, count, dim=0):
 
 
 """Beam search implementation in PyTorch."""
-#
-#
-#         hyp1#-hyp1---hyp1 -hyp1
-#                 \             /
-#         hyp2 \-hyp2 /-hyp2#hyp2
-#                               /      \
-#         hyp3#-hyp3---hyp3 -hyp3
-#         ========================
-#
 # Takes care of beams, back pointers, and scores.
+# Borrowed from OpenNMT
 class Beam(object):
     """Ordered beam of candidate outputs."""
 
@@ -454,6 +446,7 @@ class Seq2Seq(nn.Module):
         global CUDA
 
         if beam_width == 1:
+            print('here!')
             return self.inference_forward_greedy(
                 pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist)
 
@@ -504,133 +497,6 @@ class Seq2Seq(nn.Module):
             tgt_input = get_top_hyp().contiguous().view(batch_size * beam_width, -1)
 
         return get_top_hyp()[0].detach().cpu().numpy()
-        ############### V2 THINGS##########
-
-            # again, transpose
-        #     next_input = torch.stack([b.get_current_state() for b in beams]
-        #         ).t().contiguous().view(-1, 1)
-
-        #     tgt_input = torch.cat((tgt_input, next_input), dim=1)
-            
-        # # break out into [beam, batch, len]
-        # top_beam = tgt_input.view(beam_width, batch_size, -1)[0]
-        # return top_beam.detach().cpu().numpy()
-        ############### V2 THINGS##########
-
-        # actually using the given hyps
-        
-
-
-        # allHyp, allScores = [], []
-        # n_best = 1
-
-        # for b in range(batch_size):
-        #     scores, ks = beams[b].sort_best()
-
-        #     allScores += [scores[:n_best]]
-        #     hyps = zip(*[beams[b].get_hyp(k) for k in ks[:n_best]])
-        #     allHyp += [hyps]
-
-        # # [batch, len] predicted indices
-        # print(np.array([[x[0].detach().cpu().numpy() for x in hyp] for hyp in allHyp]))
-
-
-
-
-
-        # run encoder on src
-        src_emb = self.embeddings(pre_id)
-        src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
-        src_outputs = self.bridge(src_outputs)
-        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
-        c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
-        context_h = src_outputs.transpose(0, 1) # move seq to first dim        
-        batch_size = context_h.size(1)
-
-        # expand tensors for each beam
-        context = Variable(context_h.data.repeat(1, beam_width, 1)).transpose(1, 0) # batch first
-        dec_states = [
-            Variable(h_t.data.repeat(1, beam_width, 1)),
-            Variable(c_t.data.repeat(1, beam_width, 1))
-        ]
-        mask = pre_mask.repeat(beam_width, 1)
-
-        batch_idx = list(range(batch_size))
-        remaining_sents = batch_size
-
-        for i in range(max_len):
-            input = torch.stack(
-                [b.get_current_state() for b in beam if not b.done]
-            ).t().contiguous().view(1, -1)
-            trg_emb = self.embeddings(Variable(input).transpose(1, 0))
-            trg_h, (trg_h_t, trg_c_t) = self.decoder(
-                trg_emb, 
-                (dec_states[0].squeeze(0), dec_states[1].squeeze(0)),
-                context,
-                mask)
-            dec_states = (trg_h_t, trg_c_t)
-
-            out = F.softmax(self.output_projection(trg_h_t.squeeze(0)))
-            word_lk = out.view(beam_width, remaining_sents, -1).transpose(0, 1).contiguous()
-
-            active = []
-            for b in range(batch_size):
-                if beam[b].done:
-                    continue
-
-                idx = batch_idx[b]
-                if not beam[b].advance(word_lk.data[idx]):
-                    active += [b]
-
-                for dec_state in dec_states:
-                    sent_states = dec_state.view(
-                        -1, beam_width, remaining_sents, dec_state.size(2)
-                    )[:, :, idx]
-
-                    sent_states.data.copy_(
-                        sent_states.data.index_select(
-                            1, beam[b].get_current_origin()))
-
-            if not active:
-                break
-
-            # compact active sentences to avoid runnning decoder on completed sents
-            active_idx = torch.LongTensor([batch_idx[k] for k in active])
-            if CUDA: 
-                active_idx = active_idx.cuda()
-            batch_idx = {beam: idx for idx, beam in enumerate(active)}
-
-            def update_active(t):
-                # select only the remaining active sentences
-                view = t.data.contiguous().view(-1, remaining_sents, self.hidden_dim)
-                new_size = list(t.size())
-                new_size[-2] = new_size[-2] * len(active_idx) // remaining_sents
-                return Variable(view.index_select(1, active_idx).view(*new_size))
-
-            dec_states = (
-                update_active(dec_states[0]),
-                update_active(dec_states[1])
-            )
-            dec_out = update_active(trg_h_t)
-            context = update_active(context)
-            
-            remaining_sents = len(active)
-
-
-        # package up
-        allHyp, allScores = [], []
-        n_best = 1
-
-        for b in range(batch_size):
-            scores, ks = beam[b].sort_best()
-
-            allScores += [scores[:n_best]]
-            hyps = zip(*[beam[b].get_hyp(k) for k in ks[:n_best]])
-            allHyp += [hyps]
-
-        # [batch, len] predicted indices
-        return np.array([[x[0].detach().cpu().numpy() for x in hyp] for hyp in allHyp])
-
 
 
     def inference_forward_greedy(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist):
@@ -656,6 +522,12 @@ class Seq2Seq(nn.Module):
 
         # [batch, len ] predicted indices
         return tgt_input.detach().cpu().numpy()#, torch.stack(out_logits).permute(1, 0, 2)
+
+    def save(self, path):
+        torch.save(self.state_dict(), path)
+
+    def load(self, path):
+        self.load_state_dict(torch.load(path))
 
 
 class Seq2SeqEnrich(Seq2Seq):
@@ -696,7 +568,6 @@ class Seq2SeqEnrich(Seq2Seq):
         probs = self.softmax(logits)
         
         return logits, probs
-
 
 
     def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist):
