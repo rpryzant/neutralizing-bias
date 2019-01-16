@@ -138,12 +138,8 @@ else:
 
 weight_mask = torch.ones(len(tok2id))
 weight_mask[0] = 0
-if ARGS.debias_weight == 1.0:
-    criterion = nn.CrossEntropyLoss(weight=weight_mask)
-else:
-    criterion = nn.CrossEntropyLoss(weight=weight_mask, reduction='none')
-
-test_criterion = nn.CrossEntropyLoss(weight=weight_mask)
+criterion = nn.CrossEntropyLoss(weight=weight_mask)
+per_tok_criterion = nn.CrossEntropyLoss(weight=weight_mask, reduction='none')
 
 if CUDA:
     weight_mask = weight_mask.cuda()
@@ -162,7 +158,9 @@ def weighted_cross_entropy_loss(logits, labels, weight_mask=None):
     seq_losses = []
     for logit_seq, label_seq, weight_seq in zip(logits, labels, weight_mask):
         weights = ((ARGS.debias_weight - 1) * weight_seq) + 1.0
-        losses = criterion(logit_seq, label_seq) * weights
+        if CUDA:
+            weights = weights.cuda()
+        losses = per_tok_criterion(logit_seq, label_seq) * weights
         seq_losses.append(losses[torch.nonzero(losses)].squeeze())
     loss = torch.mean(torch.cat(seq_losses))
 
