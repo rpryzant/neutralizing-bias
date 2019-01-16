@@ -51,24 +51,23 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn):
 
     losses = []
     for step, batch in enumerate(tqdm(dataloader)):
-        while True:
-            if CUDA:
-                batch = tuple(x.cuda() for x in batch)
-            (
-                pre_id, pre_mask, pre_len, 
-                post_in_id, post_out_id, 
-                pre_tok_label_id, post_tok_label_id, 
-                replace_id, _, _
-            ) = batch
+        if CUDA:
+            batch = tuple(x.cuda() for x in batch)
+        (
+            pre_id, pre_mask, pre_len, 
+            post_in_id, post_out_id, 
+            pre_tok_label_id, post_tok_label_id, 
+            replace_id, _, _
+        ) = batch
 
-            post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id)
-            loss = loss_fn(post_logits, post_out_id, post_tok_label_id)
-            loss.backward()
-            norm = nn.utils.clip_grad_norm_(model.parameters(), 3.0)
-            optimizer.step()
-            model.zero_grad()
+        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id)
+        loss = loss_fn(post_logits, post_out_id, post_tok_label_id)
+        loss.backward()
+        norm = nn.utils.clip_grad_norm_(model.parameters(), 3.0)
+        optimizer.step()
+        model.zero_grad()
 
-            losses.append(loss.detach().cpu().numpy())
+        losses.append(loss.detach().cpu().numpy())
 
     return losses
 
