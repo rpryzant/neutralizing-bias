@@ -154,16 +154,16 @@ def cross_entropy_loss(logits, labels, weight_mask=None):
 
 def weighted_cross_entropy_loss(logits, labels, weight_mask=None):
     # weight mask = wehere to apply weight
-    batch_size = logits.shape[0]
-    loss = 0
-    seq_losses = []
-    for logit_seq, label_seq, weight_seq in zip(logits, labels, weight_mask):
-        weights = ((ARGS.debias_weight - 1) * weight_seq) + 1.0
-        if CUDA:
-            weights = weights.cuda()
-        losses = per_tok_criterion(logit_seq, label_seq) * weights
-        seq_losses.append(losses[torch.nonzero(losses)].squeeze())
-    loss = torch.mean(torch.cat(seq_losses))
+    weights = weight_mask.contiguous().view(-1)
+    weights = ((ARGS.debias_weight - 1) * weights) + 1.0
+
+    per_tok_losses = per_tok_criterion(
+        logits.contiguous().view(-1, len(tok2id)), 
+        labels.contiguous().view(-1))
+
+    per_tok_losses = per_tok_losses * weights
+
+    loss = torch.mean(per_tok_losses[torch.nonzero(per_tok_losses)].squeeze())
 
     return loss
 
