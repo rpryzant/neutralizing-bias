@@ -31,7 +31,7 @@ parser.add_argument(
 parser.add_argument(
     "--epochs",
     help="training epochs",
-    type=int, default=80
+    type=int, default=40
 )
 parser.add_argument(
     "--max_seq_len",
@@ -100,5 +100,13 @@ parser.add_argument(
     "--pretrain_epochs",
     help="dataset for pretraining. NOT A PREFIX!!",
     type=int, default=4
+)
+
+# loss settings
+parser.add_argument(
+    "--debias_weight",
+    help="multiplyer for new words on target side loss",
+    type=float, default=1.0
+
 )
 ARGS = parser.parse_args()

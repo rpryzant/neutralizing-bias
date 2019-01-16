@@ -31,16 +31,20 @@ POS2ID = {
 
 
 def get_tok_labels(s_diff):
-    tok_labels = []
+    pre_tok_labels = []
+    post_tok_labels = []
     for tag, chunk in s_diff:
         if tag == '=':
-            tok_labels += ['0'] * len(chunk)
+            pre_tok_labels += ['0'] * len(chunk)
+            post_tok_labels += ['0'] * len(chunk)
         elif tag == '-':
-            tok_labels += ['1'] * len(chunk)
+            pre_tok_labels += ['1'] * len(chunk)
+        elif tag == '+':
+            post_tok_labels += ['1'] * len(chunk)
         else:
             pass
 
-    return tok_labels
+    return pre_tok_labels, post_tok_labels
 
 
 def noise_seq(seq, drop_prob=0.25, shuf_dist=3):
@@ -67,7 +71,7 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
 
     out = {
         'pre_ids': [], 'pre_masks': [], 'pre_lens': [], 'post_in_ids': [], 'post_out_ids': [], 
-        'tok_label_ids': [], 'replace_ids': [], 'rel_ids': [], 'pos_ids': []
+        'pre_tok_label_ids': [], 'post_tok_label_ids': [], 'replace_ids': [], 'rel_ids': [], 'pos_ids': []
     }
 
     for i, (line, post_line, line_rels, line_pos) in enumerate(tqdm(
@@ -79,11 +83,11 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
         pos = line_pos.strip().split()
 
         tok_diff = diff(tokens, post_tokens)
-        tok_labels = get_tok_labels(tok_diff)
+        pre_tok_labels, post_tok_labels = get_tok_labels(tok_diff)
 
     
         # make sure everything lines up    
-        if len(tokens) != len(tok_labels) or len(tokens) != len(rels) or len(tokens) != len(pos):
+        if len(tokens) != len(pre_tok_labels) or len(tokens) != len(rels) or len(tokens) != len(pos) or len(post_tokens) != len(post_tok_labels):
             skipped += 1
             continue
         # ignore lines that broke on non-asci chars (TODO FIX THIS)
@@ -98,7 +102,7 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
             # add deletion token into data
             replace_id = tok2id['<del>']    
             if add_del_tok:
-                post_tokens.insert(tok_labels.index('1'), '<del>')
+                post_tokens.insert(pre_tok_labels.index('1'), '<del>')
 
         except KeyError:
             skipped += 1
@@ -107,9 +111,10 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
         # account for [CLS] and [SEP]
         # if len(tokens) >= max_seq_len:
         tokens = tokens[:max_seq_len - 1]
-        tok_labels = tok_labels[:max_seq_len - 1]
+        pre_tok_labels = pre_tok_labels[:max_seq_len - 1]
         post_tokens = post_tokens[:max_seq_len - 1]
-        tok_labels = tok_labels[:max_seq_len - 1]
+        pre_tok_labels = pre_tok_labels[:max_seq_len - 1]
+        post_tok_labels = post_tok_labels[:max_seq_len - 1]
         rels = rels[:max_seq_len - 1]
         pos = pos[:max_seq_len - 1]
 
@@ -124,7 +129,8 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
             pre_ids = pad(pre_ids, 0)
             post_in_ids = pad([tok2id[x] for x in post_input_tokens], 0)
             post_out_ids = pad([tok2id[x] for x in post_output_tokens], 0)
-            tok_label_ids = pad([label2id[l] for l in tok_labels], 0)
+            pre_tok_label_ids = pad([label2id[l] for l in pre_tok_labels], 0)
+            post_tok_label_ids = pad([label2id[l] for l in post_tok_labels], 0)
             rel_ids = pad([REL2ID.get(x, REL2ID['<UNK>']) for x in rels], 0)
             pos_ids = pad([POS2ID.get(x, POS2ID['<UNK>']) for x in pos], 0)
             
@@ -137,7 +143,7 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
         pre_len = len(tokens)
 
         # make sure its a real edit (only if we're not autoencoding)
-        if (text_path != text_post_path) and 1 not in tok_label_ids:
+        if (text_path != text_post_path) and 1 not in pre_tok_label_ids:
             skipped += 1
             continue
 
@@ -146,7 +152,8 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
         out['pre_lens'].append(pre_len)
         out['post_in_ids'].append(post_in_ids)
         out['post_out_ids'].append(post_out_ids)
-        out['tok_label_ids'].append(tok_label_ids)
+        out['pre_tok_label_ids'].append(pre_tok_label_ids)
+        out['post_tok_label_ids'].append(post_tok_label_ids)
         out['replace_ids'].append(replace_id)
         out['rel_ids'].append(rel_ids)
         out['pos_ids'].append(pos_ids)
@@ -161,15 +168,19 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
         # sort by length for packing/padding
         data.sort(key=lambda x: x[2], reverse=True)
         # group by datatype
-        [src_id, src_mask, src_len, post_in_id, post_out_id, tok_label, replace_id, rel_ids, pos_ids] = \
-            [torch.stack(x) for x in zip(*data)]
+        [
+            src_id, src_mask, src_len, 
+            post_in_id, post_out_id, 
+            pre_tok_label, post_tok_label, 
+            replace_id, rel_ids, pos_ids
+        ] = [torch.stack(x) for x in zip(*data)]
         # cut off at max len for unpacking/repadding
         max_len = src_len[0]
         data = [
             src_id[:, :max_len], src_mask[:, :max_len], src_len, 
-            post_in_id[:, :max_len+10], post_out_id[:, :max_len+10], 
-            tok_label[:, :max_len], replace_id, 
-            rel_ids[:, :max_len], pos_ids[:, :max_len]
+            post_in_id[:, :max_len+10], post_out_id[:, :max_len+10],    # +10 for wiggle room
+            pre_tok_label[:, :max_len], post_tok_label[:, :max_len+10], # +10 for post_toks_labels too (it's just gonna be matched up with post ids)
+            replace_id, rel_ids[:, :max_len], pos_ids[:, :max_len]
         ]
         return data
 
@@ -195,7 +206,8 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
         torch.tensor(train_examples['pre_lens'], dtype=torch.long),
         torch.tensor(train_examples['post_in_ids'], dtype=torch.long),
         torch.tensor(train_examples['post_out_ids'], dtype=torch.long),
-        torch.tensor(train_examples['tok_label_ids'], dtype=torch.float),  # for masking
+        torch.tensor(train_examples['pre_tok_label_ids'], dtype=torch.float),  # for masking
+        torch.tensor(train_examples['post_tok_label_ids'], dtype=torch.float),  # for loss multiplying
         torch.tensor(train_examples['replace_ids'], dtype=torch.long),
         torch.tensor(train_examples['rel_ids'], dtype=torch.long),
         torch.tensor(train_examples['pos_ids'], dtype=torch.long))

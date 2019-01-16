@@ -446,7 +446,6 @@ class Seq2Seq(nn.Module):
         global CUDA
 
         if beam_width == 1:
-            print('here!')
             return self.inference_forward_greedy(
                 pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist)
 

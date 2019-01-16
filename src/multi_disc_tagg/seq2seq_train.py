@@ -17,6 +17,7 @@ import torch.nn as nn
 import numpy as np
 from collections import Counter
 import math
+import functools
 
 from pytorch_pretrained_bert.modeling import BertEmbeddings
 from pytorch_pretrained_bert.optimization import BertAdam
@@ -99,7 +100,8 @@ else:
     model = seq2seq_model.Seq2SeqEnrich(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
         emb_dim=768, dropout=0.2, tok2id=tok2id)
-
+if CUDA:
+    model = model.cuda()
 
 model_parameters = filter(lambda p: p.requires_grad, model.parameters())
 params = sum([np.prod(p.size()) for p in model_parameters])
@@ -107,7 +109,7 @@ print('NUM PARAMS: ', params)
 
 
 
-# # # # # # # # ## # # # ## # # OPTIMIZERS, ETC # # # # # # # # ## # # # ## # #
+# # # # # # # # ## # # # ## # # OPTIMIZER # # # # # # # # ## # # # ## # #
 writer = SummaryWriter(WORKING_DIR)
 
 if ARGS.bert_encoder:
@@ -130,41 +132,71 @@ if ARGS.bert_encoder:
 else:
     optimizer = optim.Adam(model.parameters(), lr=0.0003)
 
+
+# # # # # # # # ## # # # ## # # LOSS # # # # # # # # ## # # # ## # #
+# TODO -- REFACTOR THIS BIG TIME!
+
 weight_mask = torch.ones(len(tok2id))
 weight_mask[0] = 0
-criterion = nn.CrossEntropyLoss(weight=weight_mask)
+if ARGS.debias_weight == 1.0:
+    criterion = nn.CrossEntropyLoss(weight=weight_mask)
+else:
+    criterion = nn.CrossEntropyLoss(weight=weight_mask, reduction='none')
+
+test_criterion = nn.CrossEntropyLoss(weight=weight_mask)
 
 if CUDA:
     weight_mask = weight_mask.cuda()
     criterion = criterion.cuda()
-    model = model.cuda()
+
+def cross_entropy_loss(logits, labels, weight_mask=None):
+    return criterion(
+        logits.contiguous().view(-1, len(tok2id)), 
+        labels.contiguous().view(-1))
 
 
+def weighted_cross_entropy_loss(logits, labels, weight_mask=None):
+    # weight mask = wehere to apply weight
+    batch_size = logits.shape[0]
+    loss = 0
+    seq_losses = []
+    for logit_seq, label_seq, weight_seq in zip(logits, labels, weight_mask):
+        weights = ((ARGS.debias_weight - 1) * weight_seq) + 1.0
+        losses = criterion(logit_seq, label_seq) * weights
+        seq_losses.append(losses[torch.nonzero(losses)].squeeze())
+    loss = torch.mean(torch.cat(seq_losses))
+
+    return loss
+
+if ARGS.debias_weight == 1.0:
+    loss_fn = cross_entropy_loss
+else:
+    loss_fn = weighted_cross_entropy_loss
 
 # # # # # # # # # # # PRETRAINING (optional) # # # # # # # # # # # # # # # #
 if ARGS.pretrain_data:
     print('PRETRAINING...')
     for epoch in range(ARGS.pretrain_epochs):
         model.train()
-        losses = utils.train_for_epoch(model, pretrain_dataloader, tok2id, optimizer, criterion)
+        losses = utils.train_for_epoch(model, pretrain_dataloader, tok2id, optimizer, loss_fn)
         writer.add_scalar('pretrain/loss', np.mean(losses), epoch)
 
 
 
 # # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
 print('INITIAL EVAL...')
-model.eval()
-hits, preds, golds = utils.run_eval(
-    model, eval_dataloader, tok2id, WORKING_DIR + '/results_initial.txt',
-    MAX_SEQ_LEN, ARGS.beam_width)
-writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), 0)
-writer.add_scalar('eval/true_hits', np.mean(hits), 0)
+# model.eval()
+# hits, preds, golds = utils.run_eval(
+#     model, eval_dataloader, tok2id, WORKING_DIR + '/results_initial.txt',
+#     MAX_SEQ_LEN, ARGS.beam_width)
+# writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), 0)
+# writer.add_scalar('eval/true_hits', np.mean(hits), 0)
 
 for epoch in range(EPOCHS):
     print('EPOCH ', epoch)
     print('TRAIN...')
     model.train()
-    losses = utils.train_for_epoch(model, train_dataloader, tok2id, optimizer, criterion)
+    losses = utils.train_for_epoch(model, train_dataloader, tok2id, optimizer, loss_fn)
     writer.add_scalar('train/loss', np.mean(losses), epoch+1)
     
     print('SAVING...')
