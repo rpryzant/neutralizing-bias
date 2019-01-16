@@ -178,7 +178,7 @@ if ARGS.pretrain_data:
     print('PRETRAINING...')
     for epoch in range(ARGS.pretrain_epochs):
         model.train()
-        losses = utils.train_for_epoch(model, pretrain_dataloader, tok2id, optimizer, loss_fn)
+        losses = utils.train_for_epoch(model, pretrain_dataloader, tok2id, optimizer, cross_entropy_loss)
         writer.add_scalar('pretrain/loss', np.mean(losses), epoch)
 
 
