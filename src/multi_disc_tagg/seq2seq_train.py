@@ -144,6 +144,7 @@ per_tok_criterion = nn.CrossEntropyLoss(weight=weight_mask, reduction='none')
 if CUDA:
     weight_mask = weight_mask.cuda()
     criterion = criterion.cuda()
+    per_tok_criterion = per_tok_criterion.cuda()
 
 def cross_entropy_loss(logits, labels, weight_mask=None):
     return criterion(
