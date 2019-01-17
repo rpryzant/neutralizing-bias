@@ -174,7 +174,7 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
                     shuf_dist=ARGS.shuf_dist,
                     drop_set=drop_set,
                     keep_bigrams=ARGS.keep_bigrams)
-            pre_ids = [tok2id[x] for x in tokens]
+            pre_ids = [tok2id[x] for x in pre_toks]
             pre_ids = pad(pre_ids, 0)
             post_in_ids = pad([tok2id[x] for x in post_input_tokens], 0)
             post_out_ids = pad([tok2id[x] for x in post_output_tokens], 0)
