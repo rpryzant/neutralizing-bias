@@ -53,8 +53,6 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn):
 
     losses = []
     for step, batch in enumerate(tqdm(dataloader)):
-        if step > 4: continue
-
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         (
@@ -132,7 +130,6 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
     hits = []
     preds, golds = [], []
     for step, batch in enumerate(tqdm(dataloader)):
-        if step > 4: continue
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         (
