@@ -417,7 +417,7 @@ class Seq2Seq(nn.Module):
 
         return src_outputs, h_t, c_t
 
-    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None):
+    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, type_id=None):
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_outputs, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
 
@@ -434,7 +434,7 @@ class Seq2Seq(nn.Module):
 
         return logits, probs
 
-    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None):
+    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None, type_id=None):
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
         logits, probs = self.run_decoder(
             src_outputs, (h_t, c_t), post_in_id, pre_mask)
@@ -442,12 +442,12 @@ class Seq2Seq(nn.Module):
         return logits, probs
 
 
-    def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, beam_width=1):
+    def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, type_id, beam_width=1):
         global CUDA
 
         if beam_width == 1:
             return self.inference_forward_greedy(
-                pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist)
+                pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, type_id)
 
         # encode src
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
@@ -463,6 +463,8 @@ class Seq2Seq(nn.Module):
         pre_len = pre_len.repeat(beam_width)
         if tok_dist is not None:
             tok_dist = tok_dist.repeat(beam_width, 1)
+        if type_id is not None:
+            type_id = type_id.repeat(beam_width)
 
         # build initial inputs and beams
         batch_size = pre_id.shape[0]
@@ -485,7 +487,7 @@ class Seq2Seq(nn.Module):
             # run input through the model
             with torch.no_grad():
                 decoder_logit, word_probs = self.run_decoder(
-                    src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist)
+                    src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist, type_id)
             # tranpose to preserve ordering
             new_tok_probs = word_probs[:, -1, :].squeeze(1).view(
                 beam_width, batch_size, -1).transpose(1, 0)
@@ -498,7 +500,7 @@ class Seq2Seq(nn.Module):
         return get_top_hyp()[0].detach().cpu().numpy()
 
 
-    def inference_forward_greedy(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist):
+    def inference_forward_greedy(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, type_id):
         global CUDA
         """ argmax decoding """
         # Initialize target with <s> for every sentence
@@ -513,7 +515,7 @@ class Seq2Seq(nn.Module):
         for i in range(max_len):
             # run input through the model
             with torch.no_grad():
-                decoder_logit, word_probs = self.forward(pre_id, tgt_input, pre_mask, pre_len, tok_dist)
+                decoder_logit, word_probs = self.forward(pre_id, tgt_input, pre_mask, pre_len, tok_dist, type_id)
             next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
             tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
             # move to cpu because otherwise quickly runs out of mem
@@ -535,22 +537,38 @@ class Seq2SeqEnrich(Seq2Seq):
         super(Seq2SeqEnrich, self).__init__(
             vocab_size, hidden_size, emb_dim, dropout, tok2id)
 
-        self.enrich_input = torch.ones(hidden_size)
+        # i dont think i need to do this but just to be safe...
+        self.enrich_input0 = torch.ones(hidden_size)
+        self.enrich_input1 = torch.ones(hidden_size)
         if CUDA:
-            self.enrich_input = self.enrich_input.cuda()
+            self.enrich_input0 = self.enrich_input.cuda()
+            self.enrich_input1 = self.enrich_input.cuda()
 
-        self.enricher = nn.Linear(hidden_size, hidden_size)
+        # seperate enrichers for del/edit
+        self.enricher0 = nn.Linear(hidden_size, hidden_size)
+        self.enricher1 = nn.Linear(hidden_size, hidden_size)
         # # because init_weights was called in super and dont want to fuq up embeddings
         # self.enricher.weight.data.uniform_(-0.1, 0.1)  
 
 
-    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None):
+    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, type_id=None):
+        global ARGS
         # make a "change this token" embedding and add it to the
         # src_output token that should be changed
-        enrichment = self.enricher(self.enrich_input).repeat(
-            src_outputs.shape[0], src_outputs.shape[1], 1)
+        if ARGS.fine_enrichment:
+            enrichment0 = self.enricher0(self.enrich_input0).repeat(
+                src_outputs.shape[0], src_outputs.shape[1], 1)
+            enrichment1 = self.enricher1(self.enrich_input1).repeat(
+                src_outputs.shape[0], src_outputs.shape[1], 1)
+            type_id = type_id.unsqueeze(1).unsqueeze(2)
+            enrichment = (enrichment1 * type_id) + (enrichment0 * (1 - type_id))
+        else:
+            enrichment = self.enricher0(self.enrich_input0).repeat(
+                src_outputs.shape[0], src_outputs.shape[1], 1)
         enrichment = tok_dist.unsqueeze(2) * enrichment
+
         src_outputs = src_outputs + enrichment
+
 
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_outputs, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
@@ -569,10 +587,10 @@ class Seq2SeqEnrich(Seq2Seq):
         return logits, probs
 
 
-    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist):
+    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id):
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
         logits, probs = self.run_decoder(
-            src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist)
+            src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist, type_id)
         
         return logits, probs
         

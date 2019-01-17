@@ -11,7 +11,6 @@ CUDA = (torch.cuda.device_count() > 0)
 
 
 
-
 def bleu_stats(hypothesis, reference):
     """Compute statistics for BLEU."""
     stats = []
@@ -24,9 +23,11 @@ def bleu_stats(hypothesis, reference):
         r_ngrams = Counter(
             [tuple(reference[i:i + n]) for i in range(len(reference) + 1 - n)]
         )
+
         stats.append(max([sum((s_ngrams & r_ngrams).values()), 0]))
         stats.append(max([len(hypothesis) + 1 - n, 0]))
     return stats
+
 
 def bleu(stats):
     """Compute BLEU given n-gram statistics."""
@@ -38,12 +39,13 @@ def bleu(stats):
     ) / 4.
     return math.exp(min([0, 1 - float(r) / c]) + log_bleu_prec)
 
+
 def get_bleu(hypotheses, reference):
     """Get validation BLEU score for dev set."""
     stats = np.array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
     for hyp, ref in zip(hypotheses, reference):
         stats += np.array(bleu_stats(hyp, ref))
-        return 100 * bleu(stats)
+    return 100 * bleu(stats)
 
 
 def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn):
@@ -51,16 +53,18 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn):
 
     losses = []
     for step, batch in enumerate(tqdm(dataloader)):
+        if step > 4: continue
+
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         (
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             pre_tok_label_id, post_tok_label_id, 
-            replace_id, _, _
+            replace_id, _, _, type_id
         ) = batch
 
-        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id)
+        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, type_id)
         loss = loss_fn(post_logits, post_out_id, post_tok_label_id)
         loss.backward()
         norm = nn.utils.clip_grad_norm_(model.parameters(), 3.0)
@@ -128,13 +132,14 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
     hits = []
     preds, golds = [], []
     for step, batch in enumerate(tqdm(dataloader)):
+        if step > 4: continue
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         (
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             pre_tok_label_id, _, 
-            replace_id, _, _
+            replace_id, _, _, type_id
         ) = batch
         
         post_start_id = tok2id['行']
@@ -142,7 +147,7 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
 
         with torch.no_grad():
             predicted_toks = model.inference_forward(
-                pre_id, post_start_id, pre_mask, pre_len, max_len, pre_tok_label_id,
+                pre_id, post_start_id, pre_mask, pre_len, max_len, pre_tok_label_id, type_id,
                 beam_width=beam_width)
 
         new_hits, new_preds, new_golds = dump_outputs(

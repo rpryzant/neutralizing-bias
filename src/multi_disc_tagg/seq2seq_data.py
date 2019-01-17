@@ -5,6 +5,9 @@ from simplediff import diff
 import numpy as np
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 import torch
+from random import shuffle
+
+from seq2seq_args import ARGS
 
 
 UD_RELATIONS = [
@@ -28,6 +31,10 @@ POS2ID = {
     'SYM': 41, 'CC': 42, 'CD': 43, 'POS': 44, '<UNK>': 45, '<SKIP>': 46
 }
 
+# 0: deletion, 1: edit
+EDIT_TYPE2ID = {'0': 0, '1': 1}
+
+
 
 
 def get_tok_labels(s_diff):
@@ -47,31 +54,69 @@ def get_tok_labels(s_diff):
     return pre_tok_labels, post_tok_labels
 
 
-def noise_seq(seq, drop_prob=0.25, shuf_dist=3):
+def noise_seq(seq, drop_prob=0.25, shuf_dist=3, drop_set=None, keep_bigrams=False):
     # from https://arxiv.org/pdf/1711.00043.pdf
     def perm(i):
         return i[0] + (shuf_dist + 1) * np.random.random()
-    seq = [x for x in seq if np.random.random() > drop_prob]
-    seq = [x for _, x in sorted(enumerate(seq), key=perm)]
-    return seq
+    
+    if drop_set == None:
+        dropped_seq = [x for x in seq if np.random.random() > drop_prob]
+    else:
+        dropped_seq = [x for x in seq if not (x in drop_set and np.random.random() < drop_prob)]
+
+    if keep_bigrams:
+        i = 0
+        original = ' '.join(seq)
+        tmp = []
+        while i < len(dropped_seq)-1:
+            if ' '.join(dropped_seq[i : i+2]) in original:
+                tmp.append(dropped_seq[i : i+2])
+                i += 2
+            else:
+                tmp.append([dropped_seq[i]])
+                i += 1
+
+        dropped_seq = tmp
+
+    # global shuffle
+    if shuf_dist == -1:
+        shuffle(dropped_seq)
+    # local shuffle
+    elif shuf_dist > 0:
+        dropped_seq = [x for _, x in sorted(enumerate(dropped_seq), key=perm)]
+    # shuf_dist of 0 = no shuffle
+
+    if keep_bigrams:
+        dropped_seq = [z for y in dropped_seq for z in y]
+    
+    return dropped_seq
 
 
 def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len, 
         noise=False, add_del_tok=False, rel_path='', pos_path='', ):
     global REL2ID
     global POS2ID
+    global ARGS
 
     label2id = {label: i for i, label in enumerate(possible_labels)}
     label2id['mask'] = len(label2id)
-    
+
+    if ARGS.drop_words is not None:
+        drop_set = set([l.strip() for l in open(ARGS.drop_words)])
+    else:
+        drop_set = None
+
     def pad(id_arr, pad_idx):
         return id_arr + ([pad_idx] * (max_seq_len - len(id_arr)))
 
     skipped = 0 
 
     out = {
-        'pre_ids': [], 'pre_masks': [], 'pre_lens': [], 'post_in_ids': [], 'post_out_ids': [], 
-        'pre_tok_label_ids': [], 'post_tok_label_ids': [], 'replace_ids': [], 'rel_ids': [], 'pos_ids': []
+        'pre_ids': [], 'pre_masks': [], 'pre_lens': [], 
+        'post_in_ids': [], 'post_out_ids': [], 
+        'pre_tok_label_ids': [], 'post_tok_label_ids': [], 
+        'replace_ids': [], 'rel_ids': [], 'pos_ids': [],
+        'type_ids': []
     }
 
     for i, (line, post_line, line_rels, line_pos) in enumerate(tqdm(
@@ -84,7 +129,6 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
 
         tok_diff = diff(tokens, post_tokens)
         pre_tok_labels, post_tok_labels = get_tok_labels(tok_diff)
-
     
         # make sure everything lines up    
         if len(tokens) != len(pre_tok_labels) or len(tokens) != len(rels) or len(tokens) != len(pos) or len(post_tokens) != len(post_tok_labels):
@@ -123,9 +167,14 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
         post_output_tokens = post_tokens + ['止'] 
 
         try:
-            pre_ids = [tok2id[x] for x in tokens]
             if noise:
-                pre_ids = noise_seq(pre_ids)
+                pre_toks = noise_seq(
+                    tokens[:], 
+                    drop_prob=ARGS.noise_prob, 
+                    shuf_dist=ARGS.shuf_dist,
+                    drop_set=drop_set,
+                    keep_bigrams=ARGS.keep_bigrams)
+            pre_ids = [tok2id[x] for x in tokens]
             pre_ids = pad(pre_ids, 0)
             post_in_ids = pad([tok2id[x] for x in post_input_tokens], 0)
             post_out_ids = pad([tok2id[x] for x in post_output_tokens], 0)
@@ -147,6 +196,7 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
             skipped += 1
             continue
 
+        out['type_ids'].append( 0 if sum(post_tok_label_ids) == 0 else 1 )
         out['pre_ids'].append(pre_ids)
         out['pre_masks'].append(input_mask)
         out['pre_lens'].append(pre_len)
@@ -172,7 +222,8 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
             src_id, src_mask, src_len, 
             post_in_id, post_out_id, 
             pre_tok_label, post_tok_label, 
-            replace_id, rel_ids, pos_ids
+            replace_id, rel_ids, pos_ids,
+            type_ids
         ] = [torch.stack(x) for x in zip(*data)]
         # cut off at max len for unpacking/repadding
         max_len = src_len[0]
@@ -180,7 +231,8 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
             src_id[:, :max_len], src_mask[:, :max_len], src_len, 
             post_in_id[:, :max_len+10], post_out_id[:, :max_len+10],    # +10 for wiggle room
             pre_tok_label[:, :max_len], post_tok_label[:, :max_len+10], # +10 for post_toks_labels too (it's just gonna be matched up with post ids)
-            replace_id, rel_ids[:, :max_len], pos_ids[:, :max_len]
+            replace_id, rel_ids[:, :max_len], pos_ids[:, :max_len],
+            type_ids
         ]
         return data
 
@@ -210,7 +262,8 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
         torch.tensor(train_examples['post_tok_label_ids'], dtype=torch.float),  # for loss multiplying
         torch.tensor(train_examples['replace_ids'], dtype=torch.long),
         torch.tensor(train_examples['rel_ids'], dtype=torch.long),
-        torch.tensor(train_examples['pos_ids'], dtype=torch.long))
+        torch.tensor(train_examples['pos_ids'], dtype=torch.long),
+        torch.tensor(train_examples['type_ids'], dtype=torch.float))
 
     train_dataloader = DataLoader(
         train_data,

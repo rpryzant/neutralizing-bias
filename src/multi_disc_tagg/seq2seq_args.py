@@ -89,6 +89,12 @@ parser.add_argument(
     help="add a <del> tok for deletions",
     action='store_true'
 )
+parser.add_argument(
+    "--fine_enrichment",
+    help="seperate enrichment embedidings for del/edit",
+    action='store_true'
+)
+
 
 # pretrain settings
 parser.add_argument(
@@ -101,6 +107,28 @@ parser.add_argument(
     help="dataset for pretraining. NOT A PREFIX!!",
     type=int, default=4
 )
+parser.add_argument(
+    "--noise_prob",
+    help="drop prob for noising",
+    type=int, default=0.25
+)
+parser.add_argument(
+    "--shuf_dist",
+    help="local shuffle distance (-1 for global shuffle, 0 for no shuffle, 1+ for local)",
+    type=int, default=3
+)
+parser.add_argument(
+    "--drop_words",
+    help="list of words to drop",
+    type=str, default=None
+)
+parser.add_argument(
+    "--keep_bigrams",
+    help="keep bigrams together that occured in original when shuffling",
+    type=bool, default=False
+)
+
+
 
 # loss settings
 parser.add_argument(

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# python seq2seq.py --train ../../data/v5/final/bias --test ../../data/v5/final/bias --working_dir TEST/
+# python seq2seq_train.py --train ../../data/v5/final/bias --test ../../data/v5/final/bias --working_dir TEST/
 
 from collections import defaultdict
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
@@ -22,7 +22,7 @@ import functools
 from pytorch_pretrained_bert.modeling import BertEmbeddings
 from pytorch_pretrained_bert.optimization import BertAdam
 
-from data import get_dataloader
+from seq2seq_data import get_dataloader
 import seq2seq_model
 from seq2seq_args import ARGS
 
