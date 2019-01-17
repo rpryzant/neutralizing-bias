@@ -110,7 +110,7 @@ parser.add_argument(
 parser.add_argument(
     "--noise_prob",
     help="drop prob for noising",
-    type=int, default=0.25
+    type=float, default=0.25
 )
 parser.add_argument(
     "--shuf_dist",
@@ -125,7 +125,7 @@ parser.add_argument(
 parser.add_argument(
     "--keep_bigrams",
     help="keep bigrams together that occured in original when shuffling",
-    type=bool, default=False
+    action='store_true'
 )
 
 

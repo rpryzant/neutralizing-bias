@@ -541,8 +541,8 @@ class Seq2SeqEnrich(Seq2Seq):
         self.enrich_input0 = torch.ones(hidden_size)
         self.enrich_input1 = torch.ones(hidden_size)
         if CUDA:
-            self.enrich_input0 = self.enrich_input.cuda()
-            self.enrich_input1 = self.enrich_input.cuda()
+            self.enrich_input0 = self.enrich_input0.cuda()
+            self.enrich_input1 = self.enrich_input1.cuda()
 
         # seperate enrichers for del/edit
         self.enricher0 = nn.Linear(hidden_size, hidden_size)
