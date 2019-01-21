@@ -7,7 +7,7 @@ from torch.utils.data import TensorDataset, DataLoader, RandomSampler, Sequentia
 import torch
 from random import shuffle
 
-from seq2seq_args import ARGS
+#from seq2seq_args import ARGS
 
 
 UD_RELATIONS = [
@@ -93,10 +93,9 @@ def noise_seq(seq, drop_prob=0.25, shuf_dist=3, drop_set=None, keep_bigrams=Fals
 
 
 def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len, 
-        noise=False, add_del_tok=False, rel_path='', pos_path='', ):
+                 noise=False, add_del_tok=False, rel_path='', pos_path='', ARGS=None):
     global REL2ID
     global POS2ID
-    global ARGS
 
     label2id = {label: i for i, label in enumerate(possible_labels)}
     label2id['mask'] = len(label2id)
@@ -215,7 +214,7 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
 
 
 def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len, 
-        pickle_path=None, test=False, noise=False, add_del_tok=False):
+                   pickle_path=None, test=False, noise=False, add_del_tok=False, ARGS=None):
     def collate(data):
         # sort by length for packing/padding
         data.sort(key=lambda x: x[2], reverse=True)
@@ -250,7 +249,8 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
             noise=noise,
             add_del_tok=add_del_tok,
             rel_path=data_path + '.rel',
-            pos_path=data_path + '.pos')
+            pos_path=data_path + '.pos',
+            ARGS=ARGS)
 
         pickle.dump(train_examples, open(pickle_path, 'wb'))
 

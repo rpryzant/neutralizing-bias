@@ -9,7 +9,6 @@ import copy
 import tagging_features
 from tagging_args import ARGS
 
-
 CUDA = (torch.cuda.device_count() > 0)
 
 

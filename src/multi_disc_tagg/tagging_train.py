@@ -92,11 +92,11 @@ tok2id['<del>'] = len(tok2id)
 
 train_dataloader, num_train_examples = get_dataloader(
     TRAIN_TEXT, TRAIN_TEXT_POST, 
-    tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/train_data.pkl')
+    tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/train_data.pkl', ARGS=ARGS)
 eval_dataloader, num_eval_examples = get_dataloader(
     TEST_TEXT, TEST_TEXT_POST,
     tok2id, TEST_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/test_data.pkl',
-    test=True)
+    test=True, ARGS=ARGS)
 
 
 
@@ -180,7 +180,7 @@ for epoch in range(EPOCHS):
     # eval
     print('EVAL...')
     model.eval()
-    results = run_inference(model, eval_dataloader, cls_criterion, tok_criterion)
+    results = tagging_utils.run_inference(model, eval_dataloader, cls_criterion, tok_criterion)
     writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), epoch + 1)
     writer.add_scalar('eval/tok_acc', np.mean(results['labeling_hits']), epoch + 1)
 

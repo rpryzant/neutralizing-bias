@@ -56,4 +56,6 @@ parser.add_argument("--combine4", help="combine location 4", action='store_true'
 parser.add_argument("--combine5", help="combine location 5", action='store_true')
 parser.add_argument("--combine6", help="combine location 6", action='store_true')
 
+parser.add_argument("--drop_words", help="dummy to make it work with seq2seq_data.py. REFACTOR OUT!!", type=str, default=None)
+
 ARGS = parser.parse_args()
