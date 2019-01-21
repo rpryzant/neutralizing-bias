@@ -2,7 +2,7 @@
 """
 train bert 
 
-python multi_bert_trainer.py --train ../../data/v4/tok/biased --test ../../data/v4/tok/biased --working_dir TEST/
+python tagging_train.py --train ../../data/v5/final/bias --test ../../data/v5/final/bias --working_dir TEST/
 """
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from pytorch_pretrained_bert.optimization import BertAdam
@@ -21,8 +21,8 @@ from tensorboardX import SummaryWriter
 import argparse
 import sklearn.metrics as metrics
 
-import modeling
-from data import get_dataloader
+import tagging_model
+from seq2seq_data import get_dataloader
 
 from tagging_args import ARGS
 
@@ -168,7 +168,7 @@ eval_dataloader, num_eval_examples = get_dataloader(
 
 print('BUILDING MODEL...')
 if ARGS.extra_features_top:
-    model = modeling.BertForMultitaskWithFeaturesOnTop.from_pretrained(
+    model = tagging_model.BertForMultitaskWithFeaturesOnTop.from_pretrained(
             BERT_MODEL,
             cls_num_labels=NUM_BIAS_LABELS,
             tok_num_labels=NUM_TOK_LABELS,
@@ -176,7 +176,7 @@ if ARGS.extra_features_top:
             tok2id=tok2id,
             args=ARGS)
 elif ARGS.extra_features_bottom:
-    model = modeling.BertForMultitaskWithFeaturesOnBottom.from_pretrained(
+    model = tagging_model.BertForMultitaskWithFeaturesOnBottom.from_pretrained(
             BERT_MODEL,
             cls_num_labels=NUM_BIAS_LABELS,
             tok_num_labels=NUM_TOK_LABELS,
@@ -184,7 +184,7 @@ elif ARGS.extra_features_bottom:
             tok2id=tok2id,
             args=ARGS)
 else:
-    model = modeling.BertForMultitask.from_pretrained(
+    model = tagging_model.BertForMultitask.from_pretrained(
         BERT_MODEL,
         cls_num_labels=NUM_BIAS_LABELS,
         tok_num_labels=NUM_TOK_LABELS,

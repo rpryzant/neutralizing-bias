@@ -4,12 +4,14 @@ import torch
 import torch.nn as nn
 import numpy as np
 import ops
-import feature_extractors
 import copy
+
+import tagging_features
+from tagging_args import ARGS
+
 
 CUDA = (torch.cuda.device_count() > 0)
 
-from tagging_args import ARGS
 
 class BertForMultitask(PreTrainedBertModel):
 
@@ -106,7 +108,7 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
         super(BertForMultitaskWithFeaturesOnTop, self).__init__(config)
         self.bert = BertModel(config)
         
-        self.featurizer = feature_extractors.Featurizer(
+        self.featurizer = tagging_features.Featurizer(
             tok2id, lexicon_feature_bits=args.lexicon_feature_bits) 
         # TODO -- don't hardcode this...
         nfeats = 126 if args.lexicon_feature_bits == 1 else 154
@@ -154,7 +156,7 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
     def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None, args=None):
         super(BertForMultitaskWithFeaturesOnBottom, self).__init__(config)
         
-        self.featurizer = feature_extractors.Featurizer(
+        self.featurizer = tagging_features.Featurizer(
             tok2id, lexicon_feature_bits=args.lexicon_feature_bits) 
         # TODO -- don't hardcode this...
         nfeats = 126 if args.lexicon_feature_bits == 1 else 154
