@@ -65,7 +65,7 @@ tok2id['<del>'] = len(tok2id)
 eval_dataloader, num_eval_examples = get_dataloader(
     TEST_TEXT, TEST_TEXT_POST,
     tok2id, TEST_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/test_data.pkl',
-    test=True, add_del_tok=ARGS.add_del_tok)
+    test=True, add_del_tok=ARGS.add_del_tok, ARGS=ARGS)
     #tok_dists_path=ARGS.token_distribution_file)
 
 

@@ -78,16 +78,16 @@ if ARGS.pretrain_data:
     pretrain_dataloader, num_pretrain_examples = get_dataloader(
         ARGS.pretrain_data, ARGS.pretrain_data, 
         tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/pretrain_data.pkl',
-        noise=True)
+        noise=True, ARGS=ARGS)
 
 train_dataloader, num_train_examples = get_dataloader(
     TRAIN_TEXT, TRAIN_TEXT_POST, 
     tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/train_data.pkl',
-    add_del_tok=ARGS.add_del_tok)
+    add_del_tok=ARGS.add_del_tok, ARGS=ARGS)
 eval_dataloader, num_eval_examples = get_dataloader(
     TEST_TEXT, TEST_TEXT_POST,
     tok2id, TEST_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/test_data.pkl',
-    test=True, add_del_tok=ARGS.add_del_tok)
+    test=True, add_del_tok=ARGS.add_del_tok, ARGS=ARGS)
 
 
 
