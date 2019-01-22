@@ -18,7 +18,7 @@ UD_RELATIONS = [
     'expl', 'foreign', 'goeswith', 'iobj', 'list', 'mark', 'mwe',
     'name', 'neg', 'nmod', 'nmod:npmod', 'nmod:poss', 'nmod:tmod',
     'nsubj', 'nsubjpass', 'nummod', 'parataxis', 'punct', 'remnant',
-    'reparandum', 'root', 'vocative', 'xcomp', '<UNK>', '<SKIP>'
+    'reparandum', 'root', ' vocative', 'xcomp', '<UNK>', '<SKIP>'
 ]
 REL2ID = {x: i for i, x in enumerate(UD_RELATIONS)}
 # from nltk.data.load('help/tagsets/upenn_tagset.pickle').keys()
@@ -143,7 +143,7 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
             replace_id = tok2id[replace_token]
         except StopIteration:
             # add deletion token into data
-            replace_id = tok2id['<del>']    
+            replace_id = tok2id['<del>']
             if add_del_tok:
                 post_tokens.insert(pre_tok_labels.index('1'), '<del>')
 
@@ -179,11 +179,10 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
             pre_ids = pad(pre_ids, 0)
             post_in_ids = pad([tok2id[x] for x in post_input_tokens], 0)
             post_out_ids = pad([tok2id[x] for x in post_output_tokens], 0)
-            pre_tok_label_ids = pad([label2id[l] for l in pre_tok_labels], 0)
-            post_tok_label_ids = pad([label2id[l] for l in post_tok_labels], 0)
+            pre_tok_label_ids = pad([label2id[l] for l in pre_tok_labels], label2id['mask'])
+            post_tok_label_ids = pad([label2id[l] for l in post_tok_labels], label2id['mask'])
             rel_ids = pad([REL2ID.get(x, REL2ID['<UNK>']) for x in rels], 0)
             pos_ids = pad([POS2ID.get(x, POS2ID['<UNK>']) for x in pos], 0)
-            
         except KeyError:
             # TODO FUCK THIS ENCODING BUG!!!
             skipped += 1
@@ -214,10 +213,12 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
 
 
 def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len, 
-                   pickle_path=None, test=False, noise=False, add_del_tok=False, ARGS=None):
+                   pickle_path=None, test=False, noise=False, add_del_tok=False, ARGS=None, 
+                   sort_batch=True):
     def collate(data):
-        # sort by length for packing/padding
-        data.sort(key=lambda x: x[2], reverse=True)
+        if sort_batch:
+            # sort by length for packing/padding
+            data.sort(key=lambda x: x[2], reverse=True)
         # group by datatype
         [
             src_id, src_mask, src_len, 
@@ -227,7 +228,7 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
             type_ids
         ] = [torch.stack(x) for x in zip(*data)]
         # cut off at max len for unpacking/repadding
-        max_len = src_len[0]
+        max_len = max(src_len)
         data = [
             src_id[:, :max_len], src_mask[:, :max_len], src_len, 
             post_in_id[:, :max_len+10], post_out_id[:, :max_len+10],    # +10 for wiggle room

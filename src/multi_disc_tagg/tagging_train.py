@@ -11,6 +11,7 @@ from collections import defaultdict
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler
 from tqdm import tqdm
 import torch
+import torch.nn as nn
 import pickle
 import sys
 import os
@@ -33,13 +34,8 @@ import tagging_utils
 
 train_data_prefix = ARGS.train
 test_data_prefix = ARGS.test
-mode = 'tagging_always'#sys.argv[3]
-working_dir = ARGS.working_dir
-if not os.path.exists(working_dir):
-    os.makedirs(working_dir)
-
-
-assert mode in ['multi_always', 'multi_targeted', 'classification', 'tagging_always', 'tagging_targeted']
+if not os.path.exists(ARGS.working_dir):
+    os.makedirs(ARGS.working_dir)
 
 
 TRAIN_TEXT = train_data_prefix + '.train.pre'
@@ -48,27 +44,56 @@ TRAIN_TEXT_POST = train_data_prefix + '.train.post'
 TEST_TEXT = test_data_prefix + '.test.pre'
 TEST_TEXT_POST = test_data_prefix + '.test.post'
 
-WORKING_DIR = working_dir
-
-NUM_BIAS_LABELS = 2
-NUM_TOK_LABELS = 3
-
-BERT_MODEL = "bert-base-uncased"
-
-TRAIN_BATCH_SIZE = 32
-TEST_BATCH_SIZE = 16
-
-EPOCHS = 5
-
-LEARNING_RATE = 5e-5
-
-MAX_SEQ_LEN = 80
-
 CUDA = (torch.cuda.device_count() > 0)
 
 if CUDA:
     print('USING CUDA')
 
+
+
+print('LOADING DATA...')
+tokenizer = BertTokenizer.from_pretrained(ARGS.bert_model, cache_dir=ARGS.working_dir + '/cache')
+tok2id = tokenizer.vocab
+tok2id['<del>'] = len(tok2id)
+
+train_dataloader, num_train_examples = get_dataloader(
+    TRAIN_TEXT, TRAIN_TEXT_POST, 
+    tok2id, ARGS.train_batch_size, ARGS.max_seq_len, ARGS.working_dir + '/train_data.pkl', ARGS=ARGS)
+eval_dataloader, num_eval_examples = get_dataloader(
+    TEST_TEXT, TEST_TEXT_POST,
+    tok2id, ARGS.test_batch_size, ARGS.max_seq_len, ARGS.working_dir + '/test_data.pkl',
+    test=True, ARGS=ARGS)
+
+
+print('BUILDING MODEL...')
+if ARGS.extra_features_top:
+    model = tagging_model.BertForMultitaskWithFeaturesOnTop.from_pretrained(
+            ARGS.bert_model,
+            cls_num_labels=ARGS.num_bias_labels,
+            tok_num_labels=ARGS.num_tok_labels,
+            cache_dir=ARGS.working_dir + '/cache',
+            tok2id=tok2id,
+            args=ARGS)
+elif ARGS.extra_features_bottom:
+    model = tagging_model.BertForMultitaskWithFeaturesOnBottom.from_pretrained(
+            ARGS.bert_model,
+            cls_num_labels=ARGS.num_bias_labels,
+            tok_num_labels=ARGS.num_tok_labels,
+            cache_dir=ARGS.working_dir + '/cache',
+            tok2id=tok2id,
+            args=ARGS)
+else:
+    model = tagging_model.BertForMultitask.from_pretrained(
+        ARGS.bert_model,
+        cls_num_labels=ARGS.num_bias_labels,
+        tok_num_labels=ARGS.num_tok_labels,
+        cache_dir=ARGS.working_dir + '/cache',
+        tok2id=tok2id)
+if CUDA:
+    model = model.cuda()
+
+print('PREPPING RUN...')
+# # # # # # # # ## # # # ## # # OPTIMIZER, LOSS # # # # # # # # ## # # # ## # #
 
 
 def make_optimizer(model, num_train_steps):
@@ -79,83 +104,36 @@ def make_optimizer(model, num_train_steps):
         {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
     ]
     optimizer = BertAdam(optimizer_grouped_parameters,
-                         lr=LEARNING_RATE,
+                         lr=ARGS.learning_rate,
                          warmup=0.1,
                          t_total=num_train_steps)
     return optimizer
 
+optimizer = make_optimizer(
+    model, int((num_train_examples * ARGS.epochs) / ARGS.train_batch_size))
 
-print('LOADING DATA...')
-tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
-tok2id = tokenizer.vocab
-tok2id['<del>'] = len(tok2id)
-
-train_dataloader, num_train_examples = get_dataloader(
-    TRAIN_TEXT, TRAIN_TEXT_POST, 
-    tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/train_data.pkl', ARGS=ARGS)
-eval_dataloader, num_eval_examples = get_dataloader(
-    TEST_TEXT, TEST_TEXT_POST,
-    tok2id, TEST_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/test_data.pkl',
-    test=True, ARGS=ARGS)
+loss_fn = tagging_utils.build_loss_fn(ARGS)
 
 
+# # # # # # # # ## # # # ## # # END LOSS # # # # # # # # ## # # # ## # #
 
-print('BUILDING MODEL...')
-if ARGS.extra_features_top:
-    model = tagging_model.BertForMultitaskWithFeaturesOnTop.from_pretrained(
-            BERT_MODEL,
-            cls_num_labels=NUM_BIAS_LABELS,
-            tok_num_labels=NUM_TOK_LABELS,
-            cache_dir=WORKING_DIR + '/cache',
-            tok2id=tok2id,
-            args=ARGS)
-elif ARGS.extra_features_bottom:
-    model = tagging_model.BertForMultitaskWithFeaturesOnBottom.from_pretrained(
-            BERT_MODEL,
-            cls_num_labels=NUM_BIAS_LABELS,
-            tok_num_labels=NUM_TOK_LABELS,
-            cache_dir=WORKING_DIR + '/cache',
-            tok2id=tok2id,
-            args=ARGS)
-else:
-    model = tagging_model.BertForMultitask.from_pretrained(
-        BERT_MODEL,
-        cls_num_labels=NUM_BIAS_LABELS,
-        tok_num_labels=NUM_TOK_LABELS,
-        cache_dir=WORKING_DIR + '/cache',
-        tok2id=tok2id)
-if CUDA:
-    model = model.cuda()
-
-print('PREPPING RUN...')
-optimizer = make_optimizer(model, int((num_train_examples * EPOCHS) / TRAIN_BATCH_SIZE))
-
-weight_mask = torch.ones(NUM_TOK_LABELS)
-weight_mask[-1] = 0
-
-if CUDA:
-    weight_mask = weight_mask.cuda()
-    tok_criterion = CrossEntropyLoss(weight=weight_mask).cuda()
-else:
-    tok_criterion = CrossEntropyLoss(weight=weight_mask)
-
-
-
-writer = SummaryWriter(WORKING_DIR)
+writer = SummaryWriter(ARGS.working_dir)
 
 
 print('INITIAL EVAL...')
 model.eval()
-results = tagging_utils.run_inference(model, eval_dataloader, tok_criterion, tokenizer)
+results = tagging_utils.run_inference(model, eval_dataloader, loss_fn, tokenizer)
 writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), 0)
 writer.add_scalar('eval/tok_acc', np.mean(results['labeling_hits']), 0)
 
 print('TRAINING...')
 model.train()
 train_step = 0
-for epoch in range(EPOCHS):
+for epoch in range(ARGS.epochs):
     print('STARTING EPOCH ', epoch)
     for step, batch in enumerate(tqdm(train_dataloader)):
+        if step > 0: continue
+
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         ( 
@@ -166,10 +144,7 @@ for epoch in range(EPOCHS):
         ) = batch
         bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask, 
             rel_ids=rel_ids, pos_ids=pos_ids)
-        loss = tok_criterion(
-            tok_logits.contiguous().view(-1, NUM_TOK_LABELS), 
-            tok_label_id.contiguous().view(-1).type('torch.cuda.LongTensor' if CUDA else 'torch.LongTensor'))
-
+        loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
         loss.backward()
         optimizer.step()
         model.zero_grad()
@@ -180,9 +155,13 @@ for epoch in range(EPOCHS):
     # eval
     print('EVAL...')
     model.eval()
-    results = tagging_utils.run_inference(model, eval_dataloader, cls_criterion, tok_criterion)
+    results = tagging_utils.run_inference(model, eval_dataloader, loss_fn, tokenizer)
     writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), epoch + 1)
     writer.add_scalar('eval/tok_acc', np.mean(results['labeling_hits']), epoch + 1)
 
     model.train()
+    print('SAVING...')
+    
+    torch.save(model.state_dict(), ARGS.working_dir + '/model_%d.ckpt' % epoch)    
+    
 

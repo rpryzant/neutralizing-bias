@@ -15,6 +15,33 @@ parser.add_argument(
     help="train continuously on one batch of data",
     type=str, required=True
 )
+parser.add_argument(
+    "--checkpoint",
+    help="model checkpoint to continue from (INFERENCE ONLY)",
+    type=str, default=''
+)
+
+
+### DEFAULT STUFF FOR TRAINING
+parser.add_argument("--num_bias_labels", default=2, type=int, help="dont touch")
+parser.add_argument("--num_tok_labels", default=3, type=int, help="dont touch")
+parser.add_argument("--bert_model", default='bert-base-uncased', help="dont touch")
+parser.add_argument("--train_batch_size", default=32, type=int, help="dont touch")
+parser.add_argument("--test_batch_size", default=16, type=int, help="dont touch")
+parser.add_argument("--epochs", default=5, type=int, help="dont touch")
+parser.add_argument("--learning_rate", default=5e-5, type=float, help="dont touch")
+parser.add_argument("--max_seq_len", default=80, type=int, help="dont touch")
+
+### LOSS WEIGHTING
+parser.add_argument(
+    "--debias_weight", 
+    default=1.0, 
+    type=float, 
+    help="weight for 1's on loss"
+)
+
+
+
 ### EXTRA FEATURE COMBINE FN
 parser.add_argument(
     "--extra_features_method",

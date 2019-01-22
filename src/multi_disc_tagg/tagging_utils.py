@@ -1,11 +1,54 @@
 from tqdm import tqdm
 import numpy as np
 import torch
+from torch.nn import CrossEntropyLoss
 
 NUM_TOK_LABELS = 3
 
 
 CUDA = (torch.cuda.device_count() > 0)
+
+
+
+
+def build_loss_fn(ARGS):
+    weight_mask = torch.ones(ARGS.num_tok_labels)
+    weight_mask[-1] = 0
+
+    if CUDA:
+        weight_mask = weight_mask.cuda()
+        criterion = CrossEntropyLoss(weight=weight_mask).cuda()
+        per_tok_criterion = CrossEntropyLoss(weight=weight_mask, reduction='none').cuda()
+    else:
+        criterion = CrossEntropyLoss(weight=weight_mask)
+        per_tok_criterion = CrossEntropyLoss(weight=weight_mask, reduction='none')
+
+
+    def cross_entropy_loss(logits, labels, apply_mask=None):
+        return criterion(
+            logits.contiguous().view(-1, ARGS.num_tok_labels), 
+            labels.contiguous().view(-1).type('torch.cuda.LongTensor' if CUDA else 'torch.LongTensor'))
+
+    def weighted_cross_entropy_loss(logits, labels, apply_mask=None):
+        # weight mask = where to apply weight (post_tok_label_id from the batch)
+        weights = apply_mask.contiguous().view(-1)
+        weights = ((ARGS.debias_weight - 1) * weights) + 1.0
+
+        per_tok_losses = per_tok_criterion(
+            logits.contiguous().view(-1, ARGS.num_tok_labels), 
+            labels.contiguous().view(-1).type('torch.cuda.LongTensor' if CUDA else 'torch.LongTensor'))
+        per_tok_losses = per_tok_losses * weights
+
+        loss = torch.mean(per_tok_losses[torch.nonzero(per_tok_losses)].squeeze())
+
+        return loss
+
+    if ARGS.debias_weight == 1.0:
+        loss_fn = cross_entropy_loss
+    else:
+        loss_fn = weighted_cross_entropy_loss
+
+    return loss_fn
 
 
 def softmax(x, axis=None):
@@ -14,20 +57,21 @@ def softmax(x, axis=None):
     return y / y.sum(axis=axis, keepdims=True)
 
 
-def run_inference(model, eval_dataloader, tok_criterion, tokenizer):
+def run_inference(model, eval_dataloader, loss_fn, tokenizer):
     out = {
         'input_toks': [],
+        'post_toks': [],
 
         'tok_loss': [],
         'tok_logits': [],
+        'tok_probs': [],
         'tok_labels': [],
 
         'labeling_hits': []
     }
 
     for step, batch in enumerate(tqdm(eval_dataloader)):
-        # if step > 1:
-        #     continue
+        if step > 1: continue
 
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
@@ -42,28 +86,28 @@ def run_inference(model, eval_dataloader, tok_criterion, tokenizer):
         with torch.no_grad():
             bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask,
                 rel_ids=rel_ids, pos_ids=pos_ids)
-
-            tok_loss = tok_criterion(
-                tok_logits.contiguous().view(-1, NUM_TOK_LABELS), 
-                tok_label_id.contiguous().view(-1).type('torch.cuda.LongTensor' if CUDA else 'torch.LongTensor'))
+            tok_loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
             
         out['input_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in pre_id.cpu().numpy()]
-
+        out['post_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in post_in_id.cpu().numpy()]
         out['tok_loss'].append(float(tok_loss.cpu().numpy()))
         logits = tok_logits.detach().cpu().numpy()
         labels = tok_label_id.cpu().numpy()
         out['tok_logits'] += logits.tolist()
         out['tok_labels'] += labels.tolist()
+        out['tok_probs'] += to_probs(logits, pre_len)
         out['labeling_hits'] += tag_hits(logits, labels)
 
     return out
 
-def classification_accuracy(logits, labels):
-    probs = softmax(np.array(logits), axis=1)
-    preds = np.argmax(probs, axis=1)
-    return metrics.accuracy_score(labels, preds)
-
-
+def to_probs(logits, lens):
+    per_tok_probs = softmax(np.array(logits)[:, :, :2], axis=2)
+    pos_scores = per_tok_probs[:, :, -1]
+    
+    out = []
+    for score_seq, l in zip(pos_scores, lens):
+        out.append(score_seq[:l].tolist())
+    return out
 
 def is_ranking_hit(probs, labels, top=1):
     # get rid of padding idx

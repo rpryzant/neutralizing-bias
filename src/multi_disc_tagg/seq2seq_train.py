@@ -49,10 +49,6 @@ TEST_TEXT_POST = test_data_prefix + '.test.post'
 
 WORKING_DIR = working_dir
 
-NUM_BIAS_LABELS = 2
-NUM_TOK_LABELS = 3
-
-
 if ARGS.bert_encoder:
     TRAIN_BATCH_SIZE = 16
     TEST_BATCH_SIZE = 16
@@ -146,15 +142,15 @@ if CUDA:
     criterion = criterion.cuda()
     per_tok_criterion = per_tok_criterion.cuda()
 
-def cross_entropy_loss(logits, labels, weight_mask=None):
+def cross_entropy_loss(logits, labels, apply_mask=None):
     return criterion(
         logits.contiguous().view(-1, len(tok2id)), 
         labels.contiguous().view(-1))
 
 
-def weighted_cross_entropy_loss(logits, labels, weight_mask=None):
-    # weight mask = wehere to apply weight
-    weights = weight_mask.contiguous().view(-1)
+def weighted_cross_entropy_loss(logits, labels, apply_mask=None):
+    # weight apply_mask = wehere to apply weight
+    weights = apply_mask.contiguous().view(-1)
     weights = ((ARGS.debias_weight - 1) * weights) + 1.0
 
     per_tok_losses = per_tok_criterion(
