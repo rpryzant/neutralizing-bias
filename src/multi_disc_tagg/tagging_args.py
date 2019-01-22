@@ -30,7 +30,7 @@ parser.add_argument("--train_batch_size", default=32, type=int, help="dont touch
 parser.add_argument("--test_batch_size", default=16, type=int, help="dont touch")
 parser.add_argument("--epochs", default=5, type=int, help="dont touch")
 parser.add_argument("--learning_rate", default=5e-5, type=float, help="dont touch")
-parser.add_argument("--max_seq_len", default=80, type=int, help="dont touch")
+parser.add_argument("--max_seq_len", default=70, type=int, help="dont touch")
 
 ### LOSS WEIGHTING
 parser.add_argument(
@@ -51,6 +51,16 @@ parser.add_argument(
 parser.add_argument(
     "--combiner_layers",
     type=int, default=1, help="num layers for combiner: [1, 2]"
+)
+parser.add_argument(
+    "--pre_enrich",
+    help="pass features through linear layer before combination",
+    action='store_true'
+)
+parser.add_argument(
+    "--activation_hidden",
+    help="activation functions on hidden layers",
+    action='store_true'
 )
 ### EXTRA FEATURES TOP!!
 parser.add_argument(

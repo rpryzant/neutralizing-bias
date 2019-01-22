@@ -12,6 +12,16 @@ from tagging_args import ARGS
 CUDA = (torch.cuda.device_count() > 0)
 
 
+def gelu(x):
+    """Implementation of the gelu activation function.
+        For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
+        0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+    """
+    return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
+
+def identity(x):
+    return x
+
 class BertForMultitask(PreTrainedBertModel):
 
     def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None):
@@ -45,28 +55,52 @@ class BertForMultitask(PreTrainedBertModel):
 
 
 class ConcatCombine(nn.Module):
-    def __init__(self, in_size1, in_size2, out_size, layers, dropout_prob, small=False):
+    def __init__(self, hidden_size, feature_size, out_size, layers, dropout_prob, 
+            small=False, pre_enrich=False, activation=False):
         super(ConcatCombine, self).__init__()
         if layers == 1:
             self.out = nn.Sequential(
-                nn.Linear(in_size1 + in_size2, out_size),
+                nn.Linear(hidden_size + feature_size, out_size),
                 nn.Dropout(dropout_prob))
         elif layers == 2:
-            waist_size = min(in_size1, in_size2) if small else max(in_size1, in_size2)
-            self.out = nn.Sequential(
-                nn.Linear(in_size1 + in_size2, waist_size),
-                nn.Dropout(dropout_prob),
-                nn.Linear(waist_size, out_size),
-                nn.Dropout(dropout_prob))
+            waist_size = min(hidden_size, feature_size) if small else max(hidden_size, feature_size)
+            if activation:
+                self.out = nn.Sequential(
+                    nn.Linear(hidden_size + feature_size, waist_size),
+                    nn.Dropout(dropout_prob),
+                    nn.ReLU(),
+                    nn.Linear(waist_size, out_size),
+                    nn.Dropout(dropout_prob))
+            else:
+                self.out = nn.Sequential(
+                    nn.Linear(hidden_size + feature_size, waist_size),
+                    nn.Dropout(dropout_prob),
+                    nn.Linear(waist_size, out_size),
+                    nn.Dropout(dropout_prob))
+        if pre_enrich:
+            if activation:
+                self.enricher = nn.Sequential(
+                    nn.Linear(feature_size, feature_size),
+                    nn.ReLU())
+            else:
+                self.enricher = nn.Linear(feature_size, feature_size)
+        else:
+            self.enricher = None
         # manually set cuda because module doesn't see these combiners for bottom 
         if CUDA:
             self.out = self.out.cuda()
+            if self.enricher: 
+                self.enricher = self.enricher.cuda()
+                
+    def forward(self, hidden, features):
+        if self.enricher is not None:
+            features = self.enricher(features)
 
-    def forward(self, in1, in2):
-        return self.out(torch.cat((in1, in2), dim=-1))
+        return self.out(torch.cat((hidden, features), dim=-1))
+
 
 class AddCombine(nn.Module):
-    def __init__(self, feat_dim, hidden_dim, layers, dropout_prob, small=False, out_dim=-1):
+    def __init__(self, hidden_dim, feat_dim, layers, dropout_prob, small=False, out_dim=-1, pre_enrich=False):
         super(AddCombine, self).__init__()
         
         if layers == 1:
@@ -86,13 +120,23 @@ class AddCombine(nn.Module):
         else:
             self.out = None
 
+        if pre_enrich:
+            self.enricher = nn.Linear(feature_size, feature_size)        
+        else:
+            self.enricher = None
+
         # manually set cuda because module doesn't see these combiners for bottom         
         if CUDA:
             self.expand = self.expand.cuda()
             if out_dim > 0:
                 self.out = self.out.cuda()
+            if self.enricher is not None:
+                self.enricher = self.enricher.cuda()
 
     def forward(self, hidden, feat):
+        if self.enricher is not None:
+            feat = self.enricher(feat)
+    
         combined = self.expand(feat) + hidden
     
         if self.out is not None:
@@ -116,12 +160,13 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
             self.tok_classifier = ConcatCombine(
                 config.hidden_size, nfeats, tok_num_labels, 
                 args.combiner_layers, config.hidden_dropout_prob,
-                args.small_waist)
+                args.small_waist, pre_enrich=args.pre_enrich,
+                activation=args.activation_hidden)
         else:
             self.tok_classifier = AddCombine(
-                nfeats, config.hidden_size, args.combiner_layers,
+                config.hidden_size, nfeats, args.combiner_layers,
                 config.hidden_dropout_prob, args.small_waist,
-                out_dim=tok_num_labels)
+                out_dim=tok_num_labels, pre_enrich=args.pre_enrich)
 
         self.cls_dropout = nn.Dropout(config.hidden_dropout_prob)
         self.cls_classifier = nn.Linear(config.hidden_size, cls_num_labels)
@@ -166,21 +211,24 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
                     i: ConcatCombine(
                         config.hidden_size, nfeats, config.hidden_size, 
                         args.combiner_layers, config.hidden_dropout_prob,
-                        args.small_waist)
+                        args.small_waist, pre_enrich=args.pre_enrich,
+                        activation=args.activation_hidden)
                     for i in range(1, 7)
                 }
             else:
                 combiner = ConcatCombine(
                     config.hidden_size, nfeats, config.hidden_size, 
                     args.combiner_layers, config.hidden_dropout_prob,
-                    args.small_waist)
+                    args.small_waist, pre_enrich=args.pre_enrich,
+                    activation=args.activation_hidden)
                 self.combiners = { i: combiner for i in range(1, 7) }
         else:
             if ARGS.share_combiners:
                 self.combiners = {
                     i: AddCombine(
                 nfeats, config.hidden_size, args.combiner_layers,
-                config.hidden_dropout_prob, args.small_waist)
+                config.hidden_dropout_prob, args.small_waist, 
+                pre_enrich=args.pre_enrich)
                     for i in range(1, 7)
                 }
             else:

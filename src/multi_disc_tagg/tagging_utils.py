@@ -71,8 +71,6 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
     }
 
     for step, batch in enumerate(tqdm(eval_dataloader)):
-        if step > 1: continue
-
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
 

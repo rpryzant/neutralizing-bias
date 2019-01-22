@@ -132,8 +132,6 @@ train_step = 0
 for epoch in range(ARGS.epochs):
     print('STARTING EPOCH ', epoch)
     for step, batch in enumerate(tqdm(train_dataloader)):
-        if step > 0: continue
-
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         ( 
@@ -148,8 +146,8 @@ for epoch in range(ARGS.epochs):
         loss.backward()
         optimizer.step()
         model.zero_grad()
-
-        writer.add_scalar('train/loss', loss.data[0], train_step)
+        if train_step % 100 == 0:
+            writer.add_scalar('train/loss', loss.data[0], train_step)
         train_step += 1
 
     # eval
