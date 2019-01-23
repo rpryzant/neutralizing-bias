@@ -20,6 +20,11 @@ parser.add_argument(
     help="model checkpoint to continue from (INFERENCE ONLY)",
     type=str, default=''
 )
+parser.add_argument(
+    "--out_prefix",
+    help="prefix for writing outputs",
+    type=str, default=''
+)
 
 
 ### DEFAULT STUFF FOR TRAINING

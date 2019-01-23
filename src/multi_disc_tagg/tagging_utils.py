@@ -77,7 +77,7 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
         ( 
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
-            tok_label_id, _, 
+            tok_label_id, _, tok_dist,
             replace_id, rel_ids, pos_ids, type_ids
         ) = batch
 

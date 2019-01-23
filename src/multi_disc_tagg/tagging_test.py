@@ -38,8 +38,8 @@ test_data_prefix = ARGS.test
 if not os.path.exists(ARGS.working_dir):
     os.makedirs(ARGS.working_dir)
 
-TEST_TEXT = test_data_prefix + '.test.pre'
-TEST_TEXT_POST = test_data_prefix + '.test.post'
+TEST_TEXT = test_data_prefix + '.pre'
+TEST_TEXT_POST = test_data_prefix + '.post'
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -55,7 +55,7 @@ tok2id['<del>'] = len(tok2id)
 
 eval_dataloader, num_eval_examples = get_dataloader(
     TEST_TEXT, TEST_TEXT_POST,
-    tok2id, ARGS.test_batch_size, ARGS.max_seq_len, ARGS.working_dir + '/test_data.pkl',
+    tok2id, ARGS.test_batch_size, ARGS.max_seq_len, ARGS.working_dir + '/decoding_data.pkl',
     test=True, ARGS=ARGS, sort_batch=False)
 
 
@@ -104,15 +104,15 @@ results = tagging_utils.run_inference(model, eval_dataloader, loss_fn, tokenizer
 print('LOSS:\t\t ' + str(np.mean(results['tok_loss'])))
 print('ACC:\t\t ' + str(np.mean(results['labeling_hits'])))
 
-with open(ARGS.checkpoint + '.per_tok_probs', 'w') as f:
+with open(ARGS.out_prefix + '.probs', 'w') as f:
     for seq in results['tok_probs']:
         f.write(' '.join([str(x) for x in seq]) + '\n')
 # re-write pre/post data because of skipping
-with codecs.open(ARGS.checkpoint + '.pre_toks', 'w', 'utf-8') as f:
+with codecs.open(ARGS.out_prefix + '.pre', 'w', 'utf-8') as f:
     for seq in results['input_toks']:
         f.write(' '.join(seq).replace('[PAD]', '').strip() + '\n')  # rm pads so everything lines up
 
-with codecs.open(ARGS.checkpoint + '.post_toks', 'w', 'utf-8') as f:
+with codecs.open(ARGS.out_prefix + '.post', 'w', 'utf-8') as f:
     for seq in results['post_toks']:
         f.write(' '.join(seq[1:]).replace('[PAD]', '').strip() + '\n')
 
