@@ -68,7 +68,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--tok_dist_mix_prob",
-    help="prob of giving tok_dist instead of true tok labels (0 = no tok dist, 1 = all tok dist)",
+    help="prob of giving tok_dist instead of true tok labels (0 = all tok dist, 1 = no tok dist)",
     type=float, default=0.0
 )
 parser.add_argument(

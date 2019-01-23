@@ -260,17 +260,19 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
         pre_tok_label = pre_tok_label[:, :max_len]
         tok_dist = tok_dist[:, :max_len]
         
-        if random.random() < ARGS.tok_dist_softmax_prob and not test:
-            tok_dist = torch.nn.functional.gumbel_softmax(tok_dist, tau=0.5)
+        # not noise is a proxy for avoiding pretrain
+        if not test and not noise:
+            if random.random() < ARGS.tok_dist_softmax_prob and not test:
+                tok_dist = torch.nn.functional.gumbel_softmax(tok_dist, tau=0.5)
 
-        if random.random() < ARGS.tok_dist_mix_prob:
-            tok_dist = pre_tok_label.clone()
-            tok_dist[tok_dist == 2] = 0
+            if random.random() < ARGS.tok_dist_mix_prob:
+                tok_dist = pre_tok_label.clone()
+                tok_dist[tok_dist == 2] = 0
 
-        if random.random() < ARGS.tok_dist_noise_prob:
-            tok_dist = torch.zeros_like(tok_dist)
-            for seq, seq_len in zip(tok_dist, src_len):
-                seq[int(random.random() * int(seq_len))] = 1.0
+            if random.random() < ARGS.tok_dist_noise_prob:
+                tok_dist = torch.zeros_like(tok_dist)
+                for seq, seq_len in zip(tok_dist, src_len):
+                    seq[int(random.random() * int(seq_len))] = 1.0
         # end tok dist options
 
         data = [
