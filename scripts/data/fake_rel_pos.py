@@ -1,6 +1,8 @@
 """
 make fake rel and pos file because my code is shit
 
+ python fake_rel_pos.py ../../data/v5/test_joined_testset/decoding.train.pre 
+ python fake_rel_pos.py ../../data/v5/test_joined_testset/decoding.test.pre 
 """
 import sys
 

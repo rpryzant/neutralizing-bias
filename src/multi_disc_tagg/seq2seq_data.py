@@ -5,8 +5,9 @@ from simplediff import diff
 import numpy as np
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 import torch
+import torch.nn as nn
 from random import shuffle
-
+import random
 #from seq2seq_args import ARGS
 
 
@@ -34,7 +35,10 @@ POS2ID = {
 # 0: deletion, 1: edit
 EDIT_TYPE2ID = {'0': 0, '1': 1}
 
-
+def softmax(x, axis=None):
+    x = x - x.max(axis=axis, keepdims=True)
+    y = np.exp(x)
+    return y / y.sum(axis=axis, keepdims=True)
 
 
 def get_tok_labels(s_diff):
@@ -138,6 +142,10 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
             tok_dist = [float(x) for x in line.strip().split()]
         else:
             tok_dist = pre_tok_labels
+
+        # if random.random() < ARGS.tok_dist_softmax_prob:
+                        
+
 
         # make sure everything lines up    
         if len(tokens) != len(pre_tok_labels) \
@@ -246,10 +254,29 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
         ] = [torch.stack(x) for x in zip(*data)]
         # cut off at max len for unpacking/repadding
         max_len = max(src_len)
+
+
+        # tok_dist options!
+        pre_tok_label = pre_tok_label[:, :max_len]
+        tok_dist = tok_dist[:, :max_len]
+        
+        if random.random() < ARGS.tok_dist_softmax_prob and not test:
+            tok_dist = torch.nn.functional.gumbel_softmax(tok_dist, tau=0.5)
+
+        if random.random() < ARGS.tok_dist_mix_prob:
+            tok_dist = pre_tok_label.clone()
+            tok_dist[tok_dist == 2] = 0
+
+        if random.random() < ARGS.tok_dist_noise_prob:
+            tok_dist = torch.zeros_like(tok_dist)
+            for seq, seq_len in zip(tok_dist, src_len):
+                seq[int(random.random() * int(seq_len))] = 1.0
+        # end tok dist options
+
         data = [
             src_id[:, :max_len], src_mask[:, :max_len], src_len, 
             post_in_id[:, :max_len+10], post_out_id[:, :max_len+10],    # +10 for wiggle room
-            pre_tok_label[:, :max_len], post_tok_label[:, :max_len+10], tok_dist[:, :max_len], # +10 for post_toks_labels too (it's just gonna be matched up with post ids)
+            pre_tok_label, post_tok_label[:, :max_len+10], tok_dist, # +10 for post_toks_labels too (it's just gonna be matched up with post ids)
             replace_id, rel_ids[:, :max_len], pos_ids[:, :max_len],
             type_ids
         ]

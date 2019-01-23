@@ -49,6 +49,8 @@ parser.add_argument(
     help="model checkpoint to continue from",
     type=str, default=''
 )
+
+# taking tagging output options
 parser.add_argument(
     "--tok_dist_train_path",
     help="token distributions to use",
@@ -59,6 +61,22 @@ parser.add_argument(
     help="token distributions to use",
     type=str, default=None
 )
+parser.add_argument(
+    "--tok_dist_softmax_prob",
+    help="prob of passing tok_dist through softmax",
+    type=float, default=0.0
+)
+parser.add_argument(
+    "--tok_dist_mix_prob",
+    help="prob of giving tok_dist instead of true tok labels (0 = no tok dist, 1 = all tok dist)",
+    type=float, default=0.0
+)
+parser.add_argument(
+    "--tok_dist_noise_prob",
+    help="prob of replacing tok_dist with noisy one-hot vector",
+    type=float, default=0.0
+)
+
 
 
 # bert settings
