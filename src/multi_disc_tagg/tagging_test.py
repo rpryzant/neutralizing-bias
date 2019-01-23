@@ -21,6 +21,7 @@ from torch.nn import CrossEntropyLoss
 from tensorboardX import SummaryWriter
 import argparse
 import sklearn.metrics as metrics
+import codecs
 
 import tagging_model
 from seq2seq_data import get_dataloader
@@ -106,8 +107,14 @@ print('ACC:\t\t ' + str(np.mean(results['labeling_hits'])))
 with open(ARGS.checkpoint + '.per_tok_probs', 'w') as f:
     for seq in results['tok_probs']:
         f.write(' '.join([str(x) for x in seq]) + '\n')
+# re-write pre/post data because of skipping
+with codecs.open(ARGS.checkpoint + '.pre_toks', 'w', 'utf-8') as f:
+    for seq in results['input_toks']:
+        f.write(' '.join(seq).replace('[PAD]', '').strip() + '\n')  # rm pads so everything lines up
 
-
+with codecs.open(ARGS.checkpoint + '.post_toks', 'w', 'utf-8') as f:
+    for seq in results['post_toks']:
+        f.write(' '.join(seq[1:]).replace('[PAD]', '').strip() + '\n')
 
 
 
