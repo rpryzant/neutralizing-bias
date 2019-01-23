@@ -66,7 +66,7 @@ eval_dataloader, num_eval_examples = get_dataloader(
     TEST_TEXT, TEST_TEXT_POST,
     tok2id, TEST_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/test_data.pkl',
     test=True, add_del_tok=ARGS.add_del_tok, ARGS=ARGS)
-    #tok_dists_path=ARGS.token_distribution_file)
+
 
 
 
@@ -96,7 +96,7 @@ if CUDA:
 # # # # # # # # # # # # EVAL # # # # # # # # # # # # # #
 print('EVAL...')
 model.eval()
-hits, preds, golds = utils.run_eval(
+hits, preds, golds, srcs = utils.run_eval(
     model, eval_dataloader, tok2id, ARGS.checkpoint + '.inference_results.txt',
     MAX_SEQ_LEN, ARGS.beam_width)
 print('BLEU:\t\t ' + str(utils.get_bleu(preds, golds)))

@@ -569,7 +569,6 @@ class Seq2SeqEnrich(Seq2Seq):
 
         src_outputs = src_outputs + enrichment
 
-
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_outputs, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
 

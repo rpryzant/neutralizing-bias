@@ -74,16 +74,21 @@ if ARGS.pretrain_data:
     pretrain_dataloader, num_pretrain_examples = get_dataloader(
         ARGS.pretrain_data, ARGS.pretrain_data, 
         tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/pretrain_data.pkl',
-        noise=True, ARGS=ARGS)
+        noise=True,
+        ARGS=ARGS)
 
 train_dataloader, num_train_examples = get_dataloader(
     TRAIN_TEXT, TRAIN_TEXT_POST, 
     tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/train_data.pkl',
-    add_del_tok=ARGS.add_del_tok, ARGS=ARGS)
+    add_del_tok=ARGS.add_del_tok, 
+    tok_dist_path=ARGS.tok_dist_train_path,
+    ARGS=ARGS)
 eval_dataloader, num_eval_examples = get_dataloader(
     TEST_TEXT, TEST_TEXT_POST,
     tok2id, TEST_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/test_data.pkl',
-    test=True, add_del_tok=ARGS.add_del_tok, ARGS=ARGS)
+    test=True, add_del_tok=ARGS.add_del_tok, 
+    tok_dist_path=ARGS.tok_dist_test_path,
+    ARGS=ARGS)
 
 
 
@@ -180,12 +185,13 @@ if ARGS.pretrain_data:
 
 # # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
 print('INITIAL EVAL...')
-# model.eval()
-# hits, preds, golds = utils.run_eval(
-#     model, eval_dataloader, tok2id, WORKING_DIR + '/results_initial.txt',
-#     MAX_SEQ_LEN, ARGS.beam_width)
-# writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), 0)
-# writer.add_scalar('eval/true_hits', np.mean(hits), 0)
+model.eval()
+hits, preds, golds, srcs = utils.run_eval(
+    model, eval_dataloader, tok2id, WORKING_DIR + '/results_initial.txt',
+    MAX_SEQ_LEN, ARGS.beam_width)
+# writer.add_scalar('eval/partial_bleu', utils.get_partial_bleu(srcs, golds, srcs), epoch+1)
+writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), 0)
+writer.add_scalar('eval/true_hits', np.mean(hits), 0)
 
 for epoch in range(EPOCHS):
     print('EPOCH ', epoch)
@@ -199,9 +205,10 @@ for epoch in range(EPOCHS):
 
     print('EVAL...')
     model.eval()
-    hits, preds, golds = utils.run_eval(
+    hits, preds, golds, srcs = utils.run_eval(
         model, eval_dataloader, tok2id, WORKING_DIR + '/results_%d.txt' % epoch,
         MAX_SEQ_LEN, ARGS.beam_width)
+    # writer.add_scalar('eval/partial_bleu', utils.get_partial_bleu(preds, golds, srcs), epoch+1)
     writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), epoch+1)
     writer.add_scalar('eval/true_hits', np.mean(hits), epoch+1)
 

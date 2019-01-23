@@ -50,9 +50,14 @@ parser.add_argument(
     type=str, default=''
 )
 parser.add_argument(
-    "--token_distribution_file",
+    "--tok_dist_train_path",
     help="token distributions to use",
-    type=str, default=''
+    type=str, default=None
+)
+parser.add_argument(
+    "--tok_dist_test_path",
+    help="token distributions to use",
+    type=str, default=None
 )
 
 
