@@ -98,6 +98,23 @@ parser.add_argument("--combine4", help="combine location 4", action='store_true'
 parser.add_argument("--combine5", help="combine location 5", action='store_true')
 parser.add_argument("--combine6", help="combine location 6", action='store_true')
 
+
+############ DUMMIES TO MAKE IT WORK WITH SEQ2SEQ_DATA.PY
 parser.add_argument("--drop_words", help="dummy to make it work with seq2seq_data.py. REFACTOR OUT!!", type=str, default=None)
+parser.add_argument(
+    "--tok_dist_softmax_prob",
+    help="prob of passing tok_dist through softmax",
+    type=float, default=0.0
+)
+parser.add_argument(
+    "--tok_dist_mix_prob",
+    help="prob of giving tok_dist instead of true tok labels (0 = all tok dist, 1 = no tok dist)",
+    type=float, default=0.0
+)
+parser.add_argument(
+    "--tok_dist_noise_prob",
+    help="prob of replacing tok_dist with noisy one-hot vector",
+    type=float, default=0.0
+)
 
 ARGS = parser.parse_args()
