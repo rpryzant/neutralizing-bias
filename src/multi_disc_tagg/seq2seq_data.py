@@ -140,6 +140,32 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
         if tok_dist_path is not None:
             line = next(tok_dist_fp)
             tok_dist = [float(x) for x in line.strip().split()]
+
+            if ARGS.tok_dist_argmax:
+                tmp = [0.0] * len(tokens)
+                maxi = max(zip(tok_dist, range(len(tok_dist))))[1]
+                tmp[maxi] = 1
+                while maxi < len(tokens) and tokens[maxi].startswith('##'):
+                    tmp[maxi] = 1.0
+                    maxi += 1
+                tok_dist = tmp
+
+            if ARGS.tok_dist_threshold > 0.0:
+                tmp = [0.0] * len(tokens)
+                seed_indices = [i for i, x in enumerate(tok_dist) if x > ARGS.tok_dist_threshold]
+                for idx in seed_indices:
+                    tmp[idx] = 1.0
+                    while idx < len(tokens) and tokens[idx].startswith('##'):
+                        tmp[idx] = 1.0
+                        idx += 1
+
+                tok_dist = tmp
+                
+                # out = [0] * len(tokens)
+                # for i in range(len(tokens)):
+
+            # print(tok_dist)
+            
         else:
             tok_dist = pre_tok_labels
 

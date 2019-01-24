@@ -76,6 +76,17 @@ parser.add_argument(
     help="prob of replacing tok_dist with noisy one-hot vector",
     type=float, default=0.0
 )
+parser.add_argument(
+    "--tok_dist_argmax",
+    help="replace tok dist with bone-hot based on argmax",
+    action='store_true'
+)
+parser.add_argument(
+    "--tok_dist_threshold",
+    help="threshold to replace probs with 1s on tok dist",
+    type=float, default=0
+)
+
 
 
 

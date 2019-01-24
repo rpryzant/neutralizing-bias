@@ -1,8 +1,8 @@
-#!/usr/bin/env python
+# !/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 # python seq2seq_train.py --train ../../data/v5/final/bias --test ../../data/v5/final/bias --working_dir TEST/
-
+# python seq2seq_train.py --train ../../data/v5/test_joined_testset/decoding --test ../../data/v5/test_joined_testset/decoding --working_dir TEST/ --batch_size 3 --hidden_size 8 --tok_dist_train_path ../../data/v5/test_joined_testset/decoding.train.probs
 from collections import defaultdict
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 from tqdm import tqdm
