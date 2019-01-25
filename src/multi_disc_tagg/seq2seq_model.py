@@ -434,7 +434,7 @@ class Seq2Seq(nn.Module):
 
         return logits, probs
 
-    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None, type_id=None):
+    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None, type_id=None, ignore_enrich=False):
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
         logits, probs = self.run_decoder(
             src_outputs, (h_t, c_t), post_in_id, pre_mask)
@@ -551,7 +551,7 @@ class Seq2SeqEnrich(Seq2Seq):
         # self.enricher.weight.data.uniform_(-0.1, 0.1)  
 
 
-    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, type_id=None):
+    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, type_id=None, ignore_enrich=False):
         global ARGS
         # make a "change this token" embedding and add it to the
         # src_output token that should be changed
@@ -567,7 +567,8 @@ class Seq2SeqEnrich(Seq2Seq):
                 src_outputs.shape[0], src_outputs.shape[1], 1)
         enrichment = tok_dist.unsqueeze(2) * enrichment
 
-        src_outputs = src_outputs + enrichment
+        if not ignore_enrich:
+            src_outputs = src_outputs + enrichment
 
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_outputs, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
@@ -586,10 +587,10 @@ class Seq2SeqEnrich(Seq2Seq):
         return logits, probs
 
 
-    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id):
+    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=False):
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
         logits, probs = self.run_decoder(
-            src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist, type_id)
+            src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist, type_id, ignore_enrich)
         
         return logits, probs
         

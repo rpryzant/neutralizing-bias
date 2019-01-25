@@ -102,7 +102,7 @@ def get_bleu(hypotheses, reference):
 #############################################################
 
 
-def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn):
+def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich=False):
     global CUDA
 
     losses = []
@@ -116,7 +116,7 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn):
             replace_id, _, _, type_id
         ) = batch
 
-        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id)
+        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=ignore_enrich)
         loss = loss_fn(post_logits, post_out_id, post_tok_label_id)
         loss.backward()
         norm = nn.utils.clip_grad_norm_(model.parameters(), 3.0)

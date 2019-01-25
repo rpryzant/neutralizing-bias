@@ -161,6 +161,11 @@ parser.add_argument(
     help="keep bigrams together that occured in original when shuffling",
     action='store_true'
 )
+parser.add_argument(
+    "--ignore_pretrain_enrich",
+    help="ignore enrichment during pretraining",
+    action='store_true'
+)
 
 
 
