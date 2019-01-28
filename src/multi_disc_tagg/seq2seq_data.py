@@ -178,6 +178,10 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
             argmax = np.argmax(categories)
             categories = np.zeros_like(categories)
             categories[argmax] = 1.0
+        if ARGS.category_threshold > 0.0:
+            categories[categories < ARGS.category_threshold] = 0.0
+            categories[categories > ARGS.category_threshold] = 1.0
+
 
         # make sure everything lines up    
         if len(tokens) != len(pre_tok_labels) \

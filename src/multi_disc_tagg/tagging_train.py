@@ -130,10 +130,10 @@ writer = SummaryWriter(ARGS.working_dir)
 
 
 print('INITIAL EVAL...')
-model.eval()
-results = tagging_utils.run_inference(model, eval_dataloader, loss_fn, tokenizer)
-writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), 0)
-writer.add_scalar('eval/tok_acc', np.mean(results['labeling_hits']), 0)
+# model.eval()
+# results = tagging_utils.run_inference(model, eval_dataloader, loss_fn, tokenizer)
+# writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), 0)
+# writer.add_scalar('eval/tok_acc', np.mean(results['labeling_hits']), 0)
 
 print('TRAINING...')
 model.train()
@@ -154,6 +154,7 @@ for epoch in range(ARGS.epochs):
         loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
         if ARGS.predict_categories:
             category_loss = cross_entropy(bias_logits, categories)
+            print(category_loss)
             loss = loss + category_loss
         loss.backward()
         optimizer.step()

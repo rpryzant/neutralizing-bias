@@ -59,6 +59,10 @@ parser.add_argument(
     action='store_true',
     help='replace distribution with one-hot')
 parser.add_argument(
+    "--category_threshold",
+    default=0.0, type=float,
+    help='threshold ones')
+parser.add_argument(
     "--predict_categories",
     action='store_true',
     help='use [CLS] to predict categories')
@@ -77,7 +81,7 @@ parser.add_argument(
 parser.add_argument(
     "--num_categories", 
     default=43, type=int, 
-    help="number of categories")
+    help="number of categories (don't change!)")
 
 
 
