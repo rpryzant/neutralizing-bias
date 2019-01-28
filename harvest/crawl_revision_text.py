@@ -23,8 +23,12 @@ import numpy as np
 import string, pickle, os
 from nltk.tokenize import regexp_tokenize, wordpunct_tokenize, blankline_tokenize
 from tqdm import tqdm
-from util import *
 import mwparserfromhell
+from bs4 import BeautifulSoup
+import urllib
+from urllib.request import urlopen
+
+
 
 in_file = sys.argv[1]
 
