@@ -37,7 +37,9 @@ class BertForMultitask(PreTrainedBertModel):
         self.apply(self.init_bert_weights)
 
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, rel_ids=None, pos_ids=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, 
+        labels=None, rel_ids=None, pos_ids=None, categories=None):
+        global ARGS
         sequence_output, pooled_output, attn_maps = self.bert(
             input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
 
@@ -49,6 +51,8 @@ class BertForMultitask(PreTrainedBertModel):
         tok_logits = self.tok_classifier(sequence_output)
         tok_logits = self.tok_dropout(tok_logits)
 
+        # cut off [CLS]
+
         return cls_logits, tok_logits
 
 
@@ -56,8 +60,14 @@ class BertForMultitask(PreTrainedBertModel):
 
 class ConcatCombine(nn.Module):
     def __init__(self, hidden_size, feature_size, out_size, layers, dropout_prob, 
-            small=False, pre_enrich=False, activation=False):
+            small=False, pre_enrich=False, activation=False, include_categories=False):
         super(ConcatCombine, self).__init__()
+        global ARGS
+
+        self.include_categories = include_categories
+        if include_categories:
+            feature_size += (128 if ARGS.category_emb else 43)
+
         if layers == 1:
             self.out = nn.Sequential(
                 nn.Linear(hidden_size + feature_size, out_size),
@@ -92,7 +102,12 @@ class ConcatCombine(nn.Module):
             if self.enricher: 
                 self.enricher = self.enricher.cuda()
                 
-    def forward(self, hidden, features):
+    def forward(self, hidden, features, categories=None):
+        if self.include_categories:
+            categories = categories.unsqueeze(1)
+            categories = categories.repeat(1, features.shape[1], 1)
+            features = torch.cat((features, categories), -1)
+
         if self.enricher is not None:
             features = self.enricher(features)
 
@@ -100,9 +115,14 @@ class ConcatCombine(nn.Module):
 
 
 class AddCombine(nn.Module):
-    def __init__(self, hidden_dim, feat_dim, layers, dropout_prob, small=False, out_dim=-1, pre_enrich=False):
+    def __init__(self, hidden_dim, feat_dim, layers, dropout_prob, small=False, out_dim=-1,
+        pre_enrich=False, include_categories=False):
         super(AddCombine, self).__init__()
-        
+
+        self.include_categories = include_categories
+        if include_categories:
+            feat_dim += 43
+
         if layers == 1:
             self.expand = nn.Sequential(
                 nn.Linear(feat_dim, hidden_dim),
@@ -133,7 +153,10 @@ class AddCombine(nn.Module):
             if self.enricher is not None:
                 self.enricher = self.enricher.cuda()
 
-    def forward(self, hidden, feat):
+    def forward(self, hidden, feat, categories=None):
+        if self.include_categories:
+            feat = torch.cat((feat, categories), -1)
+
         if self.enricher is not None:
             feat = self.enricher(feat)
     
@@ -161,20 +184,30 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
                 config.hidden_size, nfeats, tok_num_labels, 
                 args.combiner_layers, config.hidden_dropout_prob,
                 args.small_waist, pre_enrich=args.pre_enrich,
-                activation=args.activation_hidden)
+                activation=args.activation_hidden,
+                include_categories=args.concat_categories)
         else:
             self.tok_classifier = AddCombine(
                 config.hidden_size, nfeats, args.combiner_layers,
                 config.hidden_dropout_prob, args.small_waist,
-                out_dim=tok_num_labels, pre_enrich=args.pre_enrich)
+                out_dim=tok_num_labels, pre_enrich=args.pre_enrich,
+                include_categories=args.concat_categories)
 
         self.cls_dropout = nn.Dropout(config.hidden_dropout_prob)
         self.cls_classifier = nn.Linear(config.hidden_size, cls_num_labels)
 
+        self.category_emb = args.category_emb
+        if args.category_emb:
+            self.category_embeddings = nn.Embedding(43, 128)
+
         self.apply(self.init_bert_weights)
 
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, rel_ids=None, pos_ids=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, 
+        labels=None, rel_ids=None, pos_ids=None, categories=None):
+        global ARGS
+        global CUDA
+        
         features = self.featurizer.featurize_batch(
             input_ids.detach().cpu().numpy(), 
             rel_ids.detach().cpu().numpy(), 
@@ -183,14 +216,19 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
         features = torch.tensor(features, dtype=torch.float)
         if CUDA:
             features = features.cuda()
-            
+
         sequence_output, pooled_output, attn_maps = self.bert(
             input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
 
         pooled_output = self.cls_dropout(pooled_output)
         cls_logits = self.cls_classifier(pooled_output)
 
-        tok_logits = self.tok_classifier(sequence_output, features)
+        if ARGS.category_emb:
+            categories = self.category_embeddings(
+                categories.max(-1)[1].type(
+                    'torch.cuda.LongTensor' if CUDA else 'torch.LongTensor'))
+
+        tok_logits = self.tok_classifier(sequence_output, features, categories)
 
         return cls_logits, tok_logits
 
@@ -248,7 +286,9 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
         self.apply(self.init_bert_weights)
 
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, rel_ids=None, pos_ids=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, 
+        labels=None, rel_ids=None, pos_ids=None, categories=None):
+
         features = self.featurizer.featurize_batch(
             input_ids.detach().cpu().numpy(),
             rel_ids.detach().cpu().numpy(),

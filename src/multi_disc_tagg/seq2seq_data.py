@@ -98,7 +98,7 @@ def noise_seq(seq, drop_prob=0.25, shuf_dist=3, drop_set=None, keep_bigrams=Fals
 
 def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len, 
                  noise=False, add_del_tok=False, rel_path='', pos_path='', 
-                 tok_dist_path=None , ARGS=None):
+                 tok_dist_path=None , categories_path=None, ARGS=None):
     global REL2ID
     global POS2ID
 
@@ -120,8 +120,11 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
         'post_in_ids': [], 'post_out_ids': [], 
         'pre_tok_label_ids': [], 'post_tok_label_ids': [], 'tok_dists': [],
         'replace_ids': [], 'rel_ids': [], 'pos_ids': [],
-        'type_ids': []
+        'type_ids': [], 'categories': []
     }        
+
+    if categories_path is not None:
+        category_fp = open(categories_path)
 
     if tok_dist_path is not None:
         tok_dist_fp = open(tok_dist_path)
@@ -160,18 +163,21 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
                         idx += 1
 
                 tok_dist = tmp
-                
-                # out = [0] * len(tokens)
-                # for i in range(len(tokens)):
-
-            # print(tok_dist)
             
         else:
             tok_dist = pre_tok_labels
 
-        # if random.random() < ARGS.tok_dist_softmax_prob:
                         
-
+        if categories_path is not None:
+            line = next(category_fp)
+            categories = np.array([float(x) for x in line.strip().split()])
+        else:
+            categories = np.random.uniform(size=43)   # number of categories
+            categories = categories / sum(categories) # normalize
+        if ARGS.argmax_categories:
+            argmax = np.argmax(categories)
+            categories = np.zeros_like(categories)
+            categories[argmax] = 1.0
 
         # make sure everything lines up    
         if len(tokens) != len(pre_tok_labels) \
@@ -210,7 +216,18 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
         rels = rels[:max_seq_len - 1]
         pos = pos[:max_seq_len - 1]
 
-        # use cls/sep as start/end...whelp lol
+        if ARGS.predict_categories:
+            tokens = ['[CLS]'] + tokens
+            pre_tok_labels = [label2id['mask']] + pre_tok_labels
+            post_tok_labels = [label2id['mask']] + post_tok_labels
+        elif ARGS.category_input:
+            category_id = np.argmax(categories)
+            tokens = ['[unused%d]' % category_id] + tokens
+            pre_tok_labels = [label2id['mask']] + pre_tok_labels
+            post_tok_labels = [label2id['mask']] + post_tok_labels
+
+        
+        
         post_input_tokens = ['行'] + post_tokens
         post_output_tokens = post_tokens + ['止'] 
 
@@ -258,6 +275,7 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
         out['replace_ids'].append(replace_id)
         out['rel_ids'].append(rel_ids)
         out['pos_ids'].append(pos_ids)
+        out['categories'].append(categories)
 
     print('SKIPPED ', skipped)
     return out
@@ -265,7 +283,7 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
 
 def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len, 
                    pickle_path=None, test=False, noise=False, add_del_tok=False, ARGS=None, 
-                   tok_dist_path=None, sort_batch=True):
+                   tok_dist_path=None, categories_path=None, sort_batch=True):
     def collate(data):
         if sort_batch:
             # sort by length for packing/padding
@@ -276,7 +294,7 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
             post_in_id, post_out_id, 
             pre_tok_label, post_tok_label, tok_dist,
             replace_id, rel_ids, pos_ids,
-            type_ids
+            type_ids, categories
         ] = [torch.stack(x) for x in zip(*data)]
         # cut off at max len for unpacking/repadding
         max_len = max(src_len)
@@ -306,14 +324,14 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
             post_in_id[:, :max_len+10], post_out_id[:, :max_len+10],    # +10 for wiggle room
             pre_tok_label, post_tok_label[:, :max_len+10], tok_dist, # +10 for post_toks_labels too (it's just gonna be matched up with post ids)
             replace_id, rel_ids[:, :max_len], pos_ids[:, :max_len],
-            type_ids
+            type_ids, categories
         ]
         return data
 
     if pickle_path is not None and os.path.exists(pickle_path):
-        train_examples = pickle.load(open(pickle_path, 'rb'))
+        examples = pickle.load(open(pickle_path, 'rb'))
     else:
-        train_examples = get_examples(
+        examples = get_examples(
             text_path=data_path, 
             text_post_path=post_data_path,
             tok2id=tok2id,
@@ -324,30 +342,32 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
             rel_path=data_path + '.rel',
             pos_path=data_path + '.pos',
             tok_dist_path=tok_dist_path,
+            categories_path=categories_path,
             ARGS=ARGS)
 
-        pickle.dump(train_examples, open(pickle_path, 'wb'))
+        pickle.dump(examples, open(pickle_path, 'wb'))
 
-    train_data = TensorDataset(
-        torch.tensor(train_examples['pre_ids'], dtype=torch.long),
-        torch.tensor(train_examples['pre_masks'], dtype=torch.uint8), # byte for masked_fill()
-        torch.tensor(train_examples['pre_lens'], dtype=torch.long),
-        torch.tensor(train_examples['post_in_ids'], dtype=torch.long),
-        torch.tensor(train_examples['post_out_ids'], dtype=torch.long),
-        torch.tensor(train_examples['pre_tok_label_ids'], dtype=torch.float),  # for compartin to enrichment stuff
-        torch.tensor(train_examples['post_tok_label_ids'], dtype=torch.float),  # for loss multiplying
-        torch.tensor(train_examples['tok_dists'], dtype=torch.float),   # for enrichment, same as pre_tok_label_ids if the arg isn't set
-        torch.tensor(train_examples['replace_ids'], dtype=torch.long),
-        torch.tensor(train_examples['rel_ids'], dtype=torch.long),
-        torch.tensor(train_examples['pos_ids'], dtype=torch.long),
-        torch.tensor(train_examples['type_ids'], dtype=torch.float))
+    data = TensorDataset(
+        torch.tensor(examples['pre_ids'], dtype=torch.long),
+        torch.tensor(examples['pre_masks'], dtype=torch.uint8), # byte for masked_fill()
+        torch.tensor(examples['pre_lens'], dtype=torch.long),
+        torch.tensor(examples['post_in_ids'], dtype=torch.long),
+        torch.tensor(examples['post_out_ids'], dtype=torch.long),
+        torch.tensor(examples['pre_tok_label_ids'], dtype=torch.float),  # for compartin to enrichment stuff
+        torch.tensor(examples['post_tok_label_ids'], dtype=torch.float),  # for loss multiplying
+        torch.tensor(examples['tok_dists'], dtype=torch.float),   # for enrichment, same as pre_tok_label_ids if the arg isn't set
+        torch.tensor(examples['replace_ids'], dtype=torch.long),
+        torch.tensor(examples['rel_ids'], dtype=torch.long),
+        torch.tensor(examples['pos_ids'], dtype=torch.long),
+        torch.tensor(examples['type_ids'], dtype=torch.float),
+        torch.tensor(examples['categories'], dtype=torch.float))
 
-    train_dataloader = DataLoader(
-        train_data,
-        sampler=(SequentialSampler(train_data) if test else RandomSampler(train_data)),
+    dataloader = DataLoader(
+        data,
+        sampler=(SequentialSampler(data) if test else RandomSampler(data)),
         collate_fn=collate,
         batch_size=batch_size)
 
-    return train_dataloader, len(train_examples['pre_ids'])
+    return dataloader, len(examples['pre_ids'])
 
 

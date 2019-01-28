@@ -31,7 +31,6 @@ import tagging_utils
 
 
 
-
 train_data_prefix = ARGS.train
 test_data_prefix = ARGS.test
 if not os.path.exists(ARGS.working_dir):
@@ -58,18 +57,20 @@ tok2id['<del>'] = len(tok2id)
 
 train_dataloader, num_train_examples = get_dataloader(
     TRAIN_TEXT, TRAIN_TEXT_POST, 
-    tok2id, ARGS.train_batch_size, ARGS.max_seq_len, ARGS.working_dir + '/train_data.pkl', ARGS=ARGS)
+    tok2id, ARGS.train_batch_size, 
+    ARGS.max_seq_len, ARGS.working_dir + '/train_data.pkl', 
+    categories_path=ARGS.train_categories_file, ARGS=ARGS)
 eval_dataloader, num_eval_examples = get_dataloader(
     TEST_TEXT, TEST_TEXT_POST,
     tok2id, ARGS.test_batch_size, ARGS.max_seq_len, ARGS.working_dir + '/test_data.pkl',
-    test=True, ARGS=ARGS)
+    test=True, categories_path=ARGS.test_categories_file, ARGS=ARGS)
 
 
 print('BUILDING MODEL...')
 if ARGS.extra_features_top:
     model = tagging_model.BertForMultitaskWithFeaturesOnTop.from_pretrained(
             ARGS.bert_model,
-            cls_num_labels=ARGS.num_bias_labels,
+            cls_num_labels=ARGS.num_categories,
             tok_num_labels=ARGS.num_tok_labels,
             cache_dir=ARGS.working_dir + '/cache',
             tok2id=tok2id,
@@ -77,7 +78,7 @@ if ARGS.extra_features_top:
 elif ARGS.extra_features_bottom:
     model = tagging_model.BertForMultitaskWithFeaturesOnBottom.from_pretrained(
             ARGS.bert_model,
-            cls_num_labels=ARGS.num_bias_labels,
+            cls_num_labels=ARGS.num_categories,
             tok_num_labels=ARGS.num_tok_labels,
             cache_dir=ARGS.working_dir + '/cache',
             tok2id=tok2id,
@@ -85,7 +86,7 @@ elif ARGS.extra_features_bottom:
 else:
     model = tagging_model.BertForMultitask.from_pretrained(
         ARGS.bert_model,
-        cls_num_labels=ARGS.num_bias_labels,
+        cls_num_labels=ARGS.num_categories,
         tok_num_labels=ARGS.num_tok_labels,
         cache_dir=ARGS.working_dir + '/cache',
         tok2id=tok2id)
@@ -114,6 +115,14 @@ optimizer = make_optimizer(
 
 loss_fn = tagging_utils.build_loss_fn(ARGS)
 
+if ARGS.predict_categories:
+    category_criterion = CrossEntropyLoss()
+    if CUDA:
+        category_criterion = category_criterion.cuda()
+
+    def cross_entropy(pred, soft_targets):
+        logsoftmax = nn.LogSoftmax()
+        return torch.mean(torch.sum(- soft_targets * logsoftmax(pred), 1))
 
 # # # # # # # # ## # # # ## # # END LOSS # # # # # # # # ## # # # ## # #
 
@@ -138,11 +147,14 @@ for epoch in range(ARGS.epochs):
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             tok_label_id, _, tok_dist,
-            replace_id, rel_ids, pos_ids, type_ids
+            replace_id, rel_ids, pos_ids, type_ids, categories
         ) = batch
         bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask, 
-            rel_ids=rel_ids, pos_ids=pos_ids)
+            rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
         loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
+        if ARGS.predict_categories:
+            category_loss = cross_entropy(bias_logits, categories)
+            loss = loss + category_loss
         loss.backward()
         optimizer.step()
         model.zero_grad()

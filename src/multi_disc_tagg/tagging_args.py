@@ -28,7 +28,6 @@ parser.add_argument(
 
 
 ### DEFAULT STUFF FOR TRAINING
-parser.add_argument("--num_bias_labels", default=2, type=int, help="dont touch")
 parser.add_argument("--num_tok_labels", default=3, type=int, help="dont touch")
 parser.add_argument("--bert_model", default='bert-base-uncased', help="dont touch")
 parser.add_argument("--train_batch_size", default=32, type=int, help="dont touch")
@@ -44,6 +43,42 @@ parser.add_argument(
     type=float, 
     help="weight for 1's on loss"
 )
+
+
+#### Category stuff
+parser.add_argument(
+    "--train_categories_file",
+    type=str, default=None,
+    help='pointer to wikipedia categories')
+parser.add_argument(
+    "--test_categories_file",
+    type=str, default=None,
+    help='pointer to wikipedia categories')
+parser.add_argument(
+    "--argmax_categories",
+    action='store_true',
+    help='replace distribution with one-hot')
+parser.add_argument(
+    "--predict_categories",
+    action='store_true',
+    help='use [CLS] to predict categories')
+parser.add_argument(
+    "--concat_categories",
+    action='store_true',
+    help='concat raw category vec to help tag')
+parser.add_argument(
+    "--category_emb",
+    action='store_true',
+    help='concat category embedding vec to help tag (use with --concat_categories) ')
+parser.add_argument(
+    "--category_input",
+    action='store_true',
+    help='prepend special category input emb to seq')
+parser.add_argument(
+    "--num_categories", 
+    default=43, type=int, 
+    help="number of categories")
+
 
 
 

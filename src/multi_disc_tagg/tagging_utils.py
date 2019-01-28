@@ -78,14 +78,13 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             tok_label_id, _, tok_dist,
-            replace_id, rel_ids, pos_ids, type_ids
+            replace_id, rel_ids, pos_ids, type_ids, categories
         ) = batch
 
         with torch.no_grad():
             bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask,
-                rel_ids=rel_ids, pos_ids=pos_ids)
+                rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
             tok_loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
-            
         out['input_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in pre_id.cpu().numpy()]
         out['post_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in post_in_id.cpu().numpy()]
         out['tok_loss'].append(float(tok_loss.cpu().numpy()))
