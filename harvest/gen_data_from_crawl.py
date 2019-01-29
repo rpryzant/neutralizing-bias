@@ -324,9 +324,11 @@ def sent_generator(revisions):
         prev_sents_raw = sent_tokenize(prev_text)
         post_sents_raw = sent_tokenize(post_text)
 
-        if len(prev_sents_raw) != len(post_sents_raw):
-            CTR_EDIT_CHANGED_NUM_SENTS += 1
-            continue
+        # TODO TOGGLE THIS!!
+        raise Exception
+        # if len(prev_sents_raw) != len(post_sents_raw):
+        #     CTR_EDIT_CHANGED_NUM_SENTS += 1
+        #     continue
 
         prev_sents_tok = [tokenize(s) for s in prev_sents_raw]
         post_sents_tok = [tokenize(s) for s in post_sents_raw]
