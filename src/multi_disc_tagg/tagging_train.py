@@ -25,7 +25,7 @@ import sklearn.metrics as metrics
 import tagging_model
 from seq2seq_data import get_dataloader
 
-from tagging_args import ARGS
+from joint_args import ARGS
 import tagging_utils
 
 

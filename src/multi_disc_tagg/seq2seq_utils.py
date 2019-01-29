@@ -194,7 +194,7 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             pre_tok_label_id, _, tok_dist,
-            replace_id, _, _, type_id
+            replace_id, _, _, type_id, _
         ) = batch
 
         post_start_id = tok2id['行']

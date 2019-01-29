@@ -24,7 +24,7 @@ from pytorch_pretrained_bert.optimization import BertAdam
 
 from seq2seq_data import get_dataloader
 import seq2seq_model
-from seq2seq_args import ARGS
+from joint_args import ARGS
 
 import seq2seq_utils as utils
 
@@ -53,8 +53,8 @@ if ARGS.bert_encoder:
     TRAIN_BATCH_SIZE = 16
     TEST_BATCH_SIZE = 16
 else:
-    TRAIN_BATCH_SIZE = ARGS.batch_size
-    TEST_BATCH_SIZE = ARGS.batch_size // ARGS.beam_width
+    TRAIN_BATCH_SIZE = ARGS.train_batch_size
+    TEST_BATCH_SIZE = ARGS.test_batch_size // ARGS.beam_width
 
 EPOCHS = ARGS.epochs
 

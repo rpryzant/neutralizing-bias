@@ -25,13 +25,54 @@ parser.add_argument(
     help="prefix for writing outputs",
     type=str, default=''
 )
+parser.add_argument("--bert_model", 
+    default='bert-base-uncased', 
+    help="dont touch")
+parser.add_argument("--train_batch_size", 
+    default=32, type=int, 
+    help="batch size")
+parser.add_argument("--test_batch_size", 
+    default=16, type=int, 
+    help="batch size")
 
 
-### DEFAULT STUFF FOR TRAINING
-parser.add_argument("--num_tok_labels", default=3, type=int, help="dont touch")
-parser.add_argument("--bert_model", default='bert-base-uncased', help="dont touch")
-parser.add_argument("--train_batch_size", default=32, type=int, help="dont touch")
-parser.add_argument("--test_batch_size", default=16, type=int, help="dont touch")
+##################################################################################
+##################################################################################
+#                      JOINT ARGS
+##################################################################################
+##################################################################################
+parser.add_argument(
+    "--token_softmax",
+    action='store_true',
+    help='softmax over token dimension')
+parser.add_argument(
+    "--sequence_softmax",
+    action='store_true',
+    help='softmax over time dimension instead of token dist')
+parser.add_argument(
+    "--zero_threshold",
+    type=float, default=10000.0,
+    help='threshold for zeroing-out token scores')
+
+
+
+
+
+
+##################################################################################
+##################################################################################
+#                      TAGGER ARGS
+##################################################################################
+##################################################################################
+
+
+
+
+parser.add_argument("--num_tok_labels", 
+    default=3, type=int, 
+    help="dont touch")
+
+
 
 
 
@@ -72,8 +113,6 @@ parser.add_argument(
     "--num_categories", 
     default=43, type=int, 
     help="number of categories (don't change!)")
-
-
 
 
 ### EXTRA FEATURE COMBINE FN
@@ -141,7 +180,11 @@ parser.add_argument("--combine6", help="combine location 6", action='store_true'
 
 
 
-
+##################################################################################
+##################################################################################
+#                      SEQ2SEQ ARGS
+##################################################################################
+##################################################################################
 
 
 
