@@ -135,7 +135,7 @@ if ARGS.bert_encoder:
                          t_total=num_train_steps)
 
 else:
-    optimizer = optim.Adam(model.parameters(), lr=0.0003)
+    optimizer = optim.Adam(model.parameters(), lr=ARGS.learning_rate)
 
 
 # # # # # # # # ## # # # ## # # LOSS # # # # # # # # ## # # # ## # #

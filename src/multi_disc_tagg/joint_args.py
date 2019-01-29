@@ -34,6 +34,9 @@ parser.add_argument("--train_batch_size",
 parser.add_argument("--test_batch_size", 
     default=16, type=int, 
     help="batch size")
+parser.add_argument("--learning_rate", 
+    default=0.0003, type=float, 
+    help="learning rate")
 
 
 ##################################################################################
@@ -51,7 +54,7 @@ parser.add_argument(
     help='softmax over time dimension instead of token dist')
 parser.add_argument(
     "--zero_threshold",
-    type=float, default=10000.0,
+    type=float, default=-10000.0,
     help='threshold for zeroing-out token scores')
 
 

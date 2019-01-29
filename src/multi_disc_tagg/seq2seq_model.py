@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 from pytorch_pretrained_bert.modeling import BertModel
 
-from seq2seq_args import ARGS
+from joint_args import ARGS
 
 CUDA = (torch.cuda.device_count() > 0)
 
