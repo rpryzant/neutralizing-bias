@@ -236,7 +236,7 @@ if ARGS.pretrain_data:
     print('PRETRAINING...')
     for epoch in range(ARGS.pretrain_epochs):
         joint_model.train()
-        for step, batch in enumerate(tqdm(train_dataloader)):
+        for step, batch in enumerate(tqdm(pretrain_dataloader)):
             if CUDA: 
                 batch = tuple(x.cuda() for x in batch)
             (
