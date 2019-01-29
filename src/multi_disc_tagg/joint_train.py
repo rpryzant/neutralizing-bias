@@ -1,11 +1,8 @@
 """
 finetune both models jointly
 
-python tagging_train.py --train ../../data/v5/final/bias --test ../../data/v5/final/bias --working_dir TEST/ --train_batch_size 32 --test_batch_size 16 
+python joint_train.py --train ../../data/v5/final/bias --test ../../data/v5/final/bias --working_dir TEST/ --train_batch_size 32 --test_batch_size 16 
 """
-
-
-
 
 from collections import defaultdict
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
@@ -32,6 +29,7 @@ import seq2seq_utils as utils
 
 from joint_args import ARGS
 
+import joint_utils
 
 import tagging_model
 import tagging_utils
@@ -227,84 +225,8 @@ tagging_loss_fn = tagging_utils.build_loss_fn(ARGS)
 
 
 
-##################################################################
-##################################################################
-##################################################################
-#                       JOINT MODEL
-##################################################################
-##################################################################
-##################################################################
 
-class JointModel(nn.Module):
-    def __init__(self, debias_model, tagging_model):
-        super(JointModel, self).__init__()
-    
-        # TODO SHARING EMBEDDINGS FROM DEBIAS
-        self.debias_model = debias_model
-        self.tagging_model = tagging_model
-
-        # TODO SM IN DIFFERENT DIRECTIONS
-        self.bridge_sm = nn.Softmax(dim=2)
-
-
-    # TODO -- EVAL, INFERENCE FORWARD
-    def inference_forward_greedy(self,
-            pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=False,   # debias arggs
-            rel_ids=None, pos_ids=None, categories=None):      # tagging args
-        global CUDA
-        """ argmax decoding """
-        # Initialize target with <s> for every sentence
-        tgt_input = Variable(torch.LongTensor([
-                [post_start_id] for i in range(pre_id.size(0))
-        ]))
-        if CUDA:
-            tgt_input = tgt_input.cuda()
-
-        out_logits = []
-
-        for i in range(max_len):
-            # run input through the model
-            with torch.no_grad():
-                decoder_logit, word_probs = self.forward(
-                    pre_id, tgt_input, pre_mask, pre_len, tok_dist, type_id,
-                    rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
-            next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
-            tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
-
-        # [batch, len ] predicted indices
-        return tgt_input.detach().cpu().numpy()
-                
-    def forward(self, 
-        pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=False,   # debias arggs
-        rel_ids=None, pos_ids=None, categories=None):      # tagging args
-
-        # TODO IGNORE THIS IF NOT ALL PARAMS ARE PROVIDED
-        if rel_ids is None or pos_ids is None:
-            is_bias_probs = tok_dist
-        else:
-            category_logits, tok_logits = self.tagging_model(
-                pre_id, attention_mask=1.0-pre_mask, rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
-
-            # TODO VARIOUS BRIDGES (SAME AS OTHER)
-            tok_probs = self.bridge_sm(tok_logits[:, :, :2])
-            is_bias_probs = tok_probs[:, :, -1]
-
-        post_logits, post_probs = self.debias_model(
-            pre_id, post_in_id, pre_mask, pre_len,  is_bias_probs, type_id)
-
-        return post_logits, post_probs
-
-
-
-
-
-joint_model = JointModel(debias_model=model, tagging_model=tagging_model)
-
-
-
-
-
-
+joint_model = joint_utils.JointModel(debias_model=model, tagging_model=tagging_model)
 
 
 
@@ -313,7 +235,26 @@ joint_model = JointModel(debias_model=model, tagging_model=tagging_model)
 if ARGS.pretrain_data:
     print('PRETRAINING...')
     for epoch in range(ARGS.pretrain_epochs):
-        model.train()
+        joint_model.train()
+        for step, batch in enumerate(tqdm(train_dataloader)):
+            if CUDA: 
+                batch = tuple(x.cuda() for x in batch)
+            (
+                pre_id, pre_mask, pre_len, 
+                post_in_id, post_out_id, 
+                pre_tok_label_id, post_tok_label_id, tok_dist,
+                replace_id, rel_ids, pos_ids, type_ids, categories
+            ) = batch      
+            # dont pass tagger args = don't use TAGGER
+            post_logits, post_probs = joint_model(
+                pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_ids)
+            loss = loss_fn(post_logits, post_out_id, post_tok_label_id)
+            loss.backward()
+            norm = nn.utils.clip_grad_norm_(joint_model.parameters(), 3.0)
+            optimizer.step()
+            joint_model.zero_grad()
+            
+
         losses = utils.train_for_epoch(model, pretrain_dataloader, tok2id, optimizer, cross_entropy_loss, 
             ignore_enrich=ARGS.ignore_pretrain_enrich)
         writer.add_scalar('pretrain/loss', np.mean(losses), epoch)
@@ -323,10 +264,9 @@ if ARGS.pretrain_data:
 # # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
 print('INITIAL EVAL...')
 # joint_model.eval()
-# hits, preds, golds, srcs = utils.run_eval(
+# hits, preds, golds, srcs = joint_utils.run_eval(
 #     joint_model, eval_dataloader, tok2id, WORKING_DIR + '/results_initial.txt',
 #     MAX_SEQ_LEN, ARGS.beam_width)
-# # writer.add_scalar('eval/partial_bleu', utils.get_partial_bleu(srcs, golds, srcs), epoch+1)
 # writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), 0)
 # writer.add_scalar('eval/true_hits', np.mean(hits), 0)
 
@@ -352,9 +292,6 @@ for epoch in range(EPOCHS):
         optimizer.step()
         joint_model.zero_grad()
         
-    
-    losses = utils.train_for_epoch(joint_model, train_dataloader, tok2id, optimizer, loss_fn)
-    writer.add_scalar('train/loss', np.mean(losses), epoch+1)
     
     print('SAVING...')
     joint_model.save(WORKING_DIR + '/model_%d.ckpt' % (epoch+1))
