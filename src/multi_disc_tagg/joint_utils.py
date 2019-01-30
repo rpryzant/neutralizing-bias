@@ -90,7 +90,7 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
     hits = []
     preds, golds, srcs = [], [], []
     for step, batch in enumerate(tqdm(dataloader)):
-        if step > 3: continue
+        # if step > 1: continue
     
         if CUDA:
             batch = tuple(x.cuda() for x in batch)

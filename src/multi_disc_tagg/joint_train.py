@@ -25,7 +25,7 @@ from pytorch_pretrained_bert.optimization import BertAdam
 
 from seq2seq_data import get_dataloader
 import seq2seq_model
-import seq2seq_utils as utils
+import seq2seq_utils 
 
 from joint_args import ARGS
 
@@ -294,11 +294,12 @@ for epoch in range(EPOCHS):
 
     print('EVAL...')
     joint_model.eval()
-    hits, preds, golds, srcs = utils.run_eval(
+    hits, preds, golds, srcs = joint_utils.run_eval(
         joint_model, eval_dataloader, tok2id, WORKING_DIR + '/results_%d.txt' % epoch,
         MAX_SEQ_LEN, ARGS.beam_width)
+
     # writer.add_scalar('eval/partial_bleu', utils.get_partial_bleu(preds, golds, srcs), epoch+1)
-    writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), epoch+1)
+    writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), epoch+1)
     writer.add_scalar('eval/true_hits', np.mean(hits), epoch+1)
 
 
