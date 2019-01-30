@@ -255,10 +255,6 @@ if ARGS.pretrain_data:
             joint_model.zero_grad()
             
 
-        losses = utils.train_for_epoch(model, pretrain_dataloader, tok2id, optimizer, cross_entropy_loss, 
-            ignore_enrich=ARGS.ignore_pretrain_enrich)
-        writer.add_scalar('pretrain/loss', np.mean(losses), epoch)
-
 
 
 # # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
