@@ -73,7 +73,6 @@ class JointModel(nn.Module):
 
             if ARGS.sequence_softmax:
                 is_bias_probs = self.time_sm(is_bias_probs)
-            print(is_bias_probs)
 
         post_logits, post_probs = self.debias_model(
             pre_id, post_in_id, pre_mask, pre_len,  is_bias_probs, type_id)

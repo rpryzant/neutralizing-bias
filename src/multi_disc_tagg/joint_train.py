@@ -294,7 +294,7 @@ for epoch in range(EPOCHS):
         
     
     print('SAVING...')
-    joint_model.save(WORKING_DIR + '/model_%d.ckpt' % (epoch+1))
+    # joint_model.save(WORKING_DIR + '/model_%d.ckpt' % (epoch+1))
 
     print('EVAL...')
     joint_model.eval()
