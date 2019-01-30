@@ -26,7 +26,7 @@ class JointModel(nn.Module):
 
     def inference_forward(self,
             pre_id, post_start_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=False,   # debias arggs
-            rel_ids=None, pos_ids=None, categories=None):      # tagging args
+                          rel_ids=None, pos_ids=None, categories=None, beam_width=None):      # tagging args
         global CUDA
         global ARGS
         """ argmax decoding """
