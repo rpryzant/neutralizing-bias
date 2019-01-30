@@ -69,7 +69,7 @@ class JointModel(nn.Module):
 
             if ARGS.zero_threshold > -10000.0:
                 mask = -10000 if ARGS.sequence_softmax else 0
-                tok_probs[tok_probs < ARGS.zero_threshold] = mask
+                tok_probs[tok_probs < ARGS.zero_threshold] = tok_probs[tok_probs < ARGS.zero_threshold] * mask
 
             if ARGS.sequence_softmax:
                 is_bias_probs = self.time_sm(is_bias_probs)
