@@ -21,3 +21,23 @@ python crawl_revision_text.py x00 > y00
 python crawl_revision_text.py x07 > y07
 cat y* > revisions.text
 ```
+
+4. Clean, filter, and tag the revisions:
+
+```
+python gen_data_from_crawl.py revisions.text CACHE corpus
+```
+
+5. Add POS and Dependancy tags to the training data.
+
+```
+python add_tags.py corpus.wordbiased > corpus.wordbiased.tag
+```
+
+6. Shuffle and split the train data. Shuffle the unbiased data.
+
+```
+sh shuffle_split.sh corpus.wordbiased.tag
+cat corpus.unbiased | gshuf > corpus.unbiased.shuf
+```
+

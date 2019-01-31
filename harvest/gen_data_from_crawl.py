@@ -3,7 +3,7 @@ generates a TSV parallel corpus from a crawl (the output of gain_wiki_revision.p
 
 python gen_data_from_crawl.py final_crawl.tsv CACHE/ tst
 
-pickle_path = sys.argv[1]
+crawl output tsv = sys.argv[1]
 cache_path = sys.argv[2]
 out_prefix = sys.argv[3]
 
@@ -31,6 +31,7 @@ from spellchecker import SpellChecker
 from autocorrect import spell
 
 
+
 crawl_path = sys.argv[1]
 cache_path = sys.argv[2]
 out_prefix = sys.argv[3]
@@ -51,10 +52,12 @@ CTR_ONLY_PUNC_CHANGED = 0
 CTR_INVALID_NUM_CHANGED_SENTS = 0
 CTR_EDIT_CHANGED_NUM_SENTS = 0
 CTR_NON_EDIT_CHUNKS = 0
+CTR_FAILED_TAGGING = 0
 
 
 BERT_MODEL = "bert-base-uncased"
 TOKENIZER = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=cache_path)
+
 
 
 
@@ -281,6 +284,7 @@ def should_keep(prev_raw, prev_tok, post_raw, post_tok, bleu, rev_id):
 
 
 
+
 def sent_generator(revisions):
     global CTR_EMPTY_REV
     global CTR_MULTIPLE_EDITS
@@ -289,6 +293,7 @@ def sent_generator(revisions):
     global CTR_INVALID_NUM_CHANGED_SENTS
     global CTR_NON_EDIT_CHUNKS
     global CTR_EDIT_CHANGED_NUM_SENTS
+    global CTR_FAILED_TAGGING
 
     for rev_id in tqdm(revisions):
         prevs, posts, prev_deleted, posts_added = revisions[rev_id]
@@ -324,11 +329,9 @@ def sent_generator(revisions):
         prev_sents_raw = sent_tokenize(prev_text)
         post_sents_raw = sent_tokenize(post_text)
 
-        # TODO TOGGLE THIS!!
-        raise Exception
-        # if len(prev_sents_raw) != len(post_sents_raw):
-        #     CTR_EDIT_CHANGED_NUM_SENTS += 1
-        #     continue
+        if len(prev_sents_raw) != len(post_sents_raw):
+            CTR_EDIT_CHANGED_NUM_SENTS += 1
+            continue
 
         prev_sents_tok = [tokenize(s) for s in prev_sents_raw]
         post_sents_tok = [tokenize(s) for s in post_sents_raw]
@@ -345,7 +348,7 @@ def sent_generator(revisions):
         if sum([sum(x[-1]) > 0 for x in rev_examples]) != 1:
             CTR_INVALID_NUM_CHANGED_SENTS += len([x for x in rev_examples if sum(x[-1]) > 0])
             continue
-            
+
         # ignore the revision if dups got in the mix somehow
         rev_prevs = [x[0] for x  in rev_examples]
         rev_posts = [x[2] for x in rev_examples]
@@ -392,7 +395,7 @@ for example in sent_generator(revisions):
             prev_tok.strip().replace('\n', ' ').replace('\t', ' '), 
             post_tok.strip().replace('\n', ' ').replace('\t', ' '), 
             prev_raw.strip().replace('\n', ' ').replace('\t', ' '), 
-            post_raw.strip().replace('\n', ' ').replace('\t', ' '), 
+            post_raw.strip().replace('\n', ' ').replace('\t', ' ')
         ])
     })
 
@@ -447,3 +450,4 @@ print('CTR_ONLY_PUNC_CHANGED', CTR_ONLY_PUNC_CHANGED)
 print('CTR_INVALID_NUM_CHANGED_SENTS', CTR_INVALID_NUM_CHANGED_SENTS)
 print('CTR_NON_EDIT_CHUNKS', CTR_NON_EDIT_CHUNKS)
 print('CTR_EDIT_CHANGED_NUM_SENTS', CTR_EDIT_CHANGED_NUM_SENTS)
+print('CTR_FAILED_TAGGING', CTR_FAILED_TAGGING)
