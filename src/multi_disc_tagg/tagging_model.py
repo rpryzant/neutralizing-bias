@@ -51,8 +51,6 @@ class BertForMultitask(PreTrainedBertModel):
         tok_logits = self.tok_classifier(sequence_output)
         tok_logits = self.tok_dropout(tok_logits)
 
-        # cut off [CLS]
-
         return cls_logits, tok_logits
 
 
@@ -170,34 +168,36 @@ class AddCombine(nn.Module):
 
 class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
     """ stick the features on top of the model """
-    def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None, args=None):
+    def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None):
         super(BertForMultitaskWithFeaturesOnTop, self).__init__(config)
+        global ARGS
+        
         self.bert = BertModel(config)
         
         self.featurizer = tagging_features.Featurizer(
-            tok2id, lexicon_feature_bits=args.lexicon_feature_bits) 
+            tok2id, lexicon_feature_bits=ARGS.lexicon_feature_bits) 
         # TODO -- don't hardcode this...
-        nfeats = 126 if args.lexicon_feature_bits == 1 else 154
+        nfeats = 90 if ARGS.lexicon_feature_bits == 1 else 118
 
-        if args.extra_features_method == 'concat':
+        if ARGS.extra_features_method == 'concat':
             self.tok_classifier = ConcatCombine(
                 config.hidden_size, nfeats, tok_num_labels, 
-                args.combiner_layers, config.hidden_dropout_prob,
-                args.small_waist, pre_enrich=args.pre_enrich,
-                activation=args.activation_hidden,
-                include_categories=args.concat_categories)
+                ARGS.combiner_layers, config.hidden_dropout_prob,
+                ARGS.small_waist, pre_enrich=ARGS.pre_enrich,
+                activation=ARGS.activation_hidden,
+                include_categories=ARGS.concat_categories)
         else:
             self.tok_classifier = AddCombine(
-                config.hidden_size, nfeats, args.combiner_layers,
-                config.hidden_dropout_prob, args.small_waist,
-                out_dim=tok_num_labels, pre_enrich=args.pre_enrich,
-                include_categories=args.concat_categories)
+                config.hidden_size, nfeats, ARGS.combiner_layers,
+                config.hidden_dropout_prob, ARGS.small_waist,
+                out_dim=tok_num_labels, pre_enrich=ARGS.pre_enrich,
+                include_categories=ARGS.concat_categories)
 
         self.cls_dropout = nn.Dropout(config.hidden_dropout_prob)
         self.cls_classifier = nn.Linear(config.hidden_size, cls_num_labels)
 
-        self.category_emb = args.category_emb
-        if args.category_emb:
+        self.category_emb = ARGS.category_emb
+        if ARGS.category_emb:
             self.category_embeddings = nn.Embedding(43, 128)
 
         self.apply(self.init_bert_weights)
@@ -237,42 +237,43 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
     """ stick the features on top of the model """
     def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None, args=None):
         super(BertForMultitaskWithFeaturesOnBottom, self).__init__(config)
+        global ARGS
         
         self.featurizer = tagging_features.Featurizer(
-            tok2id, lexicon_feature_bits=args.lexicon_feature_bits) 
+            tok2id, lexicon_feature_bits=ARGS.lexicon_feature_bits) 
         # TODO -- don't hardcode this...
-        nfeats = 126 if args.lexicon_feature_bits == 1 else 154
+        nfeats = 90 if ARGS.lexicon_feature_bits == 1 else 118
 
-        if args.extra_features_method == 'concat':
+        if ARGS.extra_features_method == 'concat':
             if ARGS.share_combiners:
                 self.combiners = {
                     i: ConcatCombine(
                         config.hidden_size, nfeats, config.hidden_size, 
-                        args.combiner_layers, config.hidden_dropout_prob,
-                        args.small_waist, pre_enrich=args.pre_enrich,
-                        activation=args.activation_hidden)
+                        ARGS.combiner_layers, config.hidden_dropout_prob,
+                        ARGS.small_waist, pre_enrich=ARGS.pre_enrich,
+                        activation=ARGS.activation_hidden)
                     for i in range(1, 7)
                 }
             else:
                 combiner = ConcatCombine(
                     config.hidden_size, nfeats, config.hidden_size, 
-                    args.combiner_layers, config.hidden_dropout_prob,
-                    args.small_waist, pre_enrich=args.pre_enrich,
-                    activation=args.activation_hidden)
+                    ARGS.combiner_layers, config.hidden_dropout_prob,
+                    ARGS.small_waist, pre_enrich=ARGS.pre_enrich,
+                    activation=ARGS.activation_hidden)
                 self.combiners = { i: combiner for i in range(1, 7) }
         else:
             if ARGS.share_combiners:
                 self.combiners = {
                     i: AddCombine(
-                nfeats, config.hidden_size, args.combiner_layers,
-                config.hidden_dropout_prob, args.small_waist, 
-                pre_enrich=args.pre_enrich)
+                nfeats, config.hidden_size, ARGS.combiner_layers,
+                config.hidden_dropout_prob, ARGS.small_waist, 
+                pre_enrich=ARGS.pre_enrich)
                     for i in range(1, 7)
                 }
             else:
                 combiner = AddCombine(
-                    nfeats, config.hidden_size, args.combiner_layers,
-                    config.hidden_dropout_prob, args.small_waist)
+                    nfeats, config.hidden_size, ARGS.combiner_layers,
+                    config.hidden_dropout_prob, ARGS.small_waist)
                 self.combiners = { i: combiner for i in range(1, 7) }
 
         self.bert = BertModelBottomFeatures(config, self.combiners)
@@ -384,6 +385,8 @@ class BertAttentionF(nn.Module):
         self.output = BertSelfOutputF(config, combiners)
 
     def forward(self, input_tensor, attention_mask, features=None):
+        global ARGS
+        
         self_output, attn_probs = self.self(input_tensor, attention_mask)
 
         ### COMBINE2
@@ -403,6 +406,7 @@ class BertOutputF(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states, input_tensor, features=None):
+        global ARGS
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
 
@@ -423,7 +427,7 @@ class BertLayerF(nn.Module):
         self.output = BertOutputF(config, combiners)
 
     def forward(self, hidden_states, attention_mask, features=None):
-
+        global ARGS
         ### COMBINE4        
         if features is not None and ARGS.combine4:
             hidden_states = self.combiners[4](hidden_states, features)

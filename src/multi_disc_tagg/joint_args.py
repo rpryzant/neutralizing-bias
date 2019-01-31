@@ -36,7 +36,7 @@ parser.add_argument("--test_batch_size",
     help="batch size")
 parser.add_argument("--learning_rate", 
     default=0.0003, type=float, 
-    help="learning rate")
+    help="learning rate (set for seq2seq. for BERT tagger do more like ~ 3e-5")
 
 
 ##################################################################################
@@ -205,7 +205,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--max_seq_len",
-    type=int, default=70
+    type=int, default=80
 )
 parser.add_argument(
     "--hidden_size",

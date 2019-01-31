@@ -8,29 +8,28 @@ import torch
 import torch.nn as nn
 from random import shuffle
 import random
-#from seq2seq_args import ARGS
+
+from joint_args import ARGS
 
 
 UD_RELATIONS = [
-    'PAD', 'acl', 'acl:relcl', 'advcl', 'advmod', 'amod', 'appos', 'aux',
-    'auxpass', 'case', 'cc', 'cc:preconj', 'ccomp', 'compound',
-    'compound:prt', 'conj', 'cop', 'csubj', 'csubjpass', 'dep',
-    'det', 'det:predet', 'discourse', 'dislocated', 'dobj',
-    'expl', 'foreign', 'goeswith', 'iobj', 'list', 'mark', 'mwe',
-    'name', 'neg', 'nmod', 'nmod:npmod', 'nmod:poss', 'nmod:tmod',
-    'nsubj', 'nsubjpass', 'nummod', 'parataxis', 'punct', 'remnant',
-    'reparandum', 'root', ' vocative', 'xcomp', '<UNK>', '<SKIP>'
+    'det', 'amod', 'nsubj', 'prep', 'pobj', 'ROOT', 
+    'attr', 'punct', 'advmod', 'compound', 'acl', 'agent', 
+    'aux', 'ccomp', 'dobj', 'cc', 'conj', 'appos', 'nsubjpass', 
+    'auxpass', 'poss', 'nummod', 'nmod', 'relcl', 'mark', 
+    'advcl', 'pcomp', 'npadvmod', 'preconj', 'neg', 'xcomp', 
+    'csubj', 'prt', 'parataxis', 'expl', 'case', 'acomp', 'predet',
+    'quantmod', 'dep', 'oprd', 'intj', 'dative', 'meta', 'csubjpass', 
+    '<UNK>'
 ]
 REL2ID = {x: i for i, x in enumerate(UD_RELATIONS)}
 # from nltk.data.load('help/tagsets/upenn_tagset.pickle').keys()
-POS2ID = {
-    'PAD': 0, 'LS': 0, 'TO': 1, 'VBN': 2, "''": 3, 'WP': 4, 'UH': 5, 'VBG': 6, 'JJ': 7, 'VBZ': 8, 
-    '--': 9, 'VBP': 10, 'NN': 11, 'DT': 12, 'PRP': 13, ':': 14, 'WP$': 15, 'NNPS': 16, 
-    'PRP$': 17, 'WDT': 18, '(': 19, ')': 20, '.': 21, ',': 22, '``': 23, '$': 24, 
-    'RB': 25, 'RBR': 26, 'RBS': 27, 'VBD': 28, 'IN': 29, 'FW': 30, 'RP': 31, 'JJR': 32, 
-    'JJS': 33, 'PDT': 34, 'MD': 35, 'VB': 36, 'WRB': 37, 'NNP': 38, 'EX': 39, 'NNS': 40, 
-    'SYM': 41, 'CC': 42, 'CD': 43, 'POS': 44, '<UNK>': 45, '<SKIP>': 46
-}
+POS_TAGS = [
+    'DET', 'ADJ', 'NOUN', 'ADP', 'NUM', 'VERB', 'PUNCT', 'ADV', 
+    'PART', 'CCONJ', 'PRON', 'X', 'INTJ', 'PROPN', 'SYM',
+    '<UNK>'
+]
+POS2ID = {x: i for i, x in enumerate(POS_TAGS)}
 
 # 0: deletion, 1: edit
 EDIT_TYPE2ID = {'0': 0, '1': 1}
@@ -96,11 +95,12 @@ def noise_seq(seq, drop_prob=0.25, shuf_dist=3, drop_set=None, keep_bigrams=Fals
     return dropped_seq
 
 
-def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len, 
-                 noise=False, add_del_tok=False, rel_path='', pos_path='', 
-                 tok_dist_path=None , categories_path=None, ARGS=None):
+def get_examples(data_path, tok2id, possible_labels, max_seq_len, 
+                 noise=False, add_del_tok=False,
+                 tok_dist_path=None, categories_path=None):
     global REL2ID
     global POS2ID
+    global ARGS
 
     label2id = {label: i for i, label in enumerate(possible_labels)}
     label2id['mask'] = len(label2id)
@@ -129,13 +129,23 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
     if tok_dist_path is not None:
         tok_dist_fp = open(tok_dist_path)
 
-    for i, (line, post_line, line_rels, line_pos) in enumerate(tqdm(
-            zip(open(text_path), open(text_post_path), open(rel_path), open(pos_path)))):
+    for i, (line) in enumerate(tqdm(open(data_path))):
+        parts = line.strip().split('\t')
+        if len(parts) == 7:
+            [revid, pre, post, _, _, pos, rels] = parts
+        elif len(parts) == 5:
+            [revid, pre, post, _, _] = parts
+            pos = ' '.join(['<UNK>'] * len(pre.strip().split()))
+            rels = ' '.join(['<UNK>'] * len(pre.strip().split()))
+        else:
+            skipped += 1
+            continue
+
         # ignore the unbiased sentences with tagging -- TODO -- toggle this?    
-        tokens = line.strip().split() # Pre-tokenized
-        post_tokens = post_line.strip().split()
-        rels = line_rels.strip().split()
-        pos = line_pos.strip().split()
+        tokens = pre.strip().split() # Pre-tokenized
+        post_tokens = post.strip().split()
+        rels = rels.strip().split()
+        pos = pos.strip().split()
 
         tok_diff = diff(tokens, post_tokens)
         pre_tok_labels, post_tok_labels = get_tok_labels(tok_diff)
@@ -191,10 +201,6 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
             or len(pre_tok_labels) != len(tok_dist):
             skipped += 1
             continue
-        # ignore lines that broke on non-asci chars (TODO FIX THIS)
-        if rels.count('<SKIP>') > (len(rels) * 1.0 / 2):
-            skipped += 1
-            continue
 
         try:
             replace_token = next( (chunk for tag, chunk in tok_diff if tag == '+') )[0]
@@ -209,16 +215,24 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
             skipped += 1
             continue
 
+        # leave room in the post for start/stop
+        if len(tokens) > max_seq_len or len(post_tokens) > max_seq_len - 1:
+            skipped += 1
+            continue
+
         # account for [CLS] and [SEP]
         # if len(tokens) >= max_seq_len:
-        tokens = tokens[:max_seq_len - 1]
-        pre_tok_labels = pre_tok_labels[:max_seq_len - 1]
-        post_tokens = post_tokens[:max_seq_len - 1]
-        pre_tok_labels = pre_tok_labels[:max_seq_len - 1]
-        post_tok_labels = post_tok_labels[:max_seq_len - 1]
-        tok_dist = tok_dist[:max_seq_len - 1]
-        rels = rels[:max_seq_len - 1]
-        pos = pos[:max_seq_len - 1]
+        # tokens = tokens[:max_seq_len - 1]
+        # pre_tok_labels = pre_tok_labels[:max_seq_len - 1]
+        # post_tokens = post_tokens[:max_seq_len - 1]
+        # pre_tok_labels = pre_tok_labels[:max_seq_len - 1]
+        # post_tok_labels = post_tok_labels[:max_seq_len - 1]
+        # tok_dist = tok_dist[:max_seq_len - 1]
+        # rels = rels[:max_seq_len - 1]
+        # pos = pos[:max_seq_len - 1]
+
+        if len(pre_tok_labels) > max_seq_len:
+            print(pre_tok_labels)
 
         if ARGS.predict_categories:
             tokens = ['[CLS]'] + tokens
@@ -230,8 +244,7 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
             pre_tok_labels = [label2id['mask']] + pre_tok_labels
             post_tok_labels = [label2id['mask']] + post_tok_labels
 
-        
-        
+
         post_input_tokens = ['行'] + post_tokens
         post_output_tokens = post_tokens + ['止'] 
 
@@ -262,11 +275,6 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
         input_mask = pad([0] * len(tokens), 1)
         pre_len = len(tokens)
 
-        # make sure its a real edit (only if we're not autoencoding)
-        if (text_path != text_post_path) and 1 not in pre_tok_label_ids:
-            skipped += 1
-            continue
-
         out['type_ids'].append( 0 if sum(post_tok_label_ids) == 0 else 1 )
         out['pre_ids'].append(pre_ids)
         out['pre_masks'].append(input_mask)
@@ -285,9 +293,11 @@ def get_examples(text_path, text_post_path, tok2id, possible_labels, max_seq_len
     return out
 
 
-def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len, 
-                   pickle_path=None, test=False, noise=False, add_del_tok=False, ARGS=None, 
+def get_dataloader(data_path, tok2id, batch_size, max_seq_len, 
+                   pickle_path=None, test=False, noise=False, add_del_tok=False, 
                    tok_dist_path=None, categories_path=None, sort_batch=True):
+    global ARGS
+
     def collate(data):
         if sort_batch:
             # sort by length for packing/padding
@@ -336,18 +346,14 @@ def get_dataloader(data_path, post_data_path, tok2id, batch_size, max_seq_len,
         examples = pickle.load(open(pickle_path, 'rb'))
     else:
         examples = get_examples(
-            text_path=data_path, 
-            text_post_path=post_data_path,
+            data_path=data_path, 
             tok2id=tok2id,
             possible_labels=["0", "1"],
             max_seq_len=max_seq_len,
             noise=noise,
             add_del_tok=add_del_tok,
-            rel_path=data_path + '.rel',
-            pos_path=data_path + '.pos',
             tok_dist_path=tok_dist_path,
-            categories_path=categories_path,
-            ARGS=ARGS)
+            categories_path=categories_path)
 
         pickle.dump(examples, open(pickle_path, 'wb'))
 

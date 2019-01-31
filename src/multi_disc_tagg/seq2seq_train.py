@@ -22,32 +22,21 @@ import functools
 from pytorch_pretrained_bert.modeling import BertEmbeddings
 from pytorch_pretrained_bert.optimization import BertAdam
 
-from seq2seq_data import get_dataloader
 import seq2seq_model
+
 from joint_args import ARGS
+from joint_data import get_dataloader
 
 import seq2seq_utils as utils
 
 
 BERT_MODEL = "bert-base-uncased"
 
-# TODO REFACTER AWAY ALL THIS JUNK
 
-train_data_prefix = ARGS.train
-test_data_prefix = ARGS.test
-
-working_dir = ARGS.working_dir
-if not os.path.exists(working_dir):
-    os.makedirs(working_dir)
+if not os.path.exists(ARGS.working_dir):
+    os.makedirs(ARGS.working_dir)
 
 
-TRAIN_TEXT = train_data_prefix + '.train.pre'
-TRAIN_TEXT_POST = train_data_prefix + '.train.post'
-
-TEST_TEXT = test_data_prefix + '.test.pre'
-TEST_TEXT_POST = test_data_prefix + '.test.post'
-
-WORKING_DIR = working_dir
 
 if ARGS.bert_encoder:
     TRAIN_BATCH_SIZE = 16
@@ -56,39 +45,33 @@ else:
     TRAIN_BATCH_SIZE = ARGS.train_batch_size
     TEST_BATCH_SIZE = ARGS.test_batch_size // ARGS.beam_width
 
-EPOCHS = ARGS.epochs
-
-MAX_SEQ_LEN = ARGS.max_seq_len
 
 CUDA = (torch.cuda.device_count() > 0)
                                                                 
 
 
 # # # # # # # # ## # # # ## # # DATA # # # # # # # # ## # # # ## # #
-tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
+tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=ARGS.working_dir + '/cache')
 tok2id = tokenizer.vocab
 tok2id['<del>'] = len(tok2id)
 
 
 if ARGS.pretrain_data: 
     pretrain_dataloader, num_pretrain_examples = get_dataloader(
-        ARGS.pretrain_data, ARGS.pretrain_data, 
-        tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/pretrain_data.pkl',
-        noise=True,
-        ARGS=ARGS)
+        ARGS.pretrain_data,
+        tok2id, TRAIN_BATCH_SIZE, ARGS.max_seq_len, ARGS.working_dir + '/pretrain_data.pkl',
+        noise=True)
 
 train_dataloader, num_train_examples = get_dataloader(
-    TRAIN_TEXT, TRAIN_TEXT_POST, 
-    tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/train_data.pkl',
+    ARGS.train, 
+    tok2id, TRAIN_BATCH_SIZE, ARGS.max_seq_len, ARGS.working_dir + '/train_data.pkl',
     add_del_tok=ARGS.add_del_tok, 
-    tok_dist_path=ARGS.tok_dist_train_path,
-    ARGS=ARGS)
+    tok_dist_path=ARGS.tok_dist_train_path)
 eval_dataloader, num_eval_examples = get_dataloader(
-    TEST_TEXT, TEST_TEXT_POST,
-    tok2id, TEST_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/test_data.pkl',
+    ARGS.test,
+    tok2id, TEST_BATCH_SIZE, ARGS.max_seq_len, ARGS.working_dir + '/test_data.pkl',
     test=True, add_del_tok=ARGS.add_del_tok, 
-    tok_dist_path=ARGS.tok_dist_test_path,
-    ARGS=ARGS)
+    tok_dist_path=ARGS.tok_dist_test_path)
 
 
 
@@ -111,7 +94,7 @@ print('NUM PARAMS: ', params)
 
 
 # # # # # # # # ## # # # ## # # OPTIMIZER # # # # # # # # ## # # # ## # #
-writer = SummaryWriter(WORKING_DIR)
+writer = SummaryWriter(ARGS.working_dir)
 
 if ARGS.bert_encoder:
     param_optimizer = list(model.named_parameters())
@@ -188,13 +171,13 @@ if ARGS.pretrain_data:
 print('INITIAL EVAL...')
 model.eval()
 hits, preds, golds, srcs = utils.run_eval(
-    model, eval_dataloader, tok2id, WORKING_DIR + '/results_initial.txt',
-    MAX_SEQ_LEN, ARGS.beam_width)
+    model, eval_dataloader, tok2id, ARGS.working_dir + '/results_initial.txt',
+    ARGS.max_seq_len, ARGS.beam_width)
 # writer.add_scalar('eval/partial_bleu', utils.get_partial_bleu(srcs, golds, srcs), epoch+1)
 writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), 0)
 writer.add_scalar('eval/true_hits', np.mean(hits), 0)
 
-for epoch in range(EPOCHS):
+for epoch in range(ARGS.epochs):
     print('EPOCH ', epoch)
     print('TRAIN...')
     model.train()
@@ -202,13 +185,13 @@ for epoch in range(EPOCHS):
     writer.add_scalar('train/loss', np.mean(losses), epoch+1)
     
     print('SAVING...')
-    model.save(WORKING_DIR + '/model_%d.ckpt' % (epoch+1))
+    model.save(ARGS.working_dir + '/model_%d.ckpt' % (epoch+1))
 
     print('EVAL...')
     model.eval()
     hits, preds, golds, srcs = utils.run_eval(
-        model, eval_dataloader, tok2id, WORKING_DIR + '/results_%d.txt' % epoch,
-        MAX_SEQ_LEN, ARGS.beam_width)
+        model, eval_dataloader, tok2id, ARGS.working_dir + '/results_%d.txt' % epoch,
+        ARGS.max_seq_len, ARGS.beam_width)
     # writer.add_scalar('eval/partial_bleu', utils.get_partial_bleu(preds, golds, srcs), epoch+1)
     writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), epoch+1)
     writer.add_scalar('eval/true_hits', np.mean(hits), epoch+1)

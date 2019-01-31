@@ -113,9 +113,8 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             pre_tok_label_id, post_tok_label_id, tok_dist,
-            replace_id, _, _, type_id
+            replace_id, _, _, type_id, _
         ) = batch
-
         post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=ignore_enrich)
         loss = loss_fn(post_logits, post_out_id, post_tok_label_id)
         loss.backward()

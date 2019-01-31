@@ -9,7 +9,7 @@ import numpy as np
 from nltk.parse.stanford import StanfordDependencyParser
 
 
-from seq2seq_data import UD_RELATIONS, REL2ID, POS2ID
+from joint_data import UD_RELATIONS, REL2ID, POS2ID
 
 
 class Featurizer:

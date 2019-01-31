@@ -2,7 +2,7 @@
 """
 train bert 
 
-python tagging_train.py --train ../../data/v5/final/bias --test ../../data/v5/final/bias --working_dir TEST/
+python tagging_train.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.megatest --working_dir TEST/
 """
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from pytorch_pretrained_bert.optimization import BertAdam
@@ -23,25 +23,18 @@ import argparse
 import sklearn.metrics as metrics
 
 import tagging_model
-from seq2seq_data import get_dataloader
 
+from joint_data import get_dataloader
 from joint_args import ARGS
+
 import tagging_utils
 
 
 
 
-train_data_prefix = ARGS.train
-test_data_prefix = ARGS.test
 if not os.path.exists(ARGS.working_dir):
     os.makedirs(ARGS.working_dir)
 
-
-TRAIN_TEXT = train_data_prefix + '.train.pre'
-TRAIN_TEXT_POST = train_data_prefix + '.train.post'
-
-TEST_TEXT = test_data_prefix + '.test.pre'
-TEST_TEXT_POST = test_data_prefix + '.test.post'
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -56,14 +49,14 @@ tok2id = tokenizer.vocab
 tok2id['<del>'] = len(tok2id)
 
 train_dataloader, num_train_examples = get_dataloader(
-    TRAIN_TEXT, TRAIN_TEXT_POST, 
+    ARGS.train, 
     tok2id, ARGS.train_batch_size, 
     ARGS.max_seq_len, ARGS.working_dir + '/train_data.pkl', 
-    categories_path=ARGS.train_categories_file, ARGS=ARGS)
+    categories_path=ARGS.train_categories_file)
 eval_dataloader, num_eval_examples = get_dataloader(
-    TEST_TEXT, TEST_TEXT_POST,
+    ARGS.test,
     tok2id, ARGS.test_batch_size, ARGS.max_seq_len, ARGS.working_dir + '/test_data.pkl',
-    test=True, categories_path=ARGS.test_categories_file, ARGS=ARGS)
+    test=True, categories_path=ARGS.test_categories_file)
 
 
 print('BUILDING MODEL...')
@@ -73,16 +66,14 @@ if ARGS.extra_features_top:
             cls_num_labels=ARGS.num_categories,
             tok_num_labels=ARGS.num_tok_labels,
             cache_dir=ARGS.working_dir + '/cache',
-            tok2id=tok2id,
-            args=ARGS)
+            tok2id=tok2id)
 elif ARGS.extra_features_bottom:
     model = tagging_model.BertForMultitaskWithFeaturesOnBottom.from_pretrained(
             ARGS.bert_model,
             cls_num_labels=ARGS.num_categories,
             tok_num_labels=ARGS.num_tok_labels,
             cache_dir=ARGS.working_dir + '/cache',
-            tok2id=tok2id,
-            args=ARGS)
+            tok2id=tok2id)
 else:
     model = tagging_model.BertForMultitask.from_pretrained(
         ARGS.bert_model,
@@ -95,7 +86,6 @@ if CUDA:
 
 print('PREPPING RUN...')
 # # # # # # # # ## # # # ## # # OPTIMIZER, LOSS # # # # # # # # ## # # # ## # #
-
 
 def make_optimizer(model, num_train_steps):
     param_optimizer = list(model.named_parameters())
@@ -130,10 +120,10 @@ writer = SummaryWriter(ARGS.working_dir)
 
 
 print('INITIAL EVAL...')
-# model.eval()
-# results = tagging_utils.run_inference(model, eval_dataloader, loss_fn, tokenizer)
-# writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), 0)
-# writer.add_scalar('eval/tok_acc', np.mean(results['labeling_hits']), 0)
+model.eval()
+results = tagging_utils.run_inference(model, eval_dataloader, loss_fn, tokenizer)
+writer.add_scalar('eval/tok_loss', np.mean(results['tok_loss']), 0)
+writer.add_scalar('eval/tok_acc', np.mean(results['labeling_hits']), 0)
 
 print('TRAINING...')
 model.train()
