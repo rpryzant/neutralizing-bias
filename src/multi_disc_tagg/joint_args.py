@@ -293,6 +293,12 @@ parser.add_argument(
     help="seperate enrichment embedidings for del/edit",
     action='store_true'
 )
+parser.add_argument(
+    "--enrich_concat",
+    help="enrich via concat + compress instead of add",
+    action='store_true'
+)
+
 
 
 # pretrain settings

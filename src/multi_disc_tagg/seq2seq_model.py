@@ -534,6 +534,8 @@ class Seq2Seq(nn.Module):
 class Seq2SeqEnrich(Seq2Seq):
     def __init__(self, vocab_size, hidden_size, emb_dim, dropout, tok2id):
         global CUDA
+        global ARGS
+        
         super(Seq2SeqEnrich, self).__init__(
             vocab_size, hidden_size, emb_dim, dropout, tok2id)
 
@@ -550,6 +552,8 @@ class Seq2SeqEnrich(Seq2Seq):
         # # because init_weights was called in super and dont want to fuq up embeddings
         # self.enricher.weight.data.uniform_(-0.1, 0.1)  
 
+        if ARGS.enrich_concat:
+            self.enrich_compressor = nn.Linear(hidden_size * 2, hidden_size)
 
     def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, type_id=None, ignore_enrich=False):
         global ARGS
@@ -568,7 +572,10 @@ class Seq2SeqEnrich(Seq2Seq):
         enrichment = tok_dist.unsqueeze(2) * enrichment
 
         if not ignore_enrich:
-            src_outputs = src_outputs + enrichment
+            if ARGS.enrich_concat:
+                src_outputs = self.enrich_compressor(torch.cat((src_outputs, enrichment), -1))
+            else:
+                src_outputs = src_outputs + enrichment
 
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_outputs, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)

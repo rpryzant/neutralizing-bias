@@ -23,6 +23,9 @@ class JointModel(nn.Module):
 
         self.token_sm = nn.Softmax(dim=2)
         self.time_sm = nn.Softmax(dim=1)
+        self.tok_threshold = nn.Threshold(
+            ARGS.zero_threshold,
+            -10000.0 if ARGS.sequence_softmax else 0.0)
 
     def inference_forward(self,
             pre_id, post_start_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=False,   # debias arggs
@@ -68,8 +71,7 @@ class JointModel(nn.Module):
             is_bias_probs = tok_probs[:, :, -1]
 
             if ARGS.zero_threshold > -10000.0:
-                mask = -10000 if ARGS.sequence_softmax else 0
-                tok_probs[tok_probs < ARGS.zero_threshold] = tok_probs[tok_probs < ARGS.zero_threshold] * mask
+                is_bias_probs = self.tok_threshold(is_bias_probs)
 
             if ARGS.sequence_softmax:
                 is_bias_probs = self.time_sm(is_bias_probs)
