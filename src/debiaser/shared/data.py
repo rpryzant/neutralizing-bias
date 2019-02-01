@@ -9,10 +9,11 @@ import torch.nn as nn
 from random import shuffle
 import random
 
-from joint_args import ARGS
+import sys; sys.path.append('.')
+from shared.args import ARGS
 
 
-UD_RELATIONS = [
+RELATIONS = [
     'det', 'amod', 'nsubj', 'prep', 'pobj', 'ROOT', 
     'attr', 'punct', 'advmod', 'compound', 'acl', 'agent', 
     'aux', 'ccomp', 'dobj', 'cc', 'conj', 'appos', 'nsubjpass', 
@@ -22,7 +23,7 @@ UD_RELATIONS = [
     'quantmod', 'dep', 'oprd', 'intj', 'dative', 'meta', 'csubjpass', 
     '<UNK>'
 ]
-REL2ID = {x: i for i, x in enumerate(UD_RELATIONS)}
+REL2ID = {x: i for i, x in enumerate(RELATIONS)}
 # from nltk.data.load('help/tagsets/upenn_tagset.pickle').keys()
 POS_TAGS = [
     'DET', 'ADJ', 'NOUN', 'ADP', 'NUM', 'VERB', 'PUNCT', 'ADV', 
@@ -219,17 +220,6 @@ def get_examples(data_path, tok2id, possible_labels, max_seq_len,
         if len(tokens) > max_seq_len or len(post_tokens) > max_seq_len - 1:
             skipped += 1
             continue
-
-        # account for [CLS] and [SEP]
-        # if len(tokens) >= max_seq_len:
-        # tokens = tokens[:max_seq_len - 1]
-        # pre_tok_labels = pre_tok_labels[:max_seq_len - 1]
-        # post_tokens = post_tokens[:max_seq_len - 1]
-        # pre_tok_labels = pre_tok_labels[:max_seq_len - 1]
-        # post_tok_labels = post_tok_labels[:max_seq_len - 1]
-        # tok_dist = tok_dist[:max_seq_len - 1]
-        # rels = rels[:max_seq_len - 1]
-        # pos = pos[:max_seq_len - 1]
 
         if len(pre_tok_labels) > max_seq_len:
             print(pre_tok_labels)

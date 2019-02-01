@@ -1,8 +1,8 @@
 # !/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# python seq2seq_train.py --train ../../data/v5/final/bias --test ../../data/v5/final/bias --working_dir TEST/
-# python seq2seq_train.py --train ../../data/v5/test_joined_testset/decoding --test ../../data/v5/test_joined_testset/decoding --working_dir TEST/ --batch_size 3 --hidden_size 8 --tok_dist_train_path ../../data/v5/test_joined_testset/decoding.train.probs
+# python train.py --train ../../../data/v6/corpus.wordbiased.tag.train --test ../../../data/v6/corpus.wordbiased.tag.test --working_dir TEST --train_batch_size 3 --test_batch_size 10  --hidden_size 32 --debug_skip
+
 from collections import defaultdict
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 from tqdm import tqdm
@@ -22,12 +22,14 @@ import functools
 from pytorch_pretrained_bert.modeling import BertEmbeddings
 from pytorch_pretrained_bert.optimization import BertAdam
 
-import seq2seq_model
 
-from joint_args import ARGS
-from joint_data import get_dataloader
 
-import seq2seq_utils as utils
+import model as seq2seq_model
+import sys; sys.path.append('.')
+from shared.args import ARGS
+from shared.data import get_dataloader
+
+import utils
 
 
 BERT_MODEL = "bert-base-uncased"
@@ -93,8 +95,7 @@ print('NUM PARAMS: ', params)
 
 
 
-# # # # # # # # ## # # # ## # # OPTIMIZER # # # # # # # # ## # # # ## # #
-writer = SummaryWriter(ARGS.working_dir)
+# # # # # # # # ## # # # ## # # OPTIMIZER, LOSS # # # # # # # # ## # # # ## # #
 
 if ARGS.bert_encoder:
     param_optimizer = list(model.named_parameters())
@@ -116,45 +117,10 @@ if ARGS.bert_encoder:
 else:
     optimizer = optim.Adam(model.parameters(), lr=0.0003)
 
+# loss_fn: maybe cross entopy loss, maybe a weighted version of it
+loss_fn, cross_entropy_loss = utils.build_loss_fn(vocab_size=len(tok2id))
 
-# # # # # # # # ## # # # ## # # LOSS # # # # # # # # ## # # # ## # #
-# TODO -- REFACTOR THIS BIG TIME!
-
-weight_mask = torch.ones(len(tok2id))
-weight_mask[0] = 0
-criterion = nn.CrossEntropyLoss(weight=weight_mask)
-per_tok_criterion = nn.CrossEntropyLoss(weight=weight_mask, reduction='none')
-
-if CUDA:
-    weight_mask = weight_mask.cuda()
-    criterion = criterion.cuda()
-    per_tok_criterion = per_tok_criterion.cuda()
-
-def cross_entropy_loss(logits, labels, apply_mask=None):
-    return criterion(
-        logits.contiguous().view(-1, len(tok2id)), 
-        labels.contiguous().view(-1))
-
-
-def weighted_cross_entropy_loss(logits, labels, apply_mask=None):
-    # weight apply_mask = wehere to apply weight
-    weights = apply_mask.contiguous().view(-1)
-    weights = ((ARGS.debias_weight - 1) * weights) + 1.0
-
-    per_tok_losses = per_tok_criterion(
-        logits.contiguous().view(-1, len(tok2id)), 
-        labels.contiguous().view(-1))
-
-    per_tok_losses = per_tok_losses * weights
-
-    loss = torch.mean(per_tok_losses[torch.nonzero(per_tok_losses)].squeeze())
-
-    return loss
-
-if ARGS.debias_weight == 1.0:
-    loss_fn = cross_entropy_loss
-else:
-    loss_fn = weighted_cross_entropy_loss
+writer = SummaryWriter(ARGS.working_dir)
 
 # # # # # # # # # # # PRETRAINING (optional) # # # # # # # # # # # # # # # #
 if ARGS.pretrain_data:

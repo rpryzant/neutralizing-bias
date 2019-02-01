@@ -2,16 +2,36 @@ from tqdm import tqdm
 import numpy as np
 import torch
 from torch.nn import CrossEntropyLoss
+from pytorch_pretrained_bert.optimization import BertAdam
 
-NUM_TOK_LABELS = 3
-
+import sys; sys.path.append('.')
+from shared.args import ARGS
 
 CUDA = (torch.cuda.device_count() > 0)
 
 
 
 
-def build_loss_fn(ARGS):
+def build_optimizer(model, num_train_steps):
+    global ARGS
+
+    param_optimizer = list(model.named_parameters())
+    no_decay = ['bias', 'gamma', 'beta']
+    optimizer_grouped_parameters = [
+        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
+        {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
+    ]
+    optimizer = BertAdam(optimizer_grouped_parameters,
+                         lr=ARGS.learning_rate,
+                         warmup=0.1,
+                         t_total=num_train_steps)
+    return optimizer
+
+
+
+def build_loss_fn():
+    global ARGS
+    
     weight_mask = torch.ones(ARGS.num_tok_labels)
     weight_mask[-1] = 0
 
@@ -58,6 +78,8 @@ def softmax(x, axis=None):
 
 
 def run_inference(model, eval_dataloader, loss_fn, tokenizer):
+    global ARGS
+
     out = {
         'input_toks': [],
         'post_toks': [],
@@ -71,6 +93,9 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
     }
 
     for step, batch in enumerate(tqdm(eval_dataloader)):
+        if ARGS.debug_skip and step > 2:
+            continue
+
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
 
@@ -97,6 +122,37 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
 
     return out
 
+def train_for_epoch(model, train_dataloader, loss_fn, optimizer):
+    global ARGS
+    
+    losses = []
+    
+    for step, batch in enumerate(tqdm(train_dataloader)):
+        if ARGS.debug_skip and step > 2:
+            continue
+    
+        if CUDA:
+            batch = tuple(x.cuda() for x in batch)
+        ( 
+            pre_id, pre_mask, pre_len, 
+            post_in_id, post_out_id, 
+            tok_label_id, _, tok_dist,
+            replace_id, rel_ids, pos_ids, type_ids, categories
+        ) = batch
+        bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask, 
+            rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
+        loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
+        if ARGS.predict_categories:
+            category_loss = cross_entropy(bias_logits, categories)
+            loss = loss + category_loss
+        loss.backward()
+        optimizer.step()
+        model.zero_grad()
+
+        losses.append(loss.detach().cpu().numpy())
+
+    return losses
+
 def to_probs(logits, lens):
     per_tok_probs = softmax(np.array(logits)[:, :, :2], axis=2)
     pos_scores = per_tok_probs[:, :, -1]
@@ -107,8 +163,10 @@ def to_probs(logits, lens):
     return out
 
 def is_ranking_hit(probs, labels, top=1):
+    global ARGS
+    
     # get rid of padding idx
-    [probs, labels] = list(zip(*[(p, l)  for p, l in zip(probs, labels) if l != NUM_TOK_LABELS - 1 ]))
+    [probs, labels] = list(zip(*[(p, l)  for p, l in zip(probs, labels) if l != ARGS.num_tok_labels - 1 ]))
     probs_indices = list(zip(np.array(probs)[:, 1], range(len(labels))))
     [_, top_indices] = list(zip(*sorted(probs_indices, reverse=True)[:top]))
     if sum([labels[i] for i in top_indices]) > 0:
@@ -117,7 +175,9 @@ def is_ranking_hit(probs, labels, top=1):
         return 0
 
 def tag_hits(logits, tok_labels, top=1):
-    probs = softmax(np.array(logits)[:, :, : NUM_TOK_LABELS - 1], axis=2)
+    global ARGS
+    
+    probs = softmax(np.array(logits)[:, :, : ARGS.num_tok_labels - 1], axis=2)
 
     hits = [
         is_ranking_hit(prob_dist, tok_label, top=top) 

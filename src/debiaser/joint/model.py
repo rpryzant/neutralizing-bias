@@ -2,12 +2,10 @@ import torch.nn as nn
 import torch
 from torch.autograd import Variable
 
-from seq2seq_utils import dump_outputs
-
 from tqdm import tqdm
 
-from joint_args import ARGS
-
+from shared.args import ARGS
+from seq2seq.utils import dump_outputs
 
 
 CUDA = (torch.cuda.device_count() > 0)
@@ -45,14 +43,14 @@ class JointModel(nn.Module):
         for i in range(ARGS.max_seq_len):
             # run input through the model
             with torch.no_grad():
-                decoder_logit, word_probs = self.forward(
+                decoder_logit, word_probs, tok_probs, _ = self.forward(
                     pre_id, tgt_input, pre_mask, pre_len, tok_dist, type_id,
                     rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
             next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
             tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
 
         # [batch, len ] predicted indices
-        return tgt_input.detach().cpu().numpy()
+        return tgt_input.detach().cpu().numpy(), tok_probs.detach().cpu().numpy()
                 
     def forward(self, 
         pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=False,   # debias arggs
@@ -61,6 +59,7 @@ class JointModel(nn.Module):
 
         if rel_ids is None or pos_ids is None:
             is_bias_probs = tok_dist
+            tok_logits = None
         else:
             category_logits, tok_logits = self.tagging_model(
                 pre_id, attention_mask=1.0-pre_mask, rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
@@ -79,7 +78,7 @@ class JointModel(nn.Module):
         post_logits, post_probs = self.debias_model(
             pre_id, post_in_id, pre_mask, pre_len,  is_bias_probs, type_id)
 
-        return post_logits, post_probs
+        return post_logits, post_probs, is_bias_probs, tok_logits
 
 
 
@@ -92,8 +91,9 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
     hits = []
     preds, golds, srcs = [], [], []
     for step, batch in enumerate(tqdm(dataloader)):
-        # if step > 1: continue
-    
+        if ARGS.debug_skip and step > 2:
+            continue
+
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         (
@@ -107,7 +107,7 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
         max_len = min(max_seq_len, pre_len[0].detach().cpu().numpy() + 10)
 
         with torch.no_grad():
-            predicted_toks = model.inference_forward(
+            predicted_toks, predicted_probs = model.inference_forward(
                 pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, type_id,
                 rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
 
@@ -117,7 +117,8 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
             predicted_toks, 
             replace_id.detach().cpu().numpy(), 
             pre_tok_label_id.detach().cpu().numpy(), 
-            id2tok, out_file)
+            id2tok, out_file,
+            pred_dists=predicted_probs)
         hits += new_hits
         preds += new_preds
         golds += new_golds

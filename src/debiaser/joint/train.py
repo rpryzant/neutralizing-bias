@@ -23,16 +23,19 @@ import functools
 from pytorch_pretrained_bert.modeling import BertEmbeddings
 from pytorch_pretrained_bert.optimization import BertAdam
 
-from seq2seq_data import get_dataloader
-import seq2seq_model
-import seq2seq_utils 
 
-from joint_args import ARGS
+import sys; sys.path.append(".")
+from shared.data import get_dataloader
+from shared.args import ARGS
 
-import joint_utils
+import seq2seq.model as seq2seq_model
+import seq2seq.utils as seq2seq_utils
 
-import tagging_model
-import tagging_utils
+import tagging.model as tagging_model
+import tagging.utils as tagging_utils
+
+import model as joint_modeling
+
 
 
 BERT_MODEL = "bert-base-uncased"
@@ -78,115 +81,31 @@ if ARGS.pretrain_data:
     pretrain_dataloader, num_pretrain_examples = get_dataloader(
         ARGS.pretrain_data, 
         tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/pretrain_data.pkl',
-        noise=True,
-        ARGS=ARGS)
+        noise=True)
 
 train_dataloader, num_train_examples = get_dataloader(
     ARGS.train,
     tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/train_data.pkl',
     add_del_tok=ARGS.add_del_tok, 
-    tok_dist_path=ARGS.tok_dist_train_path,
-    ARGS=ARGS)
+    tok_dist_path=ARGS.tok_dist_train_path)
 eval_dataloader, num_eval_examples = get_dataloader(
     ARGS.test,
     tok2id, TEST_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/test_data.pkl',
     test=True, add_del_tok=ARGS.add_del_tok, 
-    tok_dist_path=ARGS.tok_dist_test_path,
-    ARGS=ARGS)
+    tok_dist_path=ARGS.tok_dist_test_path)
 
 
 
 # # # # # # # # ## # # # ## # # MODELS # # # # # # # # ## # # # ## # #
 if ARGS.no_tok_enrich:
-    model = seq2seq_model.Seq2Seq(
+    debias_model = seq2seq_model.Seq2Seq(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
         emb_dim=768, dropout=0.2, tok2id=tok2id)
 else:
-    model = seq2seq_model.Seq2SeqEnrich(
+    debias_model = seq2seq_model.Seq2SeqEnrich(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
         emb_dim=768, dropout=0.2, tok2id=tok2id)
-if CUDA:
-    model = model.cuda()
 
-model_parameters = filter(lambda p: p.requires_grad, model.parameters())
-params = sum([np.prod(p.size()) for p in model_parameters])
-print('NUM PARAMS: ', params)
-
-
-
-# # # # # # # # ## # # # ## # # OPTIMIZER # # # # # # # # ## # # # ## # #
-writer = SummaryWriter(WORKING_DIR)
-
-if ARGS.bert_encoder:
-    param_optimizer = list(model.named_parameters())
-    no_decay = ['bias', 'gamma', 'beta']
-    optimizer_grouped_parameters = [
-        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
-        {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
-    ]
-
-    num_train_steps = (num_train_examples * 40)
-    if ARGS.pretrain_data: 
-        num_train_steps += (num_pretrain_examples * ARGS.pretrain_epochs)
-
-    optimizer = BertAdam(optimizer_grouped_parameters,
-                         lr=5e-5,
-                         warmup=0.1,
-                         t_total=num_train_steps)
-
-else:
-    optimizer = optim.Adam(model.parameters(), lr=ARGS.learning_rate)
-
-
-# # # # # # # # ## # # # ## # # LOSS # # # # # # # # ## # # # ## # #
-# TODO -- REFACTOR THIS BIG TIME!
-
-weight_mask = torch.ones(len(tok2id))
-weight_mask[0] = 0
-criterion = nn.CrossEntropyLoss(weight=weight_mask)
-per_tok_criterion = nn.CrossEntropyLoss(weight=weight_mask, reduction='none')
-
-if CUDA:
-    weight_mask = weight_mask.cuda()
-    criterion = criterion.cuda()
-    per_tok_criterion = per_tok_criterion.cuda()
-
-def cross_entropy_loss(logits, labels, apply_mask=None):
-    return criterion(
-        logits.contiguous().view(-1, len(tok2id)), 
-        labels.contiguous().view(-1))
-
-
-def weighted_cross_entropy_loss(logits, labels, apply_mask=None):
-    # weight apply_mask = wehere to apply weight
-    weights = apply_mask.contiguous().view(-1)
-    weights = ((ARGS.debias_weight - 1) * weights) + 1.0
-
-    per_tok_losses = per_tok_criterion(
-        logits.contiguous().view(-1, len(tok2id)), 
-        labels.contiguous().view(-1))
-
-    per_tok_losses = per_tok_losses * weights
-
-    loss = torch.mean(per_tok_losses[torch.nonzero(per_tok_losses)].squeeze())
-
-    return loss
-
-if ARGS.debias_weight == 1.0:
-    loss_fn = cross_entropy_loss
-else:
-    loss_fn = weighted_cross_entropy_loss
-
-
-
-
-##################################################################
-##################################################################
-##################################################################
-#                       TAGGER
-##################################################################
-##################################################################
-##################################################################
 
 if ARGS.extra_features_top:
     tagging_model= tagging_model.BertForMultitaskWithFeaturesOnTop.from_pretrained(
@@ -194,49 +113,63 @@ if ARGS.extra_features_top:
             cls_num_labels=ARGS.num_categories,
             tok_num_labels=ARGS.num_tok_labels,
             cache_dir=ARGS.working_dir + '/cache',
-            tok2id=tok2id,
-            args=ARGS)
+            tok2id=tok2id)
 elif ARGS.extra_features_bottom:
     tagging_model= tagging_model.BertForMultitaskWithFeaturesOnBottom.from_pretrained(
             ARGS.bert_model,
             cls_num_labels=ARGS.num_categories,
             tok_num_labels=ARGS.num_tok_labels,
             cache_dir=ARGS.working_dir + '/cache',
-            tok2id=tok2id,
-            args=ARGS)
+            tok2id=tok2id)
 else:
-    tagging_model= tagging_model.BertForMultitask.from_pretrained(
+    tagging_model = tagging_model.BertForMultitask.from_pretrained(
         ARGS.bert_model,
         cls_num_labels=ARGS.num_categories,
         tok_num_labels=ARGS.num_tok_labels,
-        cache_dir=ARGS.working_dir + '/cache',
-        tok2id=tok2id)
+        cache_dir=ARGS.working_dir + '/cache')
         
-if os.path.exists(ARGS.checkpoint):
-    print('LOADING FROM ' + ARGS.checkpoint)
-    tagging_model.load_state_dict(torch.load(ARGS.checkpoint))
+if ARGS.tagger_checkpoint is not None and os.path.exists(ARGS.tagger_checkpoint):
+    print('LOADING FROM ' + ARGS.tagger_checkpoint)
+    tagging_model.load_state_dict(torch.load(ARGS.tagger_checkpoint))
     print('...DONE')
-               
+
+
+
+joint_model = joint_modeling.JointModel(
+    debias_model=debias_model, tagging_model=tagging_model)
+
+
 if CUDA:
-    tagging_model = tagging_model.cuda()
+    joint_model = joint_model.cuda()
 
-tagging_loss_fn = tagging_utils.build_loss_fn(ARGS)
+model_parameters = filter(lambda p: p.requires_grad, joint_model.parameters())
+params = sum([np.prod(p.size()) for p in model_parameters])
+print('NUM PARAMS: ', params)
 
 
 
 
 
-joint_model = joint_utils.JointModel(debias_model=model, tagging_model=tagging_model)
-
+# # # # # # # # ## # # # ## # # OPTIMIZER, LOSS # # # # # # # # ## # # # ## # #
+tagging_loss_fn = tagging_utils.build_loss_fn()
+debias_loss_fn, cross_entropy_loss = seq2seq_utils.build_loss_fn(vocab_size=len(tok2id))
+optimizer = optim.Adam(
+    debias_model.parameters() if ARGS.freeze_tagger else joint_model.parameters(), 
+    lr=ARGS.learning_rate)
 
 
 
 # # # # # # # # # # # PRETRAINING (optional) # # # # # # # # # # # # # # # #
 if ARGS.pretrain_data:
+    pretrain_optim = optim.Adam(seq2seq_model.parameters(), lr=ARGS.learning_rate)
+
     print('PRETRAINING...')
     for epoch in range(ARGS.pretrain_epochs):
         joint_model.train()
         for step, batch in enumerate(tqdm(pretrain_dataloader)):
+            if ARGS.debug_skip and step > 2:
+                continue
+
             if CUDA: 
                 batch = tuple(x.cuda() for x in batch)
             (
@@ -248,7 +181,7 @@ if ARGS.pretrain_data:
             # dont pass tagger args = don't use TAGGER
             post_logits, post_probs = joint_model(
                 pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_ids)
-            loss = loss_fn(post_logits, post_out_id, post_tok_label_id)
+            loss = cross_entropy_loss(post_logits, post_out_id, post_tok_label_id)
             loss.backward()
             norm = nn.utils.clip_grad_norm_(joint_model.parameters(), 3.0)
             optimizer.step()
@@ -258,19 +191,27 @@ if ARGS.pretrain_data:
 
 
 # # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
+writer = SummaryWriter(ARGS.working_dir)
+
 print('INITIAL EVAL...')
-# joint_model.eval()
-# hits, preds, golds, srcs = joint_utils.run_eval(
-#     joint_model, eval_dataloader, tok2id, WORKING_DIR + '/results_initial.txt',
-#     MAX_SEQ_LEN, ARGS.beam_width)
-# writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), 0)
-# writer.add_scalar('eval/true_hits', np.mean(hits), 0)
+joint_model.eval()
+hits, preds, golds, srcs = joint_modeling.run_eval(
+    joint_model, eval_dataloader, tok2id, WORKING_DIR + '/results_initial.txt',
+    MAX_SEQ_LEN, ARGS.beam_width)
+writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), 0)
+writer.add_scalar('eval/true_hits', np.mean(hits), 0)
 
 for epoch in range(EPOCHS):
     print('EPOCH ', epoch)
     print('TRAIN...')
     joint_model.train()
     for step, batch in enumerate(tqdm(train_dataloader)):
+        if ARGS.debug_skip and step > 2:
+            continue
+        print(joint_model.debias_model.output_projection.weight.data)
+        print(joint_model.tagging_model.tok_classifier.enricher.weight.data)
+        print()
+
         if CUDA: 
             batch = tuple(x.cuda() for x in batch)
         (
@@ -279,10 +220,12 @@ for epoch in range(EPOCHS):
             pre_tok_label_id, post_tok_label_id, tok_dist,
             replace_id, rel_ids, pos_ids, type_ids, categories
         ) = batch      
-        post_logits, post_probs = joint_model(
+        post_logits, post_probs, tok_probs, tok_logits = joint_model(
             pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_ids,
             rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
-        loss = loss_fn(post_logits, post_out_id, post_tok_label_id)
+        loss = debias_loss_fn(post_logits, post_out_id, post_tok_label_id)
+        tok_loss = tagging_loss_fn(tok_logits, pre_tok_label_id, apply_mask=pre_tok_label_id)
+        loss = loss + (ARGS.tag_loss_mixing_prob * tok_loss)
         loss.backward()
         norm = nn.utils.clip_grad_norm_(joint_model.parameters(), 3.0)
         optimizer.step()
@@ -294,31 +237,11 @@ for epoch in range(EPOCHS):
 
     print('EVAL...')
     joint_model.eval()
-    hits, preds, golds, srcs = joint_utils.run_eval(
+    hits, preds, golds, srcs = joint_modeling.run_eval(
         joint_model, eval_dataloader, tok2id, WORKING_DIR + '/results_%d.txt' % epoch,
         MAX_SEQ_LEN, ARGS.beam_width)
-
-    # writer.add_scalar('eval/partial_bleu', utils.get_partial_bleu(preds, golds, srcs), epoch+1)
     writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), epoch+1)
     writer.add_scalar('eval/true_hits', np.mean(hits), epoch+1)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

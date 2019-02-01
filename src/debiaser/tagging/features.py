@@ -8,9 +8,8 @@ import numpy as np
 
 from nltk.parse.stanford import StanfordDependencyParser
 
-
-from joint_data import UD_RELATIONS, REL2ID, POS2ID
-
+import sys; sys.path.append('.')
+from shared.data import REL2ID, POS2ID
 
 class Featurizer:
 
@@ -19,17 +18,8 @@ class Featurizer:
         self.id2tok = {x: tok for tok, x in tok2id.items()}
         self.pad_id = pad_id
 
-        self.pos2id = {
-            key: idx for idx, key in enumerate(
-                nltk.data.load('help/tagsets/upenn_tagset.pickle').keys())
-        }
-        self.pos2id['<UNK>'] = len(self.pos2id)
-        
-        self.rel2id = {x: i for i, x in enumerate(UD_RELATIONS)}
-        self.rel2id['<UNK>'] = len(self.rel2id)
-
-        # self.parser = StanfordDependencyParser(
-        #     model_path="edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz")    
+        self.pos2id = POS2ID
+        self.rel2id = REL2ID
 
         self.lexicons = {
             'assertives': self.read_lexicon('lexicons/assertives_hooper1975.txt'),

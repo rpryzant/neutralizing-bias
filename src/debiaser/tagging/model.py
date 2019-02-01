@@ -3,11 +3,12 @@ import pytorch_pretrained_bert.modeling as modeling
 import torch
 import torch.nn as nn
 import numpy as np
-import ops
 import copy
 
-import tagging_features
-from joint_args import ARGS
+import sys; sys.path.append('.')
+import sys; sys.path.append('tagging/')   # so that the joint model can see this filter
+import features
+from shared.args import ARGS
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -47,7 +48,6 @@ class BertForMultitask(PreTrainedBertModel):
         cls_logits = self.cls_dropout(cls_logits)
 
         # NOTE -- dropout is after proj, which is non-standard
-        #      -- switch back if nessicary!
         tok_logits = self.tok_classifier(sequence_output)
         tok_logits = self.tok_dropout(tok_logits)
 
@@ -174,7 +174,7 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
         
         self.bert = BertModel(config)
         
-        self.featurizer = tagging_features.Featurizer(
+        self.featurizer = features.Featurizer(
             tok2id, lexicon_feature_bits=ARGS.lexicon_feature_bits) 
         # TODO -- don't hardcode this...
         nfeats = 90 if ARGS.lexicon_feature_bits == 1 else 118
@@ -207,7 +207,7 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
         labels=None, rel_ids=None, pos_ids=None, categories=None):
         global ARGS
         global CUDA
-        
+
         features = self.featurizer.featurize_batch(
             input_ids.detach().cpu().numpy(), 
             rel_ids.detach().cpu().numpy(), 
@@ -239,7 +239,7 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
         super(BertForMultitaskWithFeaturesOnBottom, self).__init__(config)
         global ARGS
         
-        self.featurizer = tagging_features.Featurizer(
+        self.featurizer = features.Featurizer(
             tok2id, lexicon_feature_bits=ARGS.lexicon_feature_bits) 
         # TODO -- don't hardcode this...
         nfeats = 90 if ARGS.lexicon_feature_bits == 1 else 118

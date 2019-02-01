@@ -38,6 +38,12 @@ parser.add_argument("--learning_rate",
     default=0.0003, type=float, 
     help="learning rate (set for seq2seq. for BERT tagger do more like ~ 3e-5")
 
+parser.add_argument("--debug_skip", 
+    help="cut out of training/testing after 2 iterations (for testing)",
+    action='store_true')
+
+
+
 
 ##################################################################################
 ##################################################################################
@@ -56,6 +62,18 @@ parser.add_argument(
     "--zero_threshold",
     type=float, default=-10000.0,
     help='threshold for zeroing-out token scores')
+parser.add_argument(
+    "--tagger_checkpoint",
+    type=str, default=None,
+    help='tagger checkpoint to load')
+parser.add_argument(
+    "--freeze_tagger",
+    action='store_true',
+    help='dont train the tagger')
+parser.add_argument(
+    "--tag_loss_mixing_prob",
+    type=float, default=0.0,
+    help='dont train the tagger')
 
 
 

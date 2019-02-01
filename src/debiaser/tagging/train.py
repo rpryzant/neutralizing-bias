@@ -2,7 +2,7 @@
 """
 train bert 
 
-python tagging_train.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.megatest --working_dir TEST/
+python tagging/train.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.test --working_dir TEST --train_batch_size 3 --test_batch_size 10  --hidden_size 32 --debug_skip
 """
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from pytorch_pretrained_bert.optimization import BertAdam
@@ -22,14 +22,12 @@ from tensorboardX import SummaryWriter
 import argparse
 import sklearn.metrics as metrics
 
-import tagging_model
 
-from joint_data import get_dataloader
-from joint_args import ARGS
-
-import tagging_utils
-
-
+import model as tagging_model
+import utils as tagging_utils
+import sys; sys.path.append('.')
+from shared.data import get_dataloader
+from shared.args import ARGS
 
 
 if not os.path.exists(ARGS.working_dir):
@@ -40,6 +38,10 @@ CUDA = (torch.cuda.device_count() > 0)
 
 if CUDA:
     print('USING CUDA')
+
+
+
+# # # # # # # # ## # # # ## # # DATA # # # # # # # # ## # # # ## # #
 
 
 
@@ -57,6 +59,8 @@ eval_dataloader, num_eval_examples = get_dataloader(
     ARGS.test,
     tok2id, ARGS.test_batch_size, ARGS.max_seq_len, ARGS.working_dir + '/test_data.pkl',
     test=True, categories_path=ARGS.test_categories_file)
+
+# # # # # # # # ## # # # ## # # MODEL # # # # # # # # ## # # # ## # #
 
 
 print('BUILDING MODEL...')
@@ -85,25 +89,14 @@ if CUDA:
     model = model.cuda()
 
 print('PREPPING RUN...')
+
 # # # # # # # # ## # # # ## # # OPTIMIZER, LOSS # # # # # # # # ## # # # ## # #
 
-def make_optimizer(model, num_train_steps):
-    param_optimizer = list(model.named_parameters())
-    no_decay = ['bias', 'gamma', 'beta']
-    optimizer_grouped_parameters = [
-        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
-        {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
-    ]
-    optimizer = BertAdam(optimizer_grouped_parameters,
-                         lr=ARGS.learning_rate,
-                         warmup=0.1,
-                         t_total=num_train_steps)
-    return optimizer
 
-optimizer = make_optimizer(
+optimizer = tagging_utils.build_optimizer(
     model, int((num_train_examples * ARGS.epochs) / ARGS.train_batch_size))
 
-loss_fn = tagging_utils.build_loss_fn(ARGS)
+loss_fn = tagging_utils.build_loss_fn()
 
 if ARGS.predict_categories:
     category_criterion = CrossEntropyLoss()
@@ -114,7 +107,7 @@ if ARGS.predict_categories:
         logsoftmax = nn.LogSoftmax()
         return torch.mean(torch.sum(- soft_targets * logsoftmax(pred), 1))
 
-# # # # # # # # ## # # # ## # # END LOSS # # # # # # # # ## # # # ## # #
+# # # # # # # # ## # # # ## # # TRAIN # # # # # # # # ## # # # ## # #
 
 writer = SummaryWriter(ARGS.working_dir)
 
@@ -130,30 +123,10 @@ model.train()
 train_step = 0
 for epoch in range(ARGS.epochs):
     print('STARTING EPOCH ', epoch)
-    for step, batch in enumerate(tqdm(train_dataloader)):
-        if CUDA:
-            batch = tuple(x.cuda() for x in batch)
-        ( 
-            pre_id, pre_mask, pre_len, 
-            post_in_id, post_out_id, 
-            tok_label_id, _, tok_dist,
-            replace_id, rel_ids, pos_ids, type_ids, categories
-        ) = batch
-        bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask, 
-            rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
-        loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
-        if ARGS.predict_categories:
-            category_loss = cross_entropy(bias_logits, categories)
-            print(category_loss)
-            loss = loss + category_loss
-        loss.backward()
-        optimizer.step()
-        model.zero_grad()
-        if train_step % 100 == 0:
-            writer.add_scalar('train/loss', loss.data[0], train_step)
-        train_step += 1
+    losses = tagging_utils.train_for_epoch(model, train_dataloader, loss_fn, optimizer)
+    writer.add_scalar('train/loss', np.mean(losses), epoch + 1)
 
-    # eval
+        # eval
     print('EVAL...')
     model.eval()
     results = tagging_utils.run_inference(model, eval_dataloader, loss_fn, tokenizer)
@@ -161,8 +134,8 @@ for epoch in range(ARGS.epochs):
     writer.add_scalar('eval/tok_acc', np.mean(results['labeling_hits']), epoch + 1)
 
     model.train()
+
     print('SAVING...')
-    
     torch.save(model.state_dict(), ARGS.working_dir + '/model_%d.ckpt' % epoch)    
     
 

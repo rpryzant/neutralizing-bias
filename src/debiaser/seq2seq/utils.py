@@ -6,60 +6,10 @@ import torch.nn as nn
 from tqdm import tqdm
 from simplediff import diff
 
+import sys; sys.path.append('.')
+from shared.args import ARGS
 
 CUDA = (torch.cuda.device_count() > 0)
-
-
-########################################################
-####### PARTIAL BLEU....TODO THINK ABOUT THIS ##########
-########################################################
-
-def partial_bleu_stats(hypothesis, reference, source):
-    """Compute statistics for BLEU."""
-    ref_unique = set(reference) - set(source) 
-    # print(ref_unique)
-    # print(diff(reference, source))
-
-    def valid_ngram(ngram):
-        return len(set(ngram) & ref_unique) > 0
-
-    stats = []
-    stats.append(len(hypothesis))
-    stats.append(len(reference))
-    for n in range(1, 5):
-        s_ngrams = Counter(
-            [tuple(hypothesis[i:i + n]) for i in range(len(hypothesis) + 1 - n)]
-        )
-        r_ngrams = Counter(
-            [tuple(reference[i:i + n]) for i in range(len(reference) + 1 - n)
-            if valid_ngram(reference[i:i + n])]
-        )
-        stats.append(max([sum((s_ngrams & r_ngrams).values()), 0]))
-        stats.append(max([len(hypothesis) + 1 - n, 0]))
-
-    return stats
-
-
-def partial_bleu(stats):
-    """Compute BLEU given n-gram statistics."""
-    if len(list(filter(lambda x: x == 0, stats))) > 0:
-        return 0
-    (c, r) = stats[:2]
-    # print(c, r, stats)
-    log_bleu_prec = sum(
-        [math.log(float(x) / y) for x, y in zip(stats[2::2], stats[3::2])]
-    ) / 4.
-    return math.exp(min([0, 1 - float(r) / c]) + log_bleu_prec)
-
-
-def get_partial_bleu(hypotheses, reference, source):
-    """Get validation BLEU score for dev set."""
-    stats = np.array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
-    for hyp, ref, src in zip(hypotheses, reference, source):
-        stats += np.array(partial_bleu_stats(hyp, ref, src))
-    print(100 * partial_bleu(stats))
-    return 100 * partial_bleu(stats)
-
 
 
 
@@ -102,11 +52,57 @@ def get_bleu(hypotheses, reference):
 #############################################################
 
 
+def build_loss_fn(vocab_size):
+    global ARGS
+
+    weight_mask = torch.ones(vocab_size)
+    weight_mask[0] = 0
+    criterion = nn.CrossEntropyLoss(weight=weight_mask)
+    per_tok_criterion = nn.CrossEntropyLoss(weight=weight_mask, reduction='none')
+
+    if CUDA:
+        weight_mask = weight_mask.cuda()
+        criterion = criterion.cuda()
+        per_tok_criterion = per_tok_criterion.cuda()
+
+    def cross_entropy_loss(logits, labels, apply_mask=None):
+        return criterion(
+            logits.contiguous().view(-1, vocab_size), 
+            labels.contiguous().view(-1))
+
+
+    def weighted_cross_entropy_loss(logits, labels, apply_mask=None):
+        # weight apply_mask = wehere to apply weight
+        weights = apply_mask.contiguous().view(-1)
+        weights = ((ARGS.debias_weight - 1) * weights) + 1.0
+
+        per_tok_losses = per_tok_criterion(
+            logits.contiguous().view(-1, vocab_size), 
+            labels.contiguous().view(-1))
+
+        per_tok_losses = per_tok_losses * weights
+
+        loss = torch.mean(per_tok_losses[torch.nonzero(per_tok_losses)].squeeze())
+
+        return loss
+
+    if ARGS.debias_weight == 1.0:
+        loss_fn = cross_entropy_loss
+    else:
+        loss_fn = weighted_cross_entropy_loss
+
+    return loss_fn, cross_entropy_loss
+
+
 def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich=False):
     global CUDA
-
+    global ARGS
+    
     losses = []
     for step, batch in enumerate(tqdm(dataloader)):
+        if ARGS.debug_skip and step > 2:
+            continue
+    
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         (
@@ -127,14 +123,17 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
     return losses
 
 
-def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dist, id2tok, out_file):
+def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dist, id2tok, out_file,
+        pred_dists=None):
     out_hits = []
     preds_for_bleu = []
     golds_for_bleu = []
     srcs_for_bleu = []
 
-    for src_seq, gold_seq, pred_seq, gold_replace, gold_dist in zip(
-        src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dist):
+    if pred_dists is None:
+        pred_dists = [''] * len(src_ids)
+    for src_seq, gold_seq, pred_seq, gold_replace, gold_dist, pred_dist in zip(
+        src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dist, pred_dists):
 
         src_seq = [id2tok[x] for x in src_seq]
         gold_seq = [id2tok[x] for x in gold_seq]
@@ -155,6 +154,7 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dis
             print('GOLD SEQ: \t', gold_seq.encode('utf-8'), file=out_file)
             print('PRED SEQ:\t', pred_seq.encode('utf-8'), file=out_file)
             print('GOLD DIST: \t', list(gold_dist), file=out_file)
+            print('PRED DIST: \t', list(pred_dist), file=out_file)
             print('GOLD TOK: \t', gold_replace.encode('utf-8'), file=out_file)
             print('PRED TOK: \t', pred_replace, file=out_file)
         except UnicodeEncodeError:
@@ -173,6 +173,8 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dis
 
 
 def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1):
+    global ARGS
+
     id2tok = {x: tok for (tok, x) in tok2id.items()}
 
     weight_mask = torch.ones(len(tok2id))
@@ -185,7 +187,8 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
     hits = []
     preds, golds, srcs = [], [], []
     for step, batch in enumerate(tqdm(dataloader)):
-        # if step > 1: continue
+        if ARGS.debug_skip and step > 2:
+            continue
     
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
