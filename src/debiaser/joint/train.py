@@ -184,7 +184,7 @@ if ARGS.pretrain_data:
             loss = cross_entropy_loss(post_logits, post_out_id, post_tok_label_id)
             loss.backward()
             norm = nn.utils.clip_grad_norm_(joint_model.parameters(), 3.0)
-            optimizer.step()
+            pretrain_optim.step()
             joint_model.zero_grad()
             
 
