@@ -179,7 +179,7 @@ if ARGS.pretrain_data:
                 replace_id, rel_ids, pos_ids, type_ids, categories
             ) = batch      
             # dont pass tagger args = don't use TAGGER
-            post_logits, post_probs = joint_model(
+            post_logits, post_probs, tok_probs, tok_logits = joint_model(
                 pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_ids)
             loss = cross_entropy_loss(post_logits, post_out_id, post_tok_label_id)
             loss.backward()
@@ -208,9 +208,6 @@ for epoch in range(EPOCHS):
     for step, batch in enumerate(tqdm(train_dataloader)):
         if ARGS.debug_skip and step > 2:
             continue
-        print(joint_model.debias_model.output_projection.weight.data)
-        print(joint_model.tagging_model.tok_classifier.enricher.weight.data)
-        print()
 
         if CUDA: 
             batch = tuple(x.cuda() for x in batch)
