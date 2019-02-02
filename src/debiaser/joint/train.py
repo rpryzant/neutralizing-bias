@@ -161,7 +161,7 @@ optimizer = optim.Adam(
 
 # # # # # # # # # # # PRETRAINING (optional) # # # # # # # # # # # # # # # #
 if ARGS.pretrain_data:
-    pretrain_optim = optim.Adam(seq2seq_model.parameters(), lr=ARGS.learning_rate)
+    pretrain_optim = optim.Adam(debias_model.parameters(), lr=ARGS.learning_rate)
 
     print('PRETRAINING...')
     for epoch in range(ARGS.pretrain_epochs):
