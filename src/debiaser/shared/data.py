@@ -216,13 +216,10 @@ def get_examples(data_path, tok2id, possible_labels, max_seq_len,
             skipped += 1
             continue
 
-        # leave room in the post for start/stop
-        if len(tokens) > max_seq_len or len(post_tokens) > max_seq_len - 1:
+        # leave room in the post for start/stop and possible category/class token
+        if len(tokens) > max_seq_len - 1 or len(post_tokens) > max_seq_len - 1:
             skipped += 1
             continue
-
-        if len(pre_tok_labels) > max_seq_len:
-            print(pre_tok_labels)
 
         if ARGS.predict_categories:
             tokens = ['[CLS]'] + tokens
