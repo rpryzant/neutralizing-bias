@@ -2,7 +2,7 @@
 implements the regression baseline from
     http://www.aclweb.org/anthology/P13-1162
 
-python tagging_baseline.py --train ../../data/v5/final/bias --test ../../data/v5/final/bias --working_dir TEST/
+python tagging/baseline.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.test --working_dir TEST --train_batch_size 128 --test_batch_size 128
 """
 import sys
 import os
@@ -15,24 +15,20 @@ from sklearn.linear_model import LogisticRegression
 from scipy.sparse import csr_matrix
 import scipy
 
-from tagging_features import Featurizer
-from seq2seq_data import get_dataloader
-from tagging_args import ARGS
-from tagging_utils import is_ranking_hit
+
+from utils import is_ranking_hit
+from features import Featurizer
+import sys; sys.path.append('.')
+from shared.data import get_dataloader
+from shared.args import ARGS
 
 
 
-train_data_prefix = ARGS.train
-test_data_prefix = ARGS.test
+
 if not os.path.exists(ARGS.working_dir):
     os.makedirs(ARGS.working_dir)
 
 
-TRAIN_TEXT = train_data_prefix + '.train.pre'
-TRAIN_TEXT_POST = train_data_prefix + '.train.post'
-
-TEST_TEXT = test_data_prefix + '.test.pre'
-TEST_TEXT_POST = test_data_prefix + '.test.post'
 
 print('LOADING DATA...')
 tokenizer = BertTokenizer.from_pretrained(ARGS.bert_model, cache_dir=ARGS.working_dir + '/cache')
@@ -40,12 +36,12 @@ tok2id = tokenizer.vocab
 tok2id['<del>'] = len(tok2id)
 
 train_dataloader, num_train_examples = get_dataloader(
-    TRAIN_TEXT, TRAIN_TEXT_POST, 
-    tok2id, ARGS.train_batch_size, ARGS.max_seq_len, ARGS.working_dir + '/train_data.pkl', ARGS=ARGS)
+    ARGS.train,
+    tok2id, ARGS.train_batch_size, ARGS.max_seq_len, ARGS.working_dir + '/train_data.pkl')
 eval_dataloader, num_eval_examples = get_dataloader(
-    TEST_TEXT, TEST_TEXT_POST,
+    ARGS.test,
     tok2id, ARGS.test_batch_size, ARGS.max_seq_len, ARGS.working_dir + '/test_data.pkl',
-    test=True, ARGS=ARGS)
+    test=True)
 
 featurizer = Featurizer(tok2id)
 
@@ -58,7 +54,7 @@ def data_for_scipy(dataloader, by_seq=False):
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             tok_label_id, _, tok_dist,
-            replace_id, rel_ids, pos_ids, type_ids
+            replace_id, rel_ids, pos_ids, type_ids, categories
         ) = batch   
         pre_id = pre_id.numpy()
         pre_len = pre_len.numpy()
@@ -73,9 +69,10 @@ def data_for_scipy(dataloader, by_seq=False):
             for ti in range(seq_len):
                 word_features = np.zeros(len(tok2id))
                 word_features[id_seq[ti]] = 1.0
-                
-                timestep_vec = np.concatenate((word_features, seq_feats[ti]))
-                
+
+                timestep_vec = word_features
+                #timestep_vec = np.concatenate((word_features, seq_feats[ti]))
+
                 seqX.append(csr_matrix(timestep_vec))
                 seqY.append(label_seq[ti])
 
