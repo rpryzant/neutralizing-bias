@@ -54,10 +54,11 @@ class JointModel(nn.Module):
                 
     def forward(self, 
         pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=False,   # debias arggs
-        rel_ids=None, pos_ids=None, categories=None):      # tagging args
+        rel_ids=None, pos_ids=None, categories=None, ignore_tagger=False):      # tagging args
         global ARGS
 
-        if rel_ids is None or pos_ids is None:
+        if ignore_tagger:
+            # TODO -- make sure tok_dist is all 0's during pretraining!!! 
             is_bias_probs = tok_dist
             tok_logits = None
         else:
@@ -81,53 +82,11 @@ class JointModel(nn.Module):
         return post_logits, post_probs, is_bias_probs, tok_logits
 
 
+    def save(self, path):
+        torch.save(self.state_dict(), path)
 
-def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1):
-    id2tok = {x: tok for (tok, x) in tok2id.items()}
-
-    out_file = open(out_file_path, 'w')
-
-    losses = []
-    hits = []
-    preds, golds, srcs = [], [], []
-    for step, batch in enumerate(tqdm(dataloader)):
-        if ARGS.debug_skip and step > 2:
-            continue
-
-        if CUDA:
-            batch = tuple(x.cuda() for x in batch)
-        (
-            pre_id, pre_mask, pre_len, 
-            post_in_id, post_out_id, 
-            pre_tok_label_id, _, tok_dist,
-            replace_id, rel_ids, pos_ids, type_id, categories
-        ) = batch
-
-        post_start_id = tok2id['行']
-        max_len = min(max_seq_len, pre_len[0].detach().cpu().numpy() + 10)
-
-        with torch.no_grad():
-            predicted_toks, predicted_probs = model.inference_forward(
-                pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, type_id,
-                rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
-
-        new_hits, new_preds, new_golds, new_srcs = dump_outputs(
-            pre_id.detach().cpu().numpy(), 
-            post_out_id.detach().cpu().numpy(), 
-            predicted_toks, 
-            replace_id.detach().cpu().numpy(), 
-            pre_tok_label_id.detach().cpu().numpy(), 
-            id2tok, out_file,
-            pred_dists=predicted_probs)
-        hits += new_hits
-        preds += new_preds
-        golds += new_golds
-        srcs += new_srcs
-    out_file.close()
-
-    return hits, preds, golds, srcs
-
-
+    def load(self, path):
+        self.load_state_dict(torch.load(path))
 
 
 

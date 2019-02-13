@@ -102,8 +102,8 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
         ( 
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
-            tok_label_id, _, tok_dist,
-            replace_id, rel_ids, pos_ids, type_ids, categories
+            tok_label_id, _,
+            rel_ids, pos_ids, type_ids, categories
         ) = batch
 
         with torch.no_grad():
@@ -136,15 +136,12 @@ def train_for_epoch(model, train_dataloader, loss_fn, optimizer):
         ( 
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
-            tok_label_id, _, tok_dist,
-            replace_id, rel_ids, pos_ids, type_ids, categories
+            tok_label_id, _,
+            rel_ids, pos_ids, type_ids, categories
         ) = batch
         bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask, 
             rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
         loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
-        if ARGS.predict_categories:
-            category_loss = cross_entropy(bias_logits, categories)
-            loss = loss + category_loss
         loss.backward()
         optimizer.step()
         model.zero_grad()

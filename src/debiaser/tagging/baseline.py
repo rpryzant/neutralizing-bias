@@ -70,7 +70,7 @@ def data_for_scipy(dataloader, by_seq=False):
                 word_features = np.zeros(len(tok2id))
                 word_features[id_seq[ti]] = 1.0
 
-                timestep_vec = word_features
+                timestep_vec = seq_feats[ti]
                 #timestep_vec = np.concatenate((word_features, seq_feats[ti]))
 
                 seqX.append(csr_matrix(timestep_vec))

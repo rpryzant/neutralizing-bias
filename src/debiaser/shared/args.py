@@ -3,7 +3,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--train",
     help="train prefix",
-    required=True
 )
 parser.add_argument(
     "--test",
@@ -18,6 +17,11 @@ parser.add_argument(
 parser.add_argument(
     "--checkpoint",
     help="model checkpoint to continue from (INFERENCE ONLY)",
+    type=str, default=''
+)
+parser.add_argument(
+    "--inference_file",
+    help="output path for inference outputs",
     type=str, default=''
 )
 parser.add_argument(
@@ -106,18 +110,6 @@ parser.add_argument(
     "--test_categories_file",
     type=str, default=None,
     help='pointer to wikipedia categories')
-parser.add_argument(
-    "--argmax_categories",
-    action='store_true',
-    help='replace distribution with one-hot')
-parser.add_argument(
-    "--category_threshold",
-    default=0.0, type=float,
-    help='threshold ones')
-parser.add_argument(
-    "--predict_categories",
-    action='store_true',
-    help='use [CLS] to predict categories')
 parser.add_argument(
     "--concat_categories",
     action='store_true',
@@ -231,44 +223,6 @@ parser.add_argument(
     type=int, default=256
 )
 
-
-
-# taking tagging output options
-parser.add_argument(
-    "--tok_dist_train_path",
-    help="token distributions to use",
-    type=str, default=None
-)
-parser.add_argument(
-    "--tok_dist_test_path",
-    help="token distributions to use",
-    type=str, default=None
-)
-parser.add_argument(
-    "--tok_dist_softmax_prob",
-    help="prob of passing tok_dist through softmax",
-    type=float, default=0.0
-)
-parser.add_argument(
-    "--tok_dist_mix_prob",
-    help="prob of giving tok_dist instead of true tok labels (0 = all tok dist, 1 = no tok dist)",
-    type=float, default=0.0
-)
-parser.add_argument(
-    "--tok_dist_noise_prob",
-    help="prob of replacing tok_dist with noisy one-hot vector",
-    type=float, default=0.0
-)
-parser.add_argument(
-    "--tok_dist_argmax",
-    help="replace tok dist with bone-hot based on argmax",
-    action='store_true'
-)
-parser.add_argument(
-    "--tok_dist_threshold",
-    help="threshold to replace probs with 1s on tok dist",
-    type=float, default=0
-)
 
 
 

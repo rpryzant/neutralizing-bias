@@ -1,7 +1,7 @@
 """
 finetune both models jointly
 
-python joint_train.py --train ../../data/v5/final/bias --test ../../data/v5/final/bias --working_dir TEST/ --train_batch_size 32 --test_batch_size 16 
+python joint/train.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.test --debug_skip --hidden_size 16 --working_dir TEST --max_seq_len 10 --train_batch_size 2 --test_batch_size 2
 """
 
 from collections import defaultdict
@@ -34,45 +34,27 @@ import seq2seq.utils as seq2seq_utils
 import tagging.model as tagging_model
 import tagging.utils as tagging_utils
 
-import model as joint_modeling
+import model as joint_model
+import utils as joint_utils
 
 
-
-BERT_MODEL = "bert-base-uncased"
-
-# TODO REFACTER AWAY ALL THIS JUNK
-
-train_data_prefix = ARGS.train
-test_data_prefix = ARGS.test
 
 working_dir = ARGS.working_dir
 if not os.path.exists(working_dir):
     os.makedirs(working_dir)
+    
+with open(working_dir + '/command.sh', 'w') as f:
+    f.write('python' + ' '.join(sys.argv) + '\n')
 
 
-TRAIN_TEXT = train_data_prefix + '.train.pre'
-TRAIN_TEXT_POST = train_data_prefix + '.train.post'
-
-TEST_TEXT = test_data_prefix + '.test.pre'
-TEST_TEXT_POST = test_data_prefix + '.test.post'
-
-WORKING_DIR = working_dir
-
-
-TRAIN_BATCH_SIZE = ARGS.train_batch_size
-TEST_BATCH_SIZE = ARGS.test_batch_size
-
-
-EPOCHS = ARGS.epochs
-
-MAX_SEQ_LEN = ARGS.max_seq_len
 
 CUDA = (torch.cuda.device_count() > 0)
                                                                 
 
 
 # # # # # # # # ## # # # ## # # DATA # # # # # # # # ## # # # ## # #
-tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=WORKING_DIR + '/cache')
+tokenizer = BertTokenizer.from_pretrained(
+    ARGS.bert_model, cache_dir=ARGS.working_dir + '/cache')
 tok2id = tokenizer.vocab
 tok2id['<del>'] = len(tok2id)
 
@@ -80,19 +62,19 @@ tok2id['<del>'] = len(tok2id)
 if ARGS.pretrain_data: 
     pretrain_dataloader, num_pretrain_examples = get_dataloader(
         ARGS.pretrain_data, 
-        tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/pretrain_data.pkl',
+        tok2id, 
+        ARGS.train_batch_size, 
+        ARGS.working_dir + '/pretrain_data.pkl',
         noise=True)
 
 train_dataloader, num_train_examples = get_dataloader(
     ARGS.train,
-    tok2id, TRAIN_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/train_data.pkl',
-    add_del_tok=ARGS.add_del_tok, 
-    tok_dist_path=ARGS.tok_dist_train_path)
+    tok2id, ARGS.train_batch_size, ARGS.working_dir + '/train_data.pkl',
+    add_del_tok=ARGS.add_del_tok)
 eval_dataloader, num_eval_examples = get_dataloader(
     ARGS.test,
-    tok2id, TEST_BATCH_SIZE, MAX_SEQ_LEN, WORKING_DIR + '/test_data.pkl',
-    test=True, add_del_tok=ARGS.add_del_tok, 
-    tok_dist_path=ARGS.tok_dist_test_path)
+    tok2id, ARGS.test_batch_size, ARGS.working_dir + '/test_data.pkl',
+    test=True, add_del_tok=ARGS.add_del_tok)
 
 
 
@@ -135,7 +117,7 @@ if ARGS.tagger_checkpoint is not None and os.path.exists(ARGS.tagger_checkpoint)
 
 
 
-joint_model = joint_modeling.JointModel(
+joint_model = joint_model.JointModel(
     debias_model=debias_model, tagging_model=tagging_model)
 
 
@@ -164,30 +146,14 @@ if ARGS.pretrain_data:
     pretrain_optim = optim.Adam(debias_model.parameters(), lr=ARGS.learning_rate)
 
     print('PRETRAINING...')
+    # TODO -- VERIFY THAT TAGGER IS ACTUALLY BEING IGNORED, I.E. TOK DIST IS ALL 0'S
     for epoch in range(ARGS.pretrain_epochs):
-        joint_model.train()
-        for step, batch in enumerate(tqdm(pretrain_dataloader)):
-            if ARGS.debug_skip and step > 2:
-                continue
-
-            if CUDA: 
-                batch = tuple(x.cuda() for x in batch)
-            (
-                pre_id, pre_mask, pre_len, 
-                post_in_id, post_out_id, 
-                pre_tok_label_id, post_tok_label_id, tok_dist,
-                replace_id, rel_ids, pos_ids, type_ids, categories
-            ) = batch      
-            # dont pass tagger args = don't use TAGGER
-            post_logits, post_probs, tok_probs, tok_logits = joint_model(
-                pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_ids)
-            loss = cross_entropy_loss(post_logits, post_out_id, post_tok_label_id)
-            loss.backward()
-            norm = nn.utils.clip_grad_norm_(joint_model.parameters(), 3.0)
-            pretrain_optim.step()
-            joint_model.zero_grad()
-            
-
+        print('EPOCH ', epoch)
+        print('TRAIN...')
+        losses = joint_utils.train_for_epoch(
+            joint_model, train_dataloader, pretrain_optim,
+            cross_entropy_loss, None, ignore_tagger=True)
+        writer.add_scalar('pretrain/loss', np.mean(losses), epoch + 1)
 
 
 # # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
@@ -195,48 +161,29 @@ writer = SummaryWriter(ARGS.working_dir)
 
 print('INITIAL EVAL...')
 joint_model.eval()
-hits, preds, golds, srcs = joint_modeling.run_eval(
-    joint_model, eval_dataloader, tok2id, WORKING_DIR + '/results_initial.txt',
-    MAX_SEQ_LEN, ARGS.beam_width)
+hits, preds, golds, srcs = joint_utils.run_eval(
+    joint_model, eval_dataloader, tok2id, ARGS.working_dir + '/results_initial.txt',
+    ARGS.max_seq_len, ARGS.beam_width)
 writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), 0)
 writer.add_scalar('eval/true_hits', np.mean(hits), 0)
 
-for epoch in range(EPOCHS):
+for epoch in range(ARGS.epochs):
     print('EPOCH ', epoch)
     print('TRAIN...')
-    joint_model.train()
-    for step, batch in enumerate(tqdm(train_dataloader)):
-        if ARGS.debug_skip and step > 2:
-            continue
-
-        if CUDA: 
-            batch = tuple(x.cuda() for x in batch)
-        (
-            pre_id, pre_mask, pre_len, 
-            post_in_id, post_out_id, 
-            pre_tok_label_id, post_tok_label_id, tok_dist,
-            replace_id, rel_ids, pos_ids, type_ids, categories
-        ) = batch      
-        post_logits, post_probs, tok_probs, tok_logits = joint_model(
-            pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_ids,
-            rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
-        loss = debias_loss_fn(post_logits, post_out_id, post_tok_label_id)
-        tok_loss = tagging_loss_fn(tok_logits, pre_tok_label_id, apply_mask=pre_tok_label_id)
-        loss = loss + (ARGS.tag_loss_mixing_prob * tok_loss)
-        loss.backward()
-        norm = nn.utils.clip_grad_norm_(joint_model.parameters(), 3.0)
-        optimizer.step()
-        joint_model.zero_grad()
+    losses = joint_utils.train_for_epoch(
+        joint_model, train_dataloader, optimizer,
+        debias_loss_fn, tagging_loss_fn, ignore_tagger=False)
+    writer.add_scalar('train/loss', np.mean(losses), epoch + 1)
         
     
     print('SAVING...')
-    # joint_model.save(WORKING_DIR + '/model_%d.ckpt' % (epoch+1))
+    joint_model.save(ARGS.working_dir + '/model_%d.ckpt' % (epoch + 1))
 
     print('EVAL...')
     joint_model.eval()
-    hits, preds, golds, srcs = joint_modeling.run_eval(
-        joint_model, eval_dataloader, tok2id, WORKING_DIR + '/results_%d.txt' % epoch,
-        MAX_SEQ_LEN, ARGS.beam_width)
+    hits, preds, golds, srcs = joint_utils.run_eval(
+        joint_model, eval_dataloader, tok2id, ARGS.working_dir + '/results_%d.txt' % epoch,
+        ARGS.max_seq_len, ARGS.beam_width)
     writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), epoch+1)
     writer.add_scalar('eval/true_hits', np.mean(hits), epoch+1)
 

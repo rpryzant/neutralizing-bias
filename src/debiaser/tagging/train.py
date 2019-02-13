@@ -33,6 +33,10 @@ from shared.args import ARGS
 if not os.path.exists(ARGS.working_dir):
     os.makedirs(ARGS.working_dir)
 
+with open(ARGS.working_dir + '/command.sh', 'w') as f:
+    f.write('python' + ' '.join(sys.argv) + '\n')
+
+
 
 CUDA = (torch.cuda.device_count() > 0)
 
@@ -53,11 +57,11 @@ tok2id['<del>'] = len(tok2id)
 train_dataloader, num_train_examples = get_dataloader(
     ARGS.train, 
     tok2id, ARGS.train_batch_size, 
-    ARGS.max_seq_len, ARGS.working_dir + '/train_data.pkl', 
+    ARGS.working_dir + '/train_data.pkl', 
     categories_path=ARGS.train_categories_file)
 eval_dataloader, num_eval_examples = get_dataloader(
     ARGS.test,
-    tok2id, ARGS.test_batch_size, ARGS.max_seq_len, ARGS.working_dir + '/test_data.pkl',
+    tok2id, ARGS.test_batch_size, ARGS.working_dir + '/test_data.pkl',
     test=True, categories_path=ARGS.test_categories_file)
 
 # # # # # # # # ## # # # ## # # MODEL # # # # # # # # ## # # # ## # #
@@ -97,15 +101,6 @@ optimizer = tagging_utils.build_optimizer(
     model, int((num_train_examples * ARGS.epochs) / ARGS.train_batch_size))
 
 loss_fn = tagging_utils.build_loss_fn()
-
-if ARGS.predict_categories:
-    category_criterion = CrossEntropyLoss()
-    if CUDA:
-        category_criterion = category_criterion.cuda()
-
-    def cross_entropy(pred, soft_targets):
-        logsoftmax = nn.LogSoftmax()
-        return torch.mean(torch.sum(- soft_targets * logsoftmax(pred), 1))
 
 # # # # # # # # ## # # # ## # # TRAIN # # # # # # # # ## # # # ## # #
 

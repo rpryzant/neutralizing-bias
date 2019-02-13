@@ -560,16 +560,8 @@ class Seq2SeqEnrich(Seq2Seq):
         global ARGS
         # make a "change this token" embedding and add it to the
         # src_output token that should be changed
-        if ARGS.fine_enrichment:
-            enrichment0 = self.enricher0(self.enrich_input0).repeat(
-                src_outputs.shape[0], src_outputs.shape[1], 1)
-            enrichment1 = self.enricher1(self.enrich_input1).repeat(
-                src_outputs.shape[0], src_outputs.shape[1], 1)
-            type_id = type_id.unsqueeze(1).unsqueeze(2)
-            enrichment = (enrichment1 * type_id) + (enrichment0 * (1 - type_id))
-        else:
-            enrichment = self.enricher0(self.enrich_input0).repeat(
-                src_outputs.shape[0], src_outputs.shape[1], 1)
+        enrichment = self.enricher0(self.enrich_input0).repeat(
+            src_outputs.shape[0], src_outputs.shape[1], 1)
         enrichment = tok_dist.unsqueeze(2) * enrichment
 
         if not ignore_enrich:

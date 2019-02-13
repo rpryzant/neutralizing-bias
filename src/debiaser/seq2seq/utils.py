@@ -108,10 +108,10 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
         (
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
-            pre_tok_label_id, post_tok_label_id, tok_dist,
-            replace_id, _, _, type_id, _
+            pre_tok_label_id, post_tok_label_id,
+            _, _, type_id, _
         ) = batch
-        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=ignore_enrich)
+        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, type_id, ignore_enrich=ignore_enrich)
         loss = loss_fn(post_logits, post_out_id, post_tok_label_id)
         loss.backward()
         norm = nn.utils.clip_grad_norm_(model.parameters(), 3.0)
@@ -123,7 +123,7 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
     return losses
 
 
-def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dist, id2tok, out_file,
+def dump_outputs(src_ids, gold_ids, predicted_ids, gold_tok_dist, id2tok, out_file,
         pred_dists=None):
     out_hits = []
     preds_for_bleu = []
@@ -132,8 +132,8 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dis
 
     if pred_dists is None:
         pred_dists = [''] * len(src_ids)
-    for src_seq, gold_seq, pred_seq, gold_replace, gold_dist, pred_dist in zip(
-        src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dist, pred_dists):
+    for src_seq, gold_seq, pred_seq, gold_dist, pred_dist in zip(
+        src_ids, gold_ids, predicted_ids, gold_tok_dist, pred_dists):
 
         src_seq = [id2tok[x] for x in src_seq]
         gold_seq = [id2tok[x] for x in gold_seq]
@@ -142,12 +142,14 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dis
             gold_seq = gold_seq[:gold_seq.index('止')]
         if '止' in pred_seq:
             pred_seq = pred_seq[:pred_seq.index('止')]
+
+        gold_replace = [chunk for tag, chunk in diff(src_seq, gold_seq) if tag == '+']
+        pred_replace = [chunk for tag, chunk in diff(src_seq, pred_seq) if tag == '+']
+
         src_seq = ' '.join(src_seq).replace('[PAD]', '').strip()
         gold_seq = ' '.join(gold_seq).replace('[PAD]', '').strip()
         pred_seq = ' '.join(pred_seq).replace('[PAD]', '').strip()
 
-        gold_replace = id2tok[gold_replace]
-        pred_replace = [chunk for tag, chunk in diff(src_seq.split(), pred_seq.split()) if tag == '+']
         try:
             print('#' * 80, file=out_file)
             print('IN SEQ: \t', src_seq.encode('utf-8'), file=out_file)
@@ -155,8 +157,8 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_replace_id, gold_tok_dis
             print('PRED SEQ:\t', pred_seq.encode('utf-8'), file=out_file)
             print('GOLD DIST: \t', list(gold_dist), file=out_file)
             print('PRED DIST: \t', list(pred_dist), file=out_file)
-            print('GOLD TOK: \t', gold_replace.encode('utf-8'), file=out_file)
-            print('PRED TOK: \t', pred_replace, file=out_file)
+            print('GOLD TOK: \t', list(gold_replace), file=out_file)
+            print('PRED TOK: \t', list(pred_replace), file=out_file)
         except UnicodeEncodeError:
             pass
 
@@ -195,8 +197,8 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
         (
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
-            pre_tok_label_id, _, tok_dist,
-            replace_id, _, _, type_id, _
+            pre_tok_label_id, _,
+            _, _, type_id, _
         ) = batch
 
         post_start_id = tok2id['行']
@@ -204,14 +206,13 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
 
         with torch.no_grad():
             predicted_toks = model.inference_forward(
-                pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, type_id,
+                pre_id, post_start_id, pre_mask, pre_len, max_len, pre_tok_label_id, type_id,
                 beam_width=beam_width)
 
         new_hits, new_preds, new_golds, new_srcs = dump_outputs(
             pre_id.detach().cpu().numpy(), 
             post_out_id.detach().cpu().numpy(), 
             predicted_toks, 
-            replace_id.detach().cpu().numpy(), 
             pre_tok_label_id.detach().cpu().numpy(), 
             id2tok, out_file)
         hits += new_hits

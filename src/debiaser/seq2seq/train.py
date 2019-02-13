@@ -38,6 +38,8 @@ BERT_MODEL = "bert-base-uncased"
 if not os.path.exists(ARGS.working_dir):
     os.makedirs(ARGS.working_dir)
 
+with open(ARGS.working_dir + '/command.sh', 'w') as f:
+    f.write('python' + ' '.join(sys.argv) + '\n')
 
 
 if ARGS.bert_encoder:
@@ -61,19 +63,17 @@ tok2id['<del>'] = len(tok2id)
 if ARGS.pretrain_data: 
     pretrain_dataloader, num_pretrain_examples = get_dataloader(
         ARGS.pretrain_data,
-        tok2id, TRAIN_BATCH_SIZE, ARGS.max_seq_len, ARGS.working_dir + '/pretrain_data.pkl',
+        tok2id, TRAIN_BATCH_SIZE, ARGS.working_dir + '/pretrain_data.pkl',
         noise=True)
 
 train_dataloader, num_train_examples = get_dataloader(
     ARGS.train, 
-    tok2id, TRAIN_BATCH_SIZE, ARGS.max_seq_len, ARGS.working_dir + '/train_data.pkl',
-    add_del_tok=ARGS.add_del_tok, 
-    tok_dist_path=ARGS.tok_dist_train_path)
+    tok2id, TRAIN_BATCH_SIZE, ARGS.working_dir + '/train_data.pkl',
+    add_del_tok=ARGS.add_del_tok)
 eval_dataloader, num_eval_examples = get_dataloader(
     ARGS.test,
-    tok2id, TEST_BATCH_SIZE, ARGS.max_seq_len, ARGS.working_dir + '/test_data.pkl',
-    test=True, add_del_tok=ARGS.add_del_tok, 
-    tok_dist_path=ARGS.tok_dist_test_path)
+    tok2id, TEST_BATCH_SIZE, ARGS.working_dir + '/test_data.pkl',
+    test=True, add_del_tok=ARGS.add_del_tok)
 
 
 
