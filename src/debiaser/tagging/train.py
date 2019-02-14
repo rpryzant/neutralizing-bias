@@ -112,7 +112,6 @@ writer.add_scalar('eval/tok_acc', np.mean(results['labeling_hits']), 0)
 
 print('TRAINING...')
 model.train()
-train_step = 0
 for epoch in range(ARGS.epochs):
     print('STARTING EPOCH ', epoch)
     losses = tagging_utils.train_for_epoch(model, train_dataloader, loss_fn, optimizer)

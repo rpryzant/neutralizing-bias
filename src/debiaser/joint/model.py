@@ -59,7 +59,6 @@ class JointModel(nn.Module):
         global ARGS
 
         if ignore_tagger:
-            # TODO -- make sure tok_dist is all 0's during pretraining!!! 
             is_bias_probs = tok_dist
             tok_logits = None
         else:

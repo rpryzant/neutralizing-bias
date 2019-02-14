@@ -556,13 +556,11 @@ class Seq2SeqEnrich(Seq2Seq):
 
     def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, ignore_enrich=False):
         global ARGS
-        # make a "change this token" embedding and add it to the
-        # src_output token that should be changed
-        enrichment = self.enricher0(self.enrich_input0).repeat(
-            src_outputs.shape[0], src_outputs.shape[1], 1)
-        enrichment = tok_dist.unsqueeze(2) * enrichment
 
         if not ignore_enrich:
+            enrichment = self.enricher0(self.enrich_input0).repeat(
+                src_outputs.shape[0], src_outputs.shape[1], 1)
+            enrichment = tok_dist.unsqueeze(2) * enrichment
             if ARGS.enrich_concat:
                 src_outputs = self.enrich_compressor(torch.cat((src_outputs, enrichment), -1))
             else:

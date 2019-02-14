@@ -47,7 +47,8 @@ if not os.path.exists(working_dir):
 with open(working_dir + '/command.sh', 'w') as f:
     f.write('python' + ' '.join(sys.argv) + '\n')
 
-                                                                
+writer = SummaryWriter(ARGS.working_dir)
+                                                            
 
 
 # # # # # # # # ## # # # ## # # DATA # # # # # # # # ## # # # ## # #
@@ -76,17 +77,8 @@ eval_dataloader, num_eval_examples = get_dataloader(
 
 
 
-# # # # # # # # ## # # # ## # # MODELS # # # # # # # # ## # # # ## # #
-if ARGS.no_tok_enrich:
-    debias_model = seq2seq_model.Seq2Seq(
-        vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
-        emb_dim=768, dropout=0.2, tok2id=tok2id)
-else:
-    debias_model = seq2seq_model.Seq2SeqEnrich(
-        vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
-        emb_dim=768, dropout=0.2, tok2id=tok2id)
-
-
+# # # # # # # # ## # # # ## # # TAGGING MODEL # # # # # # # # ## # # # ## # #
+# build model
 if ARGS.extra_features_top:
     tagging_model= tagging_model.BertForMultitaskWithFeaturesOnTop.from_pretrained(
             ARGS.bert_model,
@@ -107,17 +99,85 @@ else:
         cls_num_labels=ARGS.num_categories,
         tok_num_labels=ARGS.num_tok_labels,
         cache_dir=ARGS.working_dir + '/cache')
-        
+if CUDA:
+    tagging_model = tagging_model.cuda()
+
+# train or load model
+tagging_loss_fn = tagging_utils.build_loss_fn()
+
 if ARGS.tagger_checkpoint is not None and os.path.exists(ARGS.tagger_checkpoint):
-    print('LOADING FROM ' + ARGS.tagger_checkpoint)
+    print('LOADING TAGGER FROM ' + ARGS.tagger_checkpoint)
     tagging_model.load_state_dict(torch.load(ARGS.tagger_checkpoint))
     print('...DONE')
+else:
+    print('TRAINING TAGGER...')
+    tagging_optim = tagging_utils.build_optimizer(
+        tagging_model, 
+        int((num_train_examples) / ARGS.tagging_pretrain_epochs) / ARGS.train_batch_size)
+
+    print('INITIAL EVAL...')
+    tagging_model.eval()
+    results = tagging_utils.run_inference(
+        tagging_model, eval_dataloader, tagging_loss_fn, tokenizer)
+    writer.add_scalar('tag_eval/tok_loss', np.mean(results['tok_loss']), 0)
+    writer.add_scalar('tag_eval/tok_acc', np.mean(results['labeling_hits']), 0)
+
+    print('TRAINING...')
+    for epoch in range(ARGS.tagging_pretrain_epochs):
+        print('EPOCH ', epoch)
+        tagging_model.train()
+        losses = tagging_utils.train_for_epoch(
+            tagging_model, train_dataloader, tagging_loss_fn, tagging_optim)
+        writer.add_scalar('tag_train/loss', np.mean(losses), epoch + 1)
+
+        tagging_model.eval()
+        results = tagging_utils.run_inference(
+            tagging_model, eval_dataloader, tagging_loss_fn, tokenizer)
+        writer.add_scalar('tag_eval/tok_loss', np.mean(results['tok_loss']), epoch + 1)
+        writer.add_scalar('tag_eval/tok_acc', np.mean(results['labeling_hits']), epoch + 1)
 
 
 
+# # # # # # # # ## # # # ## # # DEBIAS MODEL # # # # # # # # ## # # # ## # #
+# bulid model
+if ARGS.no_tok_enrich:
+    debias_model = seq2seq_model.Seq2Seq(
+        vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
+        emb_dim=768, dropout=0.2, tok2id=tok2id)
+else:
+    debias_model = seq2seq_model.Seq2SeqEnrich(
+        vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
+        emb_dim=768, dropout=0.2, tok2id=tok2id)
+if CUDA:
+    debias_model = debias_model.cuda()
+
+# train or load model
+debias_loss_fn, cross_entropy_loss = seq2seq_utils.build_loss_fn(vocab_size=len(tok2id))
+
+if ARGS.debias_checkpoint is not None and os.path.exists(ARGS.debias_checkpoint):
+    print('LOADING DEBIASER FROM ' + ARGS.debias_checkpoint)
+    tagging_model.load_state_dict(torch.load(ARGS.debias_checkpoint))
+    print('...DONE')
+
+elif ARGS.pretrain_data:
+    pretrain_optim = optim.Adam(debias_model.parameters(), lr=ARGS.learning_rate)
+
+    print('PRETRAINING...')
+    # TODO -- VERIFY THAT TAGGER IS ACTUALLY BEING IGNORED, I.E. TOK DIST IS ALL 0'S
+    for epoch in range(ARGS.pretrain_epochs):
+        print('EPOCH ', epoch)
+        print('TRAIN...')
+        losses = seq2seq_utils.train_for_epoch(
+            debias_model, pretrain_dataloader, tok2id, pretrain_optim, cross_entropy_loss, 
+            ignore_enrich=not ARGS.use_pretrain_enrich)
+        writer.add_scalar('pretrain/loss', np.mean(losses), epoch + 1)
+
+
+# # # # # # # # # # # # JOINT MODEL # # # # # # # # # # # # # #
+
+# build model
 joint_model = joint_model.JointModel(
     debias_model=debias_model, tagging_model=tagging_model)
-
 
 if CUDA:
     joint_model = joint_model.cuda()
@@ -126,37 +186,12 @@ model_parameters = filter(lambda p: p.requires_grad, joint_model.parameters())
 params = sum([np.prod(p.size()) for p in model_parameters])
 print('NUM PARAMS: ', params)
 
-
-
-
-
-# # # # # # # # ## # # # ## # # OPTIMIZER, LOSS # # # # # # # # ## # # # ## # #
-tagging_loss_fn = tagging_utils.build_loss_fn()
-debias_loss_fn, cross_entropy_loss = seq2seq_utils.build_loss_fn(vocab_size=len(tok2id))
-optimizer = optim.Adam(
+joint_optimizer = optim.Adam(
     debias_model.parameters() if ARGS.freeze_tagger else joint_model.parameters(), 
     lr=ARGS.learning_rate)
 
-
-
-# # # # # # # # # # # PRETRAINING (optional) # # # # # # # # # # # # # # # #
-if ARGS.pretrain_data:
-    pretrain_optim = optim.Adam(debias_model.parameters(), lr=ARGS.learning_rate)
-
-    print('PRETRAINING...')
-    # TODO -- VERIFY THAT TAGGER IS ACTUALLY BEING IGNORED, I.E. TOK DIST IS ALL 0'S
-    for epoch in range(ARGS.pretrain_epochs):
-        print('EPOCH ', epoch)
-        print('TRAIN...')
-        losses = joint_utils.train_for_epoch(
-            joint_model, train_dataloader, pretrain_optim,
-            cross_entropy_loss, None, ignore_tagger=True)
-        writer.add_scalar('pretrain/loss', np.mean(losses), epoch + 1)
-
-
-# # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
-writer = SummaryWriter(ARGS.working_dir)
-
+# train model
+print('JOINT TRAINING...')
 print('INITIAL EVAL...')
 joint_model.eval()
 hits, preds, golds, srcs = joint_utils.run_eval(
@@ -169,7 +204,7 @@ for epoch in range(ARGS.epochs):
     print('EPOCH ', epoch)
     print('TRAIN...')
     losses = joint_utils.train_for_epoch(
-        joint_model, train_dataloader, optimizer,
+        joint_model, train_dataloader, joint_optimizer,
         debias_loss_fn, tagging_loss_fn, ignore_tagger=False)
     writer.add_scalar('train/loss', np.mean(losses), epoch + 1)
         

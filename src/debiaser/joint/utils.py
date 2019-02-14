@@ -5,9 +5,11 @@ import torch
 
 import sys; sys.path.append(".")
 from shared.args import ARGS
+from shared.constants import CUDA
+
 import seq2seq.utils as seq2seq_utils
 
-CUDA = (torch.cuda.device_count() > 0)
+
 
 
 def train_for_epoch(model, dataloader, optimizer, debias_loss_fn, tagging_loss_fn=None, ignore_tagger=False):
@@ -23,10 +25,10 @@ def train_for_epoch(model, dataloader, optimizer, debias_loss_fn, tagging_loss_f
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             pre_tok_label_id, post_tok_label_id,
-            rel_ids, pos_ids, type_ids, categories
+            rel_ids, pos_ids, categories
         ) = batch      
         post_logits, post_probs, tok_probs, tok_logits = model(
-            pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, type_ids,
+            pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id,
             rel_ids=rel_ids, pos_ids=pos_ids, categories=categories, ignore_tagger=ignore_tagger)
 
         loss = debias_loss_fn(post_logits, post_out_id, post_tok_label_id)
@@ -40,7 +42,7 @@ def train_for_epoch(model, dataloader, optimizer, debias_loss_fn, tagging_loss_f
         optimizer.step()
         model.zero_grad()
         
-        losses.append(loss)
+        losses.append(loss.detach().cpu().numpy())
 
     return losses
 
@@ -63,7 +65,7 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             pre_tok_label_id, _,
-            rel_ids, pos_ids, type_id, categories
+            rel_ids, pos_ids, categories
         ) = batch
 
         post_start_id = tok2id['行']
@@ -71,7 +73,7 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
 
         with torch.no_grad():
             predicted_toks, predicted_probs = model.inference_forward(
-                pre_id, post_start_id, pre_mask, pre_len, max_len, pre_tok_label_id, type_id,
+                pre_id, post_start_id, pre_mask, pre_len, max_len, pre_tok_label_id,
                 rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
 
         new_hits, new_preds, new_golds, new_srcs = seq2seq_utils.dump_outputs(

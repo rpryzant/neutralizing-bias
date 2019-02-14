@@ -49,6 +49,7 @@ parser.add_argument("--debug_skip",
 
 
 
+
 ##################################################################################
 ##################################################################################
 #                      JOINT ARGS
@@ -71,6 +72,10 @@ parser.add_argument(
     type=str, default=None,
     help='tagger checkpoint to load')
 parser.add_argument(
+    "--tagging_pretrain_epochs",
+    type=int, default=4,
+    help='how many epochs to train tagger if no checkpoint provided')
+parser.add_argument(
     "--freeze_tagger",
     action='store_true',
     help='dont train the tagger')
@@ -78,6 +83,10 @@ parser.add_argument(
     "--tag_loss_mixing_prob",
     type=float, default=0.0,
     help='dont train the tagger')
+parser.add_argument(
+    "--debias_checkpoint",
+    type=str, default=None,
+    help='debiaser checkpoint to load')
 
 
 
@@ -300,8 +309,8 @@ parser.add_argument(
     action='store_true'
 )
 parser.add_argument(
-    "--ignore_pretrain_enrich",
-    help="ignore enrichment during pretraining",
+    "--use_pretrain_enrich",
+    help="DON'T ignore enrichment during pretraining",
     action='store_true'
 )
 
