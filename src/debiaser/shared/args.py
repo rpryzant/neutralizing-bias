@@ -77,7 +77,7 @@ parser.add_argument(
     help='how many epochs to train tagger if no checkpoint provided')
 parser.add_argument(
     "--tagging_pretrain_lr",
-    type=float, default=3e-5 ,
+    type=float, default=3e-5,
     help='learning rate for tagger pretrain')
 parser.add_argument(
     "--freeze_tagger",

@@ -161,9 +161,10 @@ if ARGS.debias_checkpoint is not None and os.path.exists(ARGS.debias_checkpoint)
     print('...DONE')
 
 elif ARGS.pretrain_data:
-    pretrain_optim = optim.Adam(debias_model.parameters(), lr=ARGS.tagging_pretrain_lr)
+    pretrain_optim = optim.Adam(debias_model.parameters(), lr=ARGS.learning_rate)
 
     print('PRETRAINING...')
+    debias_model.train()
     # TODO -- VERIFY THAT TAGGER IS ACTUALLY BEING IGNORED, I.E. TOK DIST IS ALL 0'S
     for epoch in range(ARGS.pretrain_epochs):
         print('EPOCH ', epoch)
@@ -171,7 +172,7 @@ elif ARGS.pretrain_data:
         losses = seq2seq_utils.train_for_epoch(
             debias_model, pretrain_dataloader, tok2id, pretrain_optim, cross_entropy_loss, 
             ignore_enrich=not ARGS.use_pretrain_enrich)
-        writer.add_scalar('pretrain/loss', np.mean(losses), epoch + 1)
+        writer.add_scalar('pretrain/loss', np.mean(losses), epoch)
 
 
 # # # # # # # # # # # # JOINT MODEL # # # # # # # # # # # # # #
