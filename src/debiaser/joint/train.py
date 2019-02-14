@@ -103,7 +103,7 @@ if CUDA:
     tagging_model = tagging_model.cuda()
 
 # train or load model
-tagging_loss_fn = tagging_utils.build_loss_fn()
+tagging_loss_fn = tagging_utils.build_loss_fn(debias_weight=1.0)
 
 if ARGS.tagger_checkpoint is not None and os.path.exists(ARGS.tagger_checkpoint):
     print('LOADING TAGGER FROM ' + ARGS.tagger_checkpoint)
@@ -113,7 +113,8 @@ else:
     print('TRAINING TAGGER...')
     tagging_optim = tagging_utils.build_optimizer(
         tagging_model, 
-        int((num_train_examples) / ARGS.tagging_pretrain_epochs) / ARGS.train_batch_size)
+        int((num_train_examples * ARGS.tagging_pretrain_epochs) / ARGS.train_batch_size),
+        ARGS.tagging_pretrain_lr)
 
     print('INITIAL EVAL...')
     tagging_model.eval()

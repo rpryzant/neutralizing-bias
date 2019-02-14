@@ -95,7 +95,8 @@ print('PREPPING RUN...')
 
 
 optimizer = tagging_utils.build_optimizer(
-    model, int((num_train_examples * ARGS.epochs) / ARGS.train_batch_size))
+    model, int((num_train_examples * ARGS.epochs) / ARGS.train_batch_size),
+    ARGS.learning_rate)
 
 loss_fn = tagging_utils.build_loss_fn()
 
