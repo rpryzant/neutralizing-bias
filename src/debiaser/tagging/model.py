@@ -9,8 +9,8 @@ import sys; sys.path.append('.')
 import sys; sys.path.append('tagging/')   # so that the joint model can see this filter
 import features
 from shared.args import ARGS
+from shared.constants import CUDA
 
-CUDA = (torch.cuda.device_count() > 0)
 
 
 def gelu(x):

@@ -6,8 +6,8 @@ from pytorch_pretrained_bert.optimization import BertAdam
 
 import sys; sys.path.append('.')
 from shared.args import ARGS
+from shared.constants import CUDA
 
-CUDA = (torch.cuda.device_count() > 0)
 
 
 
@@ -103,7 +103,7 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             tok_label_id, _,
-            rel_ids, pos_ids, type_ids, categories
+            rel_ids, pos_ids, categories
         ) = batch
 
         with torch.no_grad():
@@ -137,7 +137,7 @@ def train_for_epoch(model, train_dataloader, loss_fn, optimizer):
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             tok_label_id, _,
-            rel_ids, pos_ids, type_ids, categories
+            rel_ids, pos_ids, categories
         ) = batch
         bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask, 
             rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)

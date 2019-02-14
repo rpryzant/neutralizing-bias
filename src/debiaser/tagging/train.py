@@ -22,12 +22,15 @@ from tensorboardX import SummaryWriter
 import argparse
 import sklearn.metrics as metrics
 
-
 import model as tagging_model
 import utils as tagging_utils
+
 import sys; sys.path.append('.')
 from shared.data import get_dataloader
 from shared.args import ARGS
+from shared.constants import CUDA
+
+
 
 
 if not os.path.exists(ARGS.working_dir):
@@ -36,12 +39,6 @@ if not os.path.exists(ARGS.working_dir):
 with open(ARGS.working_dir + '/command.sh', 'w') as f:
     f.write('python' + ' '.join(sys.argv) + '\n')
 
-
-
-CUDA = (torch.cuda.device_count() > 0)
-
-if CUDA:
-    print('USING CUDA')
 
 
 

@@ -261,11 +261,6 @@ parser.add_argument(
     action='store_true'
 )
 parser.add_argument(
-    "--fine_enrichment",
-    help="seperate enrichment embedidings for del/edit",
-    action='store_true'
-)
-parser.add_argument(
     "--enrich_concat",
     help="enrich via concat + compress instead of add",
     action='store_true'

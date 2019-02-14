@@ -5,10 +5,11 @@ from torch.autograd import Variable
 from tqdm import tqdm
 
 from shared.args import ARGS
+from shared.constants import CUDA
+
 from seq2seq.utils import dump_outputs
 
 
-CUDA = (torch.cuda.device_count() > 0)
 
 
 class JointModel(nn.Module):
@@ -26,7 +27,7 @@ class JointModel(nn.Module):
             -10000.0 if ARGS.sequence_softmax else 0.0)
 
     def inference_forward(self,
-            pre_id, post_start_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=False,   # debias arggs
+            pre_id, post_start_id, pre_mask, pre_len, tok_dist, ignore_enrich=False,   # debias arggs
                           rel_ids=None, pos_ids=None, categories=None, beam_width=None):      # tagging args
         global CUDA
         global ARGS
@@ -44,7 +45,7 @@ class JointModel(nn.Module):
             # run input through the model
             with torch.no_grad():
                 decoder_logit, word_probs, tok_probs, _ = self.forward(
-                    pre_id, tgt_input, pre_mask, pre_len, tok_dist, type_id,
+                    pre_id, tgt_input, pre_mask, pre_len, tok_dist,
                     rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
             next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
             tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
@@ -53,7 +54,7 @@ class JointModel(nn.Module):
         return tgt_input.detach().cpu().numpy(), tok_probs.detach().cpu().numpy()
                 
     def forward(self, 
-        pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=False,   # debias arggs
+        pre_id, post_in_id, pre_mask, pre_len, tok_dist, ignore_enrich=False,   # debias arggs
         rel_ids=None, pos_ids=None, categories=None, ignore_tagger=False):      # tagging args
         global ARGS
 
@@ -77,7 +78,7 @@ class JointModel(nn.Module):
                 is_bias_probs = self.time_sm(is_bias_probs)
 
         post_logits, post_probs = self.debias_model(
-            pre_id, post_in_id, pre_mask, pre_len,  is_bias_probs, type_id)
+            pre_id, post_in_id, pre_mask, pre_len,  is_bias_probs)
 
         return post_logits, post_probs, is_bias_probs, tok_logits
 

@@ -22,12 +22,12 @@ import functools
 from pytorch_pretrained_bert.modeling import BertEmbeddings
 from pytorch_pretrained_bert.optimization import BertAdam
 
-
-
 import model as seq2seq_model
+
 import sys; sys.path.append('.')
 from shared.args import ARGS
 from shared.data import get_dataloader
+from shared.constants import CUDA
 
 import utils
 
@@ -50,7 +50,6 @@ else:
     TEST_BATCH_SIZE = ARGS.test_batch_size // ARGS.beam_width
 
 
-CUDA = (torch.cuda.device_count() > 0)
                                                                 
 
 

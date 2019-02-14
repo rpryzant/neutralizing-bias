@@ -27,6 +27,7 @@ from pytorch_pretrained_bert.optimization import BertAdam
 import sys; sys.path.append(".")
 from shared.data import get_dataloader
 from shared.args import ARGS
+from shared.constants import CUDA
 
 import seq2seq.model as seq2seq_model
 import seq2seq.utils as seq2seq_utils
@@ -46,9 +47,6 @@ if not os.path.exists(working_dir):
 with open(working_dir + '/command.sh', 'w') as f:
     f.write('python' + ' '.join(sys.argv) + '\n')
 
-
-
-CUDA = (torch.cuda.device_count() > 0)
                                                                 
 
 

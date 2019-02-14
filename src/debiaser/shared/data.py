@@ -13,7 +13,7 @@ from collections import defaultdict
 import sys; sys.path.append('.')
 from shared.args import ARGS
 
-
+# from https://spacy.io/api/annotation#section-dependency-parsing
 RELATIONS = [
     'det', 'amod', 'nsubj', 'prep', 'pobj', 'ROOT', 
     'attr', 'punct', 'advmod', 'compound', 'acl', 'agent', 
@@ -25,7 +25,8 @@ RELATIONS = [
     '<UNK>'
 ]
 REL2ID = {x: i for i, x in enumerate(RELATIONS)}
-# from nltk.data.load('help/tagsets/upenn_tagset.pickle').keys()
+
+# from https://spacy.io/api/annotation#section-pos-tagging
 POS_TAGS = [
     'DET', 'ADJ', 'NOUN', 'ADP', 'NUM', 'VERB', 'PUNCT', 'ADV', 
     'PART', 'CCONJ', 'PRON', 'X', 'INTJ', 'PROPN', 'SYM',
@@ -33,11 +34,9 @@ POS_TAGS = [
 ]
 POS2ID = {x: i for i, x in enumerate(POS_TAGS)}
 
-TAG2ID = {'0': 0, '1': 1, 'mask': 2}
+# 0: shared 1: edited
+EDIT_TYPE2ID = {'0': 0, '1': 1, 'mask': 2}
 
-
-# 0: deletion, 1: edit
-EDIT_TYPE2ID = {'0': 0, '1': 1}
 
 def softmax(x, axis=None):
     x = x - x.max(axis=axis, keepdims=True)
@@ -105,7 +104,7 @@ def get_examples(data_path, tok2id, max_seq_len,
                  categories_path=None):
     global REL2ID
     global POS2ID
-    global LABEL2ID
+    global EDIT_TYPE2ID
     global ARGS
 
     if ARGS.drop_words is not None:
@@ -118,7 +117,6 @@ def get_examples(data_path, tok2id, max_seq_len,
 
     skipped = 0 
     out = defaultdict(list)
-
     if categories_path is not None:
         category_fp = open(categories_path)
 
@@ -166,17 +164,14 @@ def get_examples(data_path, tok2id, max_seq_len,
             line = next(category_fp)
             categories = np.array([float(x) for x in line.strip().split()])
         else:
-            categories = np.random.uniform(size=43)   # number of categories
+            categories = np.random.uniform(size=43)   # 43 = number of categories
             categories = categories / sum(categories) # normalize
-        if ARGS.predict_categories:
-            tokens = ['[CLS]'] + tokens
-            pre_tok_labels = [label2id['mask']] + pre_tok_labels
-            post_tok_labels = [label2id['mask']] + post_tok_labels
-        elif ARGS.category_input:
+
+        if ARGS.category_input:
             category_id = np.argmax(categories)
             tokens = ['[unused%d]' % category_id] + tokens
-            pre_tok_labels = [label2id['mask']] + pre_tok_labels
-            post_tok_labels = [label2id['mask']] + post_tok_labels
+            pre_tok_labels = [EDIT_TYPE2ID['mask']] + pre_tok_labels
+            post_tok_labels = [EDIT_TYPE2ID['mask']] + post_tok_labels
 
         # add start + end symbols to post in/out
         post_input_tokens = ['行'] + post_tokens
@@ -193,12 +188,12 @@ def get_examples(data_path, tok2id, max_seq_len,
                     keep_bigrams=ARGS.keep_bigrams)
             else:
                 pre_toks = tokens
-            pre_ids = [tok2id[x] for x in pre_toks]
-            pre_ids = pad(pre_ids, 0)
+
+            pre_ids = pad([tok2id[x] for x in pre_toks], 0)
             post_in_ids = pad([tok2id[x] for x in post_input_tokens], 0)
             post_out_ids = pad([tok2id[x] for x in post_output_tokens], 0)
-            pre_tok_label_ids = pad(pre_tok_labels, label2id['mask'])
-            post_tok_label_ids = pad(post_tok_labels, label2id['mask'])
+            pre_tok_label_ids = pad(pre_tok_labels, EDIT_TYPE2ID['mask'])
+            post_tok_label_ids = pad(post_tok_labels, EDIT_TYPE2ID['mask'])
             rel_ids = pad([REL2ID.get(x, REL2ID['<UNK>']) for x in rels], 0)
             pos_ids = pad([POS2ID.get(x, POS2ID['<UNK>']) for x in pos], 0)
         except KeyError:
@@ -209,7 +204,6 @@ def get_examples(data_path, tok2id, max_seq_len,
         input_mask = pad([0] * len(tokens), 1)
         pre_len = len(tokens)
 
-        out['type_ids'].append( 0 if sum(post_tok_label_ids) == 0 else 1 )
         out['pre_ids'].append(pre_ids)
         out['pre_masks'].append(input_mask)
         out['pre_lens'].append(pre_len)
@@ -223,6 +217,7 @@ def get_examples(data_path, tok2id, max_seq_len,
 
     print('SKIPPED ', skipped)
     return out
+
 
 
 def get_dataloader(data_path, tok2id, batch_size, 
@@ -239,19 +234,18 @@ def get_dataloader(data_path, tok2id, batch_size,
             src_id, src_mask, src_len, 
             post_in_id, post_out_id, 
             pre_tok_label, post_tok_label,
-            rel_ids, pos_ids,
-            type_ids, categories
+            rel_ids, pos_ids, categories
         ] = [torch.stack(x) for x in zip(*data)]
-        # cut off at max len for unpacking/repadding
-        max_len = max(src_len)
 
+        # cut off at max len of this batch for unpacking/repadding
+        max_len = max(src_len)
         data = [
             src_id[:, :max_len], src_mask[:, :max_len], src_len, 
             post_in_id[:, :max_len+10], post_out_id[:, :max_len+10],    # +10 for wiggle room
             pre_tok_label[:, :max_len], post_tok_label[:, :max_len+10], # +10 for post_toks_labels too (it's just gonna be matched up with post ids)
-            rel_ids[:, :max_len], pos_ids[:, :max_len],
-            type_ids, categories
+            rel_ids[:, :max_len], pos_ids[:, :max_len], categories
         ]
+
         return data
 
     if pickle_path is not None and os.path.exists(pickle_path):
@@ -260,7 +254,7 @@ def get_dataloader(data_path, tok2id, batch_size,
         examples = get_examples(
             data_path=data_path, 
             tok2id=tok2id,
-            max_seq_len=max_seq_len,
+            max_seq_len=ARGS.max_seq_len,
             noise=noise,
             add_del_tok=add_del_tok,
             categories_path=categories_path)
@@ -277,7 +271,6 @@ def get_dataloader(data_path, tok2id, batch_size,
         torch.tensor(examples['post_tok_label_ids'], dtype=torch.float),  # for loss multiplying
         torch.tensor(examples['rel_ids'], dtype=torch.long),
         torch.tensor(examples['pos_ids'], dtype=torch.long),
-        torch.tensor(examples['type_ids'], dtype=torch.float),
         torch.tensor(examples['categories'], dtype=torch.float))
 
     dataloader = DataLoader(

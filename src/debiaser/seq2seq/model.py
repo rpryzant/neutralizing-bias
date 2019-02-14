@@ -12,8 +12,8 @@ from pytorch_pretrained_bert.modeling import BertModel
 
 import sys; sys.path.append('.')
 from shared.args import ARGS
+from shared.constants import CUDA
 
-CUDA = (torch.cuda.device_count() > 0)
 
 
 
@@ -418,7 +418,7 @@ class Seq2Seq(nn.Module):
 
         return src_outputs, h_t, c_t
 
-    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, type_id=None):
+    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None):
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_outputs, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
 
@@ -435,7 +435,7 @@ class Seq2Seq(nn.Module):
 
         return logits, probs
 
-    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None, type_id=None, ignore_enrich=False):
+    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None, ignore_enrich=False):
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
         logits, probs = self.run_decoder(
             src_outputs, (h_t, c_t), post_in_id, pre_mask)
@@ -443,12 +443,12 @@ class Seq2Seq(nn.Module):
         return logits, probs
 
 
-    def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, type_id, beam_width=1):
+    def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, beam_width=1):
         global CUDA
 
         if beam_width == 1:
             return self.inference_forward_greedy(
-                pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, type_id)
+                pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist)
 
         # encode src
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
@@ -464,8 +464,6 @@ class Seq2Seq(nn.Module):
         pre_len = pre_len.repeat(beam_width)
         if tok_dist is not None:
             tok_dist = tok_dist.repeat(beam_width, 1)
-        if type_id is not None:
-            type_id = type_id.repeat(beam_width)
 
         # build initial inputs and beams
         batch_size = pre_id.shape[0]
@@ -488,7 +486,7 @@ class Seq2Seq(nn.Module):
             # run input through the model
             with torch.no_grad():
                 decoder_logit, word_probs = self.run_decoder(
-                    src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist, type_id)
+                    src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist)
             # tranpose to preserve ordering
             new_tok_probs = word_probs[:, -1, :].squeeze(1).view(
                 beam_width, batch_size, -1).transpose(1, 0)
@@ -501,7 +499,7 @@ class Seq2Seq(nn.Module):
         return get_top_hyp()[0].detach().cpu().numpy()
 
 
-    def inference_forward_greedy(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, type_id):
+    def inference_forward_greedy(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist):
         global CUDA
         """ argmax decoding """
         # Initialize target with <s> for every sentence
@@ -516,7 +514,7 @@ class Seq2Seq(nn.Module):
         for i in range(max_len):
             # run input through the model
             with torch.no_grad():
-                decoder_logit, word_probs = self.forward(pre_id, tgt_input, pre_mask, pre_len, tok_dist, type_id)
+                decoder_logit, word_probs = self.forward(pre_id, tgt_input, pre_mask, pre_len, tok_dist)
             next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
             tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
             # move to cpu because otherwise quickly runs out of mem
@@ -556,7 +554,7 @@ class Seq2SeqEnrich(Seq2Seq):
         if ARGS.enrich_concat:
             self.enrich_compressor = nn.Linear(hidden_size * 2, hidden_size)
 
-    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, type_id=None, ignore_enrich=False):
+    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, ignore_enrich=False):
         global ARGS
         # make a "change this token" embedding and add it to the
         # src_output token that should be changed
@@ -587,10 +585,10 @@ class Seq2SeqEnrich(Seq2Seq):
         return logits, probs
 
 
-    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist, type_id, ignore_enrich=False):
+    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist, ignore_enrich=False):
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
         logits, probs = self.run_decoder(
-            src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist, type_id, ignore_enrich)
+            src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist, ignore_enrich)
         
         return logits, probs
         

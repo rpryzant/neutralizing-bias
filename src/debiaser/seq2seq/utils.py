@@ -8,8 +8,7 @@ from simplediff import diff
 
 import sys; sys.path.append('.')
 from shared.args import ARGS
-
-CUDA = (torch.cuda.device_count() > 0)
+from shared.constants import CUDA
 
 
 
@@ -109,9 +108,9 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             pre_tok_label_id, post_tok_label_id,
-            _, _, type_id, _
+            _, _, _
         ) = batch
-        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, type_id, ignore_enrich=ignore_enrich)
+        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, ignore_enrich=ignore_enrich)
         loss = loss_fn(post_logits, post_out_id, post_tok_label_id)
         loss.backward()
         norm = nn.utils.clip_grad_norm_(model.parameters(), 3.0)
@@ -198,7 +197,7 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
             pre_id, pre_mask, pre_len, 
             post_in_id, post_out_id, 
             pre_tok_label_id, _,
-            _, _, type_id, _
+            _, _, _
         ) = batch
 
         post_start_id = tok2id['行']
@@ -206,7 +205,7 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
 
         with torch.no_grad():
             predicted_toks = model.inference_forward(
-                pre_id, post_start_id, pre_mask, pre_len, max_len, pre_tok_label_id, type_id,
+                pre_id, post_start_id, pre_mask, pre_len, max_len, pre_tok_label_id,
                 beam_width=beam_width)
 
         new_hits, new_preds, new_golds, new_srcs = dump_outputs(
