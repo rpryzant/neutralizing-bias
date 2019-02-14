@@ -160,7 +160,7 @@ if ARGS.debias_checkpoint is not None and os.path.exists(ARGS.debias_checkpoint)
     print('...DONE')
 
 elif ARGS.pretrain_data:
-    pretrain_optim = optim.Adam(debias_model.parameters(), lr=ARGS.learning_rate)
+    pretrain_optim = optim.Adam(debias_model.parameters(), lr=ARGS.tagging_pretrain_lr)
 
     print('PRETRAINING...')
     # TODO -- VERIFY THAT TAGGER IS ACTUALLY BEING IGNORED, I.E. TOK DIST IS ALL 0'S
