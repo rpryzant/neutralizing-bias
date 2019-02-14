@@ -1,4 +1,5 @@
 # persuasion
 
+* `harvest/`: wikipedia crawling stuff
+* `src/debiaser/`: debiasing system
 
-https://github.com/epfml/sent2vec
