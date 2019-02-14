@@ -14,9 +14,27 @@ Each model directory (`tagging`, `seq2seq`, `joint`) has the following files:
 * `train.py`: main driver code that builds and trains a model, evaluating after each epoch
 
 
+
+
+# Run as a pipeline
+
+This command runs the three steps from below as a single pipeline. Always run code from the `src/debiaser/` directory.
+
+```
+python joint/train.py \
+	--train /home/rpryzant/persuasion/data/v6/corpus.wordbiased.tag.train \
+	--test /home/rpryzant/persuasion/data/v6/corpus.wordbiased.tag.test \
+	--pretrain_data /home/rpryzant/persuasion/data/v6/corpus.unbiased.shuf \
+	--extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 3 \
+	--pretrain_epochs 4 \
+	--learning_rate 0.0003 --epochs 20 --hidden_size 512 --train_batch_size 32 --test_batch_size 16 \
+	--bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax \
+	--working_dir paper_runs/refactor_test1
+```
+
 # Running in parts
 
-Run everything from the `src/debiaser/` directory. Everything uses the same arguments. 
+Everything uses the same arguments. 
 
 For example:
 
@@ -61,20 +79,4 @@ python joint/train.py
 	--working_dir joint/
 ```
 
-
-# Run as a pipeline
-
-This command runs the three steps from before as a single pipeline:
-
-```
-python joint/train.py \
-	--train /home/rpryzant/persuasion/data/v6/corpus.wordbiased.tag.train \
-	--test /home/rpryzant/persuasion/data/v6/corpus.wordbiased.tag.test \
-	--pretrain_data /home/rpryzant/persuasion/data/v6/corpus.unbiased.shuf \
-	--extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 3 \
-	--pretrain_epochs 4 \
-	--learning_rate 0.0003 --epochs 20 --hidden_size 512 --train_batch_size 32 --test_batch_size 16 \
-	--bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax \
-	--working_dir paper_runs/refactor_test1
-```
 
