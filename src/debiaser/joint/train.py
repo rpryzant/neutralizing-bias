@@ -1,8 +1,19 @@
 """
 finetune both models jointly
 
-python joint/train.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.test --debug_skip --hidden_size 16 --working_dir TEST --max_seq_len 10 --train_batch_size 2 --test_batch_size 2
-"""
+python joint/train.py \
+    --train ../../data/v6/corpus.wordbiased.tag.train \
+    --train_categories_file ../../data/v6/corpus.wordbiased.tag.train.categories \
+    --test ../../data/v6/corpus.wordbiased.tag.test.categories \
+    --pretrain_data ../../data/v6/corpus.unbiased.shuf \
+    --extra_features_top --pre_enrich --activation_hidden --category_input --tagging_pretrain_epochs 2 \
+    --pretrain_epochs 4 \
+    --learning_rate 0.0003 --epochs 2 --hidden_size 10 --train_batch_size 32 --test_batch_size 16 \
+    --bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax --sequence_softmax \
+    --working_dir TEST \
+    --debug_skip
+    
+    """
 
 from collections import defaultdict
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
@@ -69,10 +80,12 @@ if ARGS.pretrain_data:
 train_dataloader, num_train_examples = get_dataloader(
     ARGS.train,
     tok2id, ARGS.train_batch_size, ARGS.working_dir + '/train_data.pkl',
+    categories_path=ARGS.train_categories_file,
     add_del_tok=ARGS.add_del_tok)
 eval_dataloader, num_eval_examples = get_dataloader(
     ARGS.test,
     tok2id, ARGS.test_batch_size, ARGS.working_dir + '/test_data.pkl',
+    categories_path=ARGS.test_categories_file, 
     test=True, add_del_tok=ARGS.add_del_tok)
 
 

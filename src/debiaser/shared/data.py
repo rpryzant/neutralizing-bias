@@ -119,7 +119,11 @@ def get_examples(data_path, tok2id, max_seq_len,
     out = defaultdict(list)
     if categories_path is not None:
         category_fp = open(categories_path)
-
+        next(category_fp) # ignore header
+        revid2topic = {
+            l.strip().split(',')[0]: [float(x) for x in l.strip().split(',')[1:]]
+            for l in category_fp
+        }
     for i, (line) in enumerate(tqdm(open(data_path))):
         parts = line.strip().split('\t')
 
@@ -160,9 +164,9 @@ def get_examples(data_path, tok2id, max_seq_len,
             continue
 
         # category info if provided
-        if categories_path is not None:
-            line = next(category_fp)
-            categories = np.array([float(x) for x in line.strip().split()])
+        # TODO -- if provided but not in diyi's data, we fill with random...is that ok?
+        if categories_path is not None and revid in revid2topic:
+            categories = revid2topic[revid]
         else:
             categories = np.random.uniform(size=43)   # 43 = number of categories
             categories = categories / sum(categories) # normalize
