@@ -116,11 +116,7 @@ parser.add_argument("--num_tok_labels",
 
 #### Category stuff
 parser.add_argument(
-    "--train_categories_file",
-    type=str, default=None,
-    help='pointer to wikipedia categories')
-parser.add_argument(
-    "--test_categories_file",
+    "--categories_file",
     type=str, default=None,
     help='pointer to wikipedia categories')
 parser.add_argument(

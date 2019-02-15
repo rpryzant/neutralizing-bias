@@ -55,11 +55,11 @@ train_dataloader, num_train_examples = get_dataloader(
     ARGS.train, 
     tok2id, ARGS.train_batch_size, 
     ARGS.working_dir + '/train_data.pkl', 
-    categories_path=ARGS.train_categories_file)
+    categories_path=ARGS.categories_file)
 eval_dataloader, num_eval_examples = get_dataloader(
     ARGS.test,
     tok2id, ARGS.test_batch_size, ARGS.working_dir + '/test_data.pkl',
-    test=True, categories_path=ARGS.test_categories_file)
+    test=True, categories_path=ARGS.categories_file)
 
 # # # # # # # # ## # # # ## # # MODEL # # # # # # # # ## # # # ## # #
 

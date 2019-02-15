@@ -80,12 +80,12 @@ if ARGS.pretrain_data:
 train_dataloader, num_train_examples = get_dataloader(
     ARGS.train,
     tok2id, ARGS.train_batch_size, ARGS.working_dir + '/train_data.pkl',
-    categories_path=ARGS.train_categories_file,
+    categories_path=ARGS.categories_file,
     add_del_tok=ARGS.add_del_tok)
 eval_dataloader, num_eval_examples = get_dataloader(
     ARGS.test,
     tok2id, ARGS.test_batch_size, ARGS.working_dir + '/test_data.pkl',
-    categories_path=ARGS.test_categories_file, 
+    categories_path=ARGS.categories_file, 
     test=True, add_del_tok=ARGS.add_del_tok)
 
 
