@@ -156,11 +156,11 @@ else:
 # bulid model
 # if ARGS.no_tok_enrich:
 if ARGS.pointer_generator:
-    model = seq2seq_model.PointerSeq2Seq(
+    debias_model = seq2seq_model.PointerSeq2Seq(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
         emb_dim=768, dropout=0.2, tok2id=tok2id) # 768 = bert hidden size
 else:
-    model = seq2seq_model.Seq2Seq(
+    debias_model = seq2seq_model.Seq2Seq(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
         emb_dim=768, dropout=0.2, tok2id=tok2id)
 if CUDA:
