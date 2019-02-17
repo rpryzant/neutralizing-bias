@@ -27,10 +27,9 @@ python joint/train.py \
 	--pretrain_data /home/rpryzant/persuasion/data/v6/corpus.unbiased.shuf \
 	--categories_file /home/rpryzant/persuasion/data/v6/corpus.wordbiased.tag.topics \
 	--extra_features_top --pre_enrich --activation_hidden --category_input --tagging_pretrain_epochs 3 \
-	--pretrain_epochs 4 \
-	--learning_rate 0.0003 --epochs 20 --hidden_size 512 --train_batch_size 32 --test_batch_size 16 \
-	--bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax --sequence_softmax \
-	--working_dir paper_runs/refactor_test1
+	--pretrain_epochs 4 --learning_rate 0.0003 --epochs 20 --hidden_size 512 --train_batch_size 32 \
+	--test_batch_size 16 --bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax \
+	--sequence_softmax --working_dir full/
 ```
 
 
@@ -42,13 +41,11 @@ For example:
 
 (1) Train a tagger
 ```
-python tagger/train.py
+python tagging/train.py
 	--train /home/rpryzant/persuasion/data/v6/corpus.wordbiased.tag.train \
 	--test /home/rpryzant/persuasion/data/v6/corpus.wordbiased.tag.test \
-	--extra_features_top --pre_enrich --activation_hidden 
-  --epochs 3 \
-  --learning_rate 3e-5 \
-  --working_dir tagger/
+	--extra_features_top --pre_enrich --activation_hidden --category_input \
+        --epochs 3 --learning_rate 3e-5 --working_dir tagger/
 ```
 
 (2) pretrain a seq2seq
@@ -58,12 +55,12 @@ python seq2seq/train.py
 	--test /home/rpryzant/persuasion/data/v6/corpus.wordbiased.tag.test \
 	--pretrain_data /home/rpryzant/persuasion/data/v6/corpus.unbiased.shuf \
 	--pretrain_epochs 4 \
-  --epochs 0 \    # turn off regular training after pretraining
+	--epochs 0 \    # turn off regular training after pretraining
 	--learning_rate 0.0003 \
-  --hidden_size 512 \
-  --train_batch_size 32 --test_batch_size 32
+	--hidden_size 512 \
+	--train_batch_size 32 --test_batch_size 16
 	--bert_full_embeddings
-  --working_dir pretrain_seq2seq/
+	--working_dir pretrain_seq2seq/
 ```
 
 (3) Use the tagger + seq2seq checkpoints to fine tune a joint model
@@ -76,8 +73,8 @@ python joint/train.py
 	--pretrain_epochs 4 \
 	--learning_rate 0.0003 --epochs 20 --hidden_size 512 --train_batch_size 32 --test_batch_size 16 \
 	--bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax \
-  --tagger_checkpoint tagger/model_3.ckpt \
-  --debias_checkpoint seq2seq/model_4.ckpt \
+	--tagger_checkpoint tagger/model_3.ckpt \
+	--debias_checkpoint seq2seq/model_4.ckpt \
 	--working_dir joint/
 ```
 
