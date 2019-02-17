@@ -27,11 +27,11 @@ def train_for_epoch(model, dataloader, optimizer, debias_loss_fn, tagging_loss_f
             pre_tok_label_id, post_tok_label_id,
             rel_ids, pos_ids, categories
         ) = batch      
-        post_logits, post_probs, tok_probs, tok_logits = model(
+        post_log_probs, post_probs, tok_probs, tok_logits = model(
             pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id,
             rel_ids=rel_ids, pos_ids=pos_ids, categories=categories, ignore_tagger=ignore_tagger)
 
-        loss = debias_loss_fn(post_logits, post_out_id, post_tok_label_id)
+        loss = debias_loss_fn(post_log_probs, post_out_id, post_tok_label_id)
         
         if tagging_loss_fn is not None:
             tok_loss = tagging_loss_fn(tok_logits, pre_tok_label_id, apply_mask=pre_tok_label_id)

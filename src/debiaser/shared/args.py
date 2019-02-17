@@ -235,7 +235,12 @@ parser.add_argument(
 )
 
 
-
+# pointer args
+parser.add_argument(
+    "--pointer_generator",
+    help='use copy mechanism in decoder',
+    action='store_true'
+)
 
 
 # bert settings

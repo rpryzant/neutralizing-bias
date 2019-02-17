@@ -56,27 +56,27 @@ def build_loss_fn(vocab_size):
 
     weight_mask = torch.ones(vocab_size)
     weight_mask[0] = 0
-    criterion = nn.CrossEntropyLoss(weight=weight_mask)
-    per_tok_criterion = nn.CrossEntropyLoss(weight=weight_mask, reduction='none')
+    criterion = nn.NLLLoss(weight=weight_mask)
+    per_tok_criterion = nn.NLLLoss(weight=weight_mask, reduction='none')
 
     if CUDA:
         weight_mask = weight_mask.cuda()
         criterion = criterion.cuda()
         per_tok_criterion = per_tok_criterion.cuda()
 
-    def cross_entropy_loss(logits, labels, apply_mask=None):
+    def cross_entropy_loss(log_probs, labels, apply_mask=None):
         return criterion(
-            logits.contiguous().view(-1, vocab_size), 
+            log_probs.contiguous().view(-1, vocab_size), 
             labels.contiguous().view(-1))
 
 
-    def weighted_cross_entropy_loss(logits, labels, apply_mask=None):
+    def weighted_cross_entropy_loss(log_probs, labels, apply_mask=None):
         # weight apply_mask = wehere to apply weight
         weights = apply_mask.contiguous().view(-1)
         weights = ((ARGS.debias_weight - 1) * weights) + 1.0
 
         per_tok_losses = per_tok_criterion(
-            logits.contiguous().view(-1, vocab_size), 
+            log_probs.contiguous().view(-1, vocab_size), 
             labels.contiguous().view(-1))
 
         per_tok_losses = per_tok_losses * weights
@@ -101,7 +101,7 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
     for step, batch in enumerate(tqdm(dataloader)):
         if ARGS.debug_skip and step > 2:
             continue
-    
+
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         (
@@ -110,8 +110,10 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
             pre_tok_label_id, post_tok_label_id,
             _, _, _
         ) = batch
-        post_logits, post_probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, ignore_enrich=ignore_enrich)
-        loss = loss_fn(post_logits, post_out_id, post_tok_label_id)
+        log_probs, probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, ignore_enrich=ignore_enrich)
+        
+        loss = loss_fn(log_probs, post_out_id, post_tok_label_id)
+
         loss.backward()
         norm = nn.utils.clip_grad_norm_(model.parameters(), 3.0)
         optimizer.step()

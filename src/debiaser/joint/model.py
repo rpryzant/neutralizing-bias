@@ -39,12 +39,10 @@ class JointModel(nn.Module):
         if CUDA:
             tgt_input = tgt_input.cuda()
 
-        out_logits = []
-
         for i in range(ARGS.max_seq_len):
             # run input through the model
             with torch.no_grad():
-                decoder_logit, word_probs, tok_probs, _ = self.forward(
+                post_log_probs, word_probs, tok_probs, _ = self.forward(
                     pre_id, tgt_input, pre_mask, pre_len, tok_dist,
                     rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
             next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
@@ -76,10 +74,10 @@ class JointModel(nn.Module):
             if ARGS.sequence_softmax:
                 is_bias_probs = self.time_sm(is_bias_probs)
 
-        post_logits, post_probs = self.debias_model(
+        post_log_probs, post_probs = self.debias_model(
             pre_id, post_in_id, pre_mask, pre_len,  is_bias_probs)
 
-        return post_logits, post_probs, is_bias_probs, tok_logits
+        return post_log_probs, post_probs, is_bias_probs, tok_logits
 
 
     def save(self, path):

@@ -296,15 +296,18 @@ class AttentionalLSTM(nn.Module):
 
     def forward(self, input, hidden, ctx, srcmask):
         input = input.transpose(0, 1)
-
+        attn_dists = []
+        attn_ctxs = []
         output = []
         timesteps = range(input.size(0))
         for i in timesteps:
             hy, cy = self.cell(input[i], hidden)
             if self.use_attention:
-                _, h_tilde, alpha = self.attention_layer(hy, ctx, srcmask)
+                attn_ctx, h_tilde, attn = self.attention_layer(hy, ctx, srcmask)
                 hidden = h_tilde, cy
                 output.append(h_tilde)
+                attn_dists.append(attn)
+                attn_ctxs.append(attn_ctx)
             else: 
                 hidden = hy, cy
                 output.append(hy)
@@ -312,10 +315,15 @@ class AttentionalLSTM(nn.Module):
         # combine outputs, and get into [time, batch, dim]
         output = torch.cat(output, 0).view(
             input.size(0), *output[0].size())
-
         output = output.transpose(0, 1)
 
-        return output, hidden
+        # dists are [time, src len]
+        attn_dists = torch.stack(attn_dists).squeeze(1)
+
+        # [time, batch, dim]
+        attn_ctxs = torch.stack(attn_ctxs)
+
+        return output, hidden, attn_dists, attn_ctxs
 
 
 class StackedAttentionLSTM(nn.Module):
@@ -337,7 +345,8 @@ class StackedAttentionLSTM(nn.Module):
     def forward(self, input, hidden, ctx, srcmask):
         h_final, c_final = [], []
         for i, layer in enumerate(self.layers):
-            output, (h_final_i, c_final_i) = layer(input, hidden, ctx, srcmask)
+            output, (h_final_i, c_final_i), attns, attn_ctxs = layer(
+                input, hidden, ctx, srcmask)
 
             input = output
 
@@ -350,12 +359,16 @@ class StackedAttentionLSTM(nn.Module):
         h_final = torch.stack(h_final)
         c_final = torch.stack(c_final)
 
-        return input, (h_final, c_final)
+        # just return top layer attn
+        return input, (h_final, c_final), attns, attn_ctxs
 
 
 
 class Seq2Seq(nn.Module):
     def __init__(self, vocab_size, hidden_size, emb_dim, dropout, tok2id):
+        global ARGS
+        global CUDA
+
         super(Seq2Seq, self).__init__()        
 
         self.vocab_size = vocab_size
@@ -377,7 +390,10 @@ class Seq2Seq(nn.Module):
         
         self.output_projection = nn.Linear(self.hidden_dim, self.vocab_size)
         
+        # for decoding. TODO -- throw this out?
         self.softmax = nn.Softmax(dim=-1)
+        # for training
+        self.log_softmax = nn.LogSoftmax(dim=-1)
 
         self.init_weights()
 
@@ -402,6 +418,12 @@ class Seq2Seq(nn.Module):
             for param in self.embeddings.parameters():
                 param.requires_grad = False
 
+        if not ARGS.no_tok_enrich:
+            self.enrich_input = torch.ones(hidden_size)
+            if CUDA:
+                self.enrich_input = self.enrich_input.cuda()
+            self.enricher = nn.Linear(hidden_size, hidden_size)
+
 
     def init_weights(self):
         """Initialize weights."""
@@ -418,9 +440,18 @@ class Seq2Seq(nn.Module):
 
         return src_outputs, h_t, c_t
 
-    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None):
+    def run_decoder(self, pre_id, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, ignore_enrich=False):
+        global ARGS
+
+        # optionally enrich src with tok enrichment
+        if not ARGS.no_tok_enrich and not ignore_enrich:
+            enrichment = self.enricher(self.enrich_input).repeat(
+                src_outputs.shape[0], src_outputs.shape[1], 1)
+            enrichment = tok_dist.unsqueeze(2) * enrichment
+            src_outputs = src_outputs + enrichment
+    
         tgt_emb = self.embeddings(tgt_in_id)
-        tgt_outputs, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
+        tgt_outputs, _, _, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
 
         tgt_outputs_reshape = tgt_outputs.contiguous().view(
             tgt_outputs.size()[0] * tgt_outputs.size()[1],
@@ -432,15 +463,15 @@ class Seq2Seq(nn.Module):
             logits.size()[1])
 
         probs = self.softmax(logits)
+        log_probs = self.log_softmax(logits)
 
-        return logits, probs
+        return log_probs, probs
 
     def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None, ignore_enrich=False):
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
-        logits, probs = self.run_decoder(
-            src_outputs, (h_t, c_t), post_in_id, pre_mask)
-
-        return logits, probs
+        log_probs, probs = self.run_decoder(
+            pre_id, src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist, ignore_enrich)
+        return log_probs, probs
 
 
     def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, beam_width=1):
@@ -485,7 +516,7 @@ class Seq2Seq(nn.Module):
         for i in range(max_len):
             # run input through the model
             with torch.no_grad():
-                decoder_logit, word_probs = self.run_decoder(
+                _, word_probs = self.run_decoder(
                     src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist)
             # tranpose to preserve ordering
             new_tok_probs = word_probs[:, -1, :].squeeze(1).view(
@@ -514,14 +545,13 @@ class Seq2Seq(nn.Module):
         for i in range(max_len):
             # run input through the model
             with torch.no_grad():
-                decoder_logit, word_probs = self.forward(pre_id, tgt_input, pre_mask, pre_len, tok_dist)
+                _, word_probs = self.forward(
+                    pre_id, tgt_input, pre_mask, pre_len, tok_dist)
             next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
             tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
-            # move to cpu because otherwise quickly runs out of mem
-#            out_logits.append(decoder_logit[:, -1, :].detach().cpu())
 
         # [batch, len ] predicted indices
-        return tgt_input.detach().cpu().numpy()#, torch.stack(out_logits).permute(1, 0, 2)
+        return tgt_input.detach().cpu().numpy()
 
     def save(self, path):
         torch.save(self.state_dict(), path)
@@ -530,64 +560,55 @@ class Seq2Seq(nn.Module):
         self.load_state_dict(torch.load(path))
 
 
-class Seq2SeqEnrich(Seq2Seq):
+class PointerSeq2Seq(Seq2Seq):
     def __init__(self, vocab_size, hidden_size, emb_dim, dropout, tok2id):
         global CUDA
         global ARGS
         
-        super(Seq2SeqEnrich, self).__init__(
+        super(PointerSeq2Seq, self).__init__(
             vocab_size, hidden_size, emb_dim, dropout, tok2id)
 
-        # i dont think i need to do this but just to be safe...
-        self.enrich_input0 = torch.ones(hidden_size)
-        self.enrich_input1 = torch.ones(hidden_size)
-        if CUDA:
-            self.enrich_input0 = self.enrich_input0.cuda()
-            self.enrich_input1 = self.enrich_input1.cuda()
+        # 768 = input (embedding) size
+        # TODO make this a constant, maybe in args?s
+        self.p_gen_W = nn.Linear((hidden_size * 3) + 768, 1)
+        self.p_gen_sigmoid = nn.Sigmoid()
 
-        # seperate enrichers for del/edit
-        self.enricher0 = nn.Linear(hidden_size, hidden_size)
-        self.enricher1 = nn.Linear(hidden_size, hidden_size)
-        # # because init_weights was called in super and dont want to fuq up embeddings
-        # self.enricher.weight.data.uniform_(-0.1, 0.1)  
-
-        if ARGS.enrich_concat:
-            self.enrich_compressor = nn.Linear(hidden_size * 2, hidden_size)
-
-    def run_decoder(self, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, ignore_enrich=False):
+    def run_decoder(self, pre_id, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, ignore_enrich=False):
         global ARGS
 
-        if not ignore_enrich:
-            enrichment = self.enricher0(self.enrich_input0).repeat(
+        # optionally enrich src with tok enrichment
+        if not ARGS.no_tok_enrich and not ignore_enrich:
+            enrichment = self.enricher(self.enrich_input).repeat(
                 src_outputs.shape[0], src_outputs.shape[1], 1)
             enrichment = tok_dist.unsqueeze(2) * enrichment
-            if ARGS.enrich_concat:
-                src_outputs = self.enrich_compressor(torch.cat((src_outputs, enrichment), -1))
-            else:
-                src_outputs = src_outputs + enrichment
-
+            src_outputs = src_outputs + enrichment
+    
         tgt_emb = self.embeddings(tgt_in_id)
-        tgt_outputs, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
+        tgt_output_probs = []
 
-        tgt_outputs_reshape = tgt_outputs.contiguous().view(
-            tgt_outputs.size()[0] * tgt_outputs.size()[1],
-            tgt_outputs.size()[2])
-        logits = self.output_projection(tgt_outputs_reshape)
-        logits = logits.view(
-            tgt_outputs.size()[0],
-            tgt_outputs.size()[1],
-            logits.size()[1])
+        for ti in range(tgt_emb.shape[1]):
+            tgt_emb_i = tgt_emb[:, ti, :].unsqueeze(1)
+            output_i, (hi, ci), attn, attn_ctx = self.decoder(
+                tgt_emb_i, dec_initial_state, src_outputs, pre_mask)
+            output_i = output_i.squeeze(1)
+            attn = attn.squeeze(0)
 
-        probs = self.softmax(logits)
-        
-        return logits, probs
+            p_gen = self.p_gen_W(torch.cat([
+                attn_ctx.squeeze(0), hi.squeeze(0), 
+                ci.squeeze(0), tgt_emb_i.squeeze(1)
+            ], -1))
+            p_gen = self.p_gen_sigmoid(p_gen)
 
+            gen_probs = p_gen * self.softmax(self.output_projection(output_i))
+            pointer_probs = (1 - p_gen) * attn
+            gen_probs.scatter_add_(1, pre_id, pointer_probs)
 
-    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist, ignore_enrich=False):
-        src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
-        logits, probs = self.run_decoder(
-            src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist, ignore_enrich)
-        
-        return logits, probs
-        
+            tgt_output_probs.append(gen_probs)
+
+        probs = torch.stack(tgt_output_probs)
+        probs = probs.permute(1, 0, 2)
+
+        log_probs = torch.log(probs)
+
+        return log_probs, probs
 

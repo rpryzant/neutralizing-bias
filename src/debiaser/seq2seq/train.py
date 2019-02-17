@@ -77,12 +77,12 @@ eval_dataloader, num_eval_examples = get_dataloader(
 
 
 # # # # # # # # ## # # # ## # # MODELS # # # # # # # # ## # # # ## # #
-if ARGS.no_tok_enrich:
-    model = seq2seq_model.Seq2Seq(
+if ARGS.pointer_generator:
+    model = seq2seq_model.PointerSeq2Seq(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
-        emb_dim=768, dropout=0.2, tok2id=tok2id)
+        emb_dim=768, dropout=0.2, tok2id=tok2id) # 768 = bert hidden size
 else:
-    model = seq2seq_model.Seq2SeqEnrich(
+    model = seq2seq_model.Seq2Seq(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
         emb_dim=768, dropout=0.2, tok2id=tok2id)
 if CUDA:
@@ -135,12 +135,11 @@ if ARGS.pretrain_data:
 # # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
 print('INITIAL EVAL...')
 model.eval()
-hits, preds, golds, srcs = utils.run_eval(
-    model, eval_dataloader, tok2id, ARGS.working_dir + '/results_initial.txt',
-    ARGS.max_seq_len, ARGS.beam_width)
-# writer.add_scalar('eval/partial_bleu', utils.get_partial_bleu(srcs, golds, srcs), epoch+1)
-writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), 0)
-writer.add_scalar('eval/true_hits', np.mean(hits), 0)
+# hits, preds, golds, srcs = utils.run_eval(
+#     model, eval_dataloader, tok2id, ARGS.working_dir + '/results_initial.txt',
+#     ARGS.max_seq_len, ARGS.beam_width)
+# writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), 0)
+# writer.add_scalar('eval/true_hits', np.mean(hits), 0)
 
 for epoch in range(ARGS.epochs):
     print('EPOCH ', epoch)
