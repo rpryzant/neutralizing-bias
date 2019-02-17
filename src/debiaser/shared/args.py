@@ -44,9 +44,7 @@ parser.add_argument("--learning_rate",
 
 parser.add_argument("--debug_skip", 
     help="cut out of training/testing after 2 iterations (for testing)",
-    action='store_true')
-
-
+    action="store_true")
 
 
 
@@ -126,7 +124,11 @@ parser.add_argument(
 parser.add_argument(
     "--category_emb",
     action='store_true',
-    help='concat category embedding vec to help tag (use with --concat_categories) ')
+    help='concat category embedding vec to help tag (use with --concat_categories)')
+parser.add_argument(
+    "--add_category_emb",
+    action='store_true',
+    help='add the category embedding instead of concatenating (use with --category_emb)')
 parser.add_argument(
     "--category_input",
     action='store_true',

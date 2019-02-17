@@ -57,14 +57,19 @@ class BertForMultitask(PreTrainedBertModel):
 
 
 class ConcatCombine(nn.Module):
-    def __init__(self, hidden_size, feature_size, out_size, layers, dropout_prob, 
-            small=False, pre_enrich=False, activation=False, include_categories=False):
+    def __init__(self, hidden_size, feature_size, out_size, layers,
+            dropout_prob, small=False, pre_enrich=False, activation=False,
+            include_categories=False, category_emb=False,
+            add_category_emb=False):
         super(ConcatCombine, self).__init__()
-        global ARGS
 
         self.include_categories = include_categories
+        self.add_category_emb = add_category_emb
         if include_categories:
-            feature_size += (128 if ARGS.category_emb else 43)
+            if category_emb and not add_category_emb:
+                feature_size *= 2
+            elif not category_emb:
+                feature_size += 43
 
         if layers == 1:
             self.out = nn.Sequential(
@@ -104,7 +109,10 @@ class ConcatCombine(nn.Module):
         if self.include_categories:
             categories = categories.unsqueeze(1)
             categories = categories.repeat(1, features.shape[1], 1)
-            features = torch.cat((features, categories), -1)
+            if self.add_category_emb:
+                features = features + categories
+            else:
+                features = torch.cat((features, categories), -1)
 
         if self.enricher is not None:
             features = self.enricher(features)
@@ -113,8 +121,9 @@ class ConcatCombine(nn.Module):
 
 
 class AddCombine(nn.Module):
-    def __init__(self, hidden_dim, feat_dim, layers, dropout_prob, small=False, out_dim=-1,
-        pre_enrich=False, include_categories=False):
+    def __init__(self, hidden_dim, feat_dim, layers, dropout_prob, small=False,
+            out_dim=-1, pre_enrich=False, include_categories=False,
+            category_emb=False, add_category_emb=False):
         super(AddCombine, self).__init__()
 
         self.include_categories = include_categories
@@ -153,7 +162,12 @@ class AddCombine(nn.Module):
 
     def forward(self, hidden, feat, categories=None):
         if self.include_categories:
-            feat = torch.cat((feat, categories), -1)
+            categories = categories.unsqueeze(1)
+            categories = categories.repeat(1, features.shape[1], 1)
+            if self.add_category_emb:
+                features = features + categories
+            else:
+                features = torch.cat((features, categories), -1)
 
         if self.enricher is not None:
             feat = self.enricher(feat)
@@ -185,20 +199,24 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
                 ARGS.combiner_layers, config.hidden_dropout_prob,
                 ARGS.small_waist, pre_enrich=ARGS.pre_enrich,
                 activation=ARGS.activation_hidden,
-                include_categories=ARGS.concat_categories)
+                include_categories=ARGS.concat_categories,
+                category_emb=ARGS.category_emb,
+                add_category_emb=ARGS.add_category_emb)
         else:
             self.tok_classifier = AddCombine(
                 config.hidden_size, nfeats, ARGS.combiner_layers,
                 config.hidden_dropout_prob, ARGS.small_waist,
                 out_dim=tok_num_labels, pre_enrich=ARGS.pre_enrich,
-                include_categories=ARGS.concat_categories)
+                include_categories=ARGS.concat_categories,
+                category_emb=ARGS.category_emb,
+                add_category_emb=ARGS.add_category_emb)
 
         self.cls_dropout = nn.Dropout(config.hidden_dropout_prob)
         self.cls_classifier = nn.Linear(config.hidden_size, cls_num_labels)
 
         self.category_emb = ARGS.category_emb
         if ARGS.category_emb:
-            self.category_embeddings = nn.Embedding(43, 128)
+            self.category_embeddings = nn.Embedding(43, nfeats)
 
         self.apply(self.init_bert_weights)
 
