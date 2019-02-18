@@ -129,12 +129,12 @@ else:
         int((num_train_examples * ARGS.tagging_pretrain_epochs) / ARGS.train_batch_size),
         ARGS.tagging_pretrain_lr)
 
-    print('INITIAL EVAL...')
-    tagging_model.eval()
-    results = tagging_utils.run_inference(
-        tagging_model, eval_dataloader, tagging_loss_fn, tokenizer)
-    writer.add_scalar('tag_eval/tok_loss', np.mean(results['tok_loss']), 0)
-    writer.add_scalar('tag_eval/tok_acc', np.mean(results['labeling_hits']), 0)
+    # print('INITIAL EVAL...')
+    # tagging_model.eval()
+    # results = tagging_utils.run_inference(
+    #     tagging_model, eval_dataloader, tagging_loss_fn, tokenizer)
+    # writer.add_scalar('tag_eval/tok_loss', np.mean(results['tok_loss']), 0)
+    # writer.add_scalar('tag_eval/tok_acc', np.mean(results['labeling_hits']), 0)
 
     print('TRAINING...')
     for epoch in range(ARGS.tagging_pretrain_epochs):

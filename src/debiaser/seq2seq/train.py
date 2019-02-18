@@ -133,8 +133,8 @@ if ARGS.pretrain_data:
 
 
 # # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
-print('INITIAL EVAL...')
-model.eval()
+# print('INITIAL EVAL...')
+# model.eval()
 # hits, preds, golds, srcs = utils.run_eval(
 #     model, eval_dataloader, tok2id, ARGS.working_dir + '/results_initial.txt',
 #     ARGS.max_seq_len, ARGS.beam_width)
