@@ -8,7 +8,7 @@ with open(sys.argv[1]) as f:
     reader = csv.DictReader(f)
     for row in reader:
 
-        reversed = row['Input.reverse']
+        reversed = int(row['Input.reverse'])
 
         try:
             bias = [(row['Answer.bias_%d.on' % x] == 'true', x) for x in range(-2, 3)]
@@ -26,6 +26,7 @@ with open(sys.argv[1]) as f:
         if reversed == 0:
             pre = row['Input.first_text']
             pred = row['Input.second_text']
+
         # [pred, pre]
         else:
             pred = row['Input.first_text']
