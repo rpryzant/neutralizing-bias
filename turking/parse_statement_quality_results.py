@@ -1,3 +1,8 @@
+"""
+usage
+python parse_statement_quality_results.py Batch_3534942_batch_results.csv
+
+"""
 import sys
 import csv
 import numpy as np
