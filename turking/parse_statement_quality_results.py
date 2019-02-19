@@ -40,9 +40,16 @@ with open(sys.argv[1]) as f:
             bias *= -1
             fluency *= -1
 
+        if fluency < 0:
+            print('PRE:\t\t', pre)
+            print('PREDICTED:\t', pred)
+            print('FLUENCY:\t', fluency)
+            print()
+
+
         out.append([pre, pred, bias, fluency, meaning])
 
-
+"""
 print('avg bias: ', np.mean([x[2] for x in out]))
 print('bias dist: ', Counter([x[2] for x in out]))
 print()
@@ -51,3 +58,4 @@ print('fluency dist: ',  Counter([x[3] for x in out]))
 print()
 print('avg meaning: ', np.mean([x[4] for x in out]))
 print('meaning dist: ',  Counter([x[4] for x in out]))
+"""

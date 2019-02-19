@@ -595,6 +595,7 @@ class PointerSeq2Seq(Seq2Seq):
         # manually crank the decoder
         for ti in range(tgt_emb.shape[1]):
             tgt_emb_i = tgt_emb[:, ti, :].unsqueeze(1)
+
             output_i, (h_tilde_i, ci), attn, attn_ctx, raw_hidden = self.decoder(
                 tgt_emb_i, hidden, src_outputs, pre_mask)
 
@@ -615,7 +616,7 @@ class PointerSeq2Seq(Seq2Seq):
 
             tgt_output_probs.append(gen_probs)
 
-            hidden = (h_tilde_i, ci)
+            hidden = (h_tilde_i.squeeze(0), ci.squeeze(0))
 
         probs = torch.stack(tgt_output_probs)
         probs = probs.permute(1, 0, 2)
