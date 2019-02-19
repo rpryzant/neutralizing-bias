@@ -596,7 +596,7 @@ class PointerSeq2Seq(Seq2Seq):
         for ti in range(tgt_emb.shape[1]):
             tgt_emb_i = tgt_emb[:, ti, :].unsqueeze(1)
             output_i, (h_tilde_i, ci), attn, attn_ctx, raw_hidden = self.decoder(
-                tgt_emb_i, dec_initial_state, src_outputs, pre_mask)
+                tgt_emb_i, hidden, src_outputs, pre_mask)
 
             output_i = output_i.squeeze(1)
             attn = attn.squeeze(0)
