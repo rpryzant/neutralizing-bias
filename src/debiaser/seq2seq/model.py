@@ -298,6 +298,7 @@ class AttentionalLSTM(nn.Module):
         input = input.transpose(0, 1)
         attn_dists = []
         attn_ctxs = []
+        raw_hiddens = []
         output = []
         timesteps = range(input.size(0))
         for i in timesteps:
@@ -305,9 +306,11 @@ class AttentionalLSTM(nn.Module):
             if self.use_attention:
                 attn_ctx, h_tilde, attn = self.attention_layer(hy, ctx, srcmask)
                 hidden = h_tilde, cy
+                # most of this is because of the pointer generator stuff...
                 output.append(h_tilde)
                 attn_dists.append(attn)
                 attn_ctxs.append(attn_ctx)
+                raw_hiddens.append(hy)
             else: 
                 hidden = hy, cy
                 output.append(hy)
@@ -319,11 +322,12 @@ class AttentionalLSTM(nn.Module):
 
         # dists are [time, src len]
         attn_dists = torch.stack(attn_dists).squeeze(1)
-
         # [time, batch, dim]
         attn_ctxs = torch.stack(attn_ctxs)
+        # [time, batch, dim]
+        raw_hiddens = torch.stack(raw_hiddens)
 
-        return output, hidden, attn_dists, attn_ctxs
+        return output, hidden, attn_dists, attn_ctxs, raw_hiddens
 
 
 class StackedAttentionLSTM(nn.Module):
@@ -345,7 +349,7 @@ class StackedAttentionLSTM(nn.Module):
     def forward(self, input, hidden, ctx, srcmask):
         h_final, c_final = [], []
         for i, layer in enumerate(self.layers):
-            output, (h_final_i, c_final_i), attns, attn_ctxs = layer(
+            output, (h_final_i, c_final_i), attns, attn_ctxs, raw_hiddens = layer(
                 input, hidden, ctx, srcmask)
 
             input = output
@@ -359,8 +363,8 @@ class StackedAttentionLSTM(nn.Module):
         h_final = torch.stack(h_final)
         c_final = torch.stack(c_final)
 
-        # just return top layer attn
-        return input, (h_final, c_final), attns, attn_ctxs
+        # just return top layer attn + raw hiddens
+        return input, (h_final, c_final), attns, attn_ctxs, raw_hiddens
 
 
 
@@ -451,7 +455,7 @@ class Seq2Seq(nn.Module):
             src_outputs = src_outputs + enrichment
     
         tgt_emb = self.embeddings(tgt_in_id)
-        tgt_outputs, _, _, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
+        tgt_outputs, _, _, _, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
 
         tgt_outputs_reshape = tgt_outputs.contiguous().view(
             tgt_outputs.size()[0] * tgt_outputs.size()[1],
@@ -586,15 +590,21 @@ class PointerSeq2Seq(Seq2Seq):
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_output_probs = []
 
+        hidden = dec_initial_state
+
+        # manually crank the decoder
         for ti in range(tgt_emb.shape[1]):
             tgt_emb_i = tgt_emb[:, ti, :].unsqueeze(1)
-            output_i, (hi, ci), attn, attn_ctx = self.decoder(
+            output_i, (h_tilde_i, ci), attn, attn_ctx, raw_hidden = self.decoder(
                 tgt_emb_i, dec_initial_state, src_outputs, pre_mask)
+
             output_i = output_i.squeeze(1)
             attn = attn.squeeze(0)
+            h_i = raw_hidden.squeeze(0)
 
+            # no coverage, so just use tgt_emb instead of combining it like abi did
             p_gen = self.p_gen_W(torch.cat([
-                attn_ctx.squeeze(0), hi.squeeze(0), 
+                attn_ctx.squeeze(0), h_i, 
                 ci.squeeze(0), tgt_emb_i.squeeze(1)
             ], -1))
             p_gen = self.p_gen_sigmoid(p_gen)
@@ -604,6 +614,8 @@ class PointerSeq2Seq(Seq2Seq):
             gen_probs.scatter_add_(1, pre_id, pointer_probs)
 
             tgt_output_probs.append(gen_probs)
+
+            hidden = (h_tilde_i, ci)
 
         probs = torch.stack(tgt_output_probs)
         probs = probs.permute(1, 0, 2)

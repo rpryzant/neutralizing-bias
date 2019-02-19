@@ -93,60 +93,60 @@ eval_dataloader, num_eval_examples = get_dataloader(
 # # # # # # # # ## # # # ## # # TAGGING MODEL # # # # # # # # ## # # # ## # #
 # build model
 if ARGS.extra_features_top:
-    tagging_model= tagging_model.BertForMultitaskWithFeaturesOnTop.from_pretrained(
+    tag_model = tagging_model.BertForMultitaskWithFeaturesOnTop.from_pretrained(
             ARGS.bert_model,
             cls_num_labels=ARGS.num_categories,
             tok_num_labels=ARGS.num_tok_labels,
             cache_dir=ARGS.working_dir + '/cache',
             tok2id=tok2id)
 elif ARGS.extra_features_bottom:
-    tagging_model= tagging_model.BertForMultitaskWithFeaturesOnBottom.from_pretrained(
+    tag_model = tagging_model.BertForMultitaskWithFeaturesOnBottom.from_pretrained(
             ARGS.bert_model,
             cls_num_labels=ARGS.num_categories,
             tok_num_labels=ARGS.num_tok_labels,
             cache_dir=ARGS.working_dir + '/cache',
             tok2id=tok2id)
 else:
-    tagging_model = tagging_model.BertForMultitask.from_pretrained(
+    tag_model = tagging_model.BertForMultitask.from_pretrained(
         ARGS.bert_model,
         cls_num_labels=ARGS.num_categories,
         tok_num_labels=ARGS.num_tok_labels,
         cache_dir=ARGS.working_dir + '/cache')
 if CUDA:
-    tagging_model = tagging_model.cuda()
+    tag_model = tag_model.cuda()
 
 # train or load model
 tagging_loss_fn = tagging_utils.build_loss_fn(debias_weight=1.0)
 
 if ARGS.tagger_checkpoint is not None and os.path.exists(ARGS.tagger_checkpoint):
     print('LOADING TAGGER FROM ' + ARGS.tagger_checkpoint)
-    tagging_model.load_state_dict(torch.load(ARGS.tagger_checkpoint))
+    tag_model.load_state_dict(torch.load(ARGS.tagger_checkpoint))
     print('...DONE')
 else:
     print('TRAINING TAGGER...')
     tagging_optim = tagging_utils.build_optimizer(
-        tagging_model, 
+        tag_model, 
         int((num_train_examples * ARGS.tagging_pretrain_epochs) / ARGS.train_batch_size),
         ARGS.tagging_pretrain_lr)
 
     # print('INITIAL EVAL...')
-    # tagging_model.eval()
+    # tag_model.eval()
     # results = tagging_utils.run_inference(
-    #     tagging_model, eval_dataloader, tagging_loss_fn, tokenizer)
+    #     tag_model, eval_dataloader, tagging_loss_fn, tokenizer)
     # writer.add_scalar('tag_eval/tok_loss', np.mean(results['tok_loss']), 0)
     # writer.add_scalar('tag_eval/tok_acc', np.mean(results['labeling_hits']), 0)
 
     print('TRAINING...')
     for epoch in range(ARGS.tagging_pretrain_epochs):
         print('EPOCH ', epoch)
-        tagging_model.train()
+        tag_model.train()
         losses = tagging_utils.train_for_epoch(
-            tagging_model, train_dataloader, tagging_loss_fn, tagging_optim)
+            tag_model, train_dataloader, tagging_loss_fn, tagging_optim)
         writer.add_scalar('tag_train/loss', np.mean(losses), epoch + 1)
 
-        tagging_model.eval()
+        tag_model.eval()
         results = tagging_utils.run_inference(
-            tagging_model, eval_dataloader, tagging_loss_fn, tokenizer)
+            tag_model, eval_dataloader, tagging_loss_fn, tokenizer)
         writer.add_scalar('tag_eval/tok_loss', np.mean(results['tok_loss']), epoch + 1)
         writer.add_scalar('tag_eval/tok_acc', np.mean(results['labeling_hits']), epoch + 1)
 
@@ -171,7 +171,7 @@ debias_loss_fn, cross_entropy_loss = seq2seq_utils.build_loss_fn(vocab_size=len(
 
 if ARGS.debias_checkpoint is not None and os.path.exists(ARGS.debias_checkpoint):
     print('LOADING DEBIASER FROM ' + ARGS.debias_checkpoint)
-    tagging_model.load_state_dict(torch.load(ARGS.debias_checkpoint))
+    tag_model.load_state_dict(torch.load(ARGS.debias_checkpoint))
     print('...DONE')
 
 elif ARGS.pretrain_data:
@@ -193,7 +193,7 @@ elif ARGS.pretrain_data:
 
 # build model
 joint_model = joint_model.JointModel(
-    debias_model=debias_model, tagging_model=tagging_model)
+    debias_model=debias_model, tagging_model=tag_model)
 
 if CUDA:
     joint_model = joint_model.cuda()
