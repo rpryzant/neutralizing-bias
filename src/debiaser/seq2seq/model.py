@@ -565,6 +565,7 @@ class Seq2Seq(nn.Module):
 
 
 class PointerSeq2Seq(Seq2Seq):
+    """ https://arxiv.org/pdf/1704.04368.pdf """
     def __init__(self, vocab_size, hidden_size, emb_dim, dropout, tok2id):
         global CUDA
         global ARGS
