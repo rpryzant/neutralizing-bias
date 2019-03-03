@@ -134,6 +134,10 @@ parser.add_argument(
     action='store_true',
     help='prepend special category input emb to seq')
 parser.add_argument(
+    "--category_signal",
+    action='store_true',
+    help='add a learned category embedding to the word embedding before passing through BERT')
+parser.add_argument(
     "--num_categories", 
     default=43, type=int, 
     help="number of categories (don't change!)")

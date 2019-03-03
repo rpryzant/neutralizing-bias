@@ -1,4 +1,4 @@
-from pytorch_pretrained_bert.modeling import PreTrainedBertModel, BertModel, BertSelfAttention
+from pytorch_pretrained_bert.modeling import PreTrainedBertModel, BertModel, BertSelfAttention, BertEmbeddings, BertEncoder, BertPooler
 import pytorch_pretrained_bert.modeling as modeling
 import torch
 import torch.nn as nn
@@ -22,6 +22,89 @@ def gelu(x):
 
 def identity(x):
     return x
+
+class BertModelWithFeatureSignal(BertModel):
+    """Adapted from pytorch_pretrained_bert.modeling.BertModel.
+    Params:
+        config: a BertConfig class instance with the configuration to build a new model
+    Inputs:
+        `input_ids`: a torch.LongTensor of shape [batch_size, sequence_length]
+            with the word token indices in the vocabulary(see the tokens preprocessing logic in the scripts
+            `extract_features.py`, `run_classifier.py` and `run_squad.py`)
+        `token_type_ids`: an optional torch.LongTensor of shape [batch_size, sequence_length] with the token
+            types indices selected in [0, 1]. Type 0 corresponds to a `sentence A` and type 1 corresponds to
+            a `sentence B` token (see BERT paper for more details).
+        `attention_mask`: an optional torch.LongTensor of shape [batch_size, sequence_length] with indices
+            selected in [0, 1]. It's a mask to be used if the input sequence length is smaller than the max
+            input sequence length in the current batch. It's the mask that we typically use for attention when
+            a batch has varying length sentences.
+        `output_all_encoded_layers`: boolean which controls the content of the `encoded_layers` output as described below. Default: `True`.
+    Outputs: Tuple of (encoded_layers, pooled_output)
+        `encoded_layers`: controled by `output_all_encoded_layers` argument:
+            - `output_all_encoded_layers=True`: outputs a list of the full sequences of encoded-hidden-states at the end
+                of each attention block (i.e. 12 full sequences for BERT-base, 24 for BERT-large), each
+                encoded-hidden-state is a torch.FloatTensor of size [batch_size, sequence_length, hidden_size],
+            - `output_all_encoded_layers=False`: outputs only the full sequence of hidden-states corresponding
+                to the last attention block of shape [batch_size, sequence_length, hidden_size],
+        `pooled_output`: a torch.FloatTensor of size [batch_size, hidden_size] which is the output of a
+            classifier pretrained on top of the hidden state associated to the first character of the
+            input (`CLS`) to train on the Next-Sentence task (see BERT's paper).
+    Example usage:
+    ```python
+    # Already been converted into WordPiece token ids
+    input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
+    input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
+    token_type_ids = torch.LongTensor([[0, 0, 1], [0, 1, 0]])
+    config = modeling.BertConfig(vocab_size_or_config_json_file=32000, hidden_size=768,
+        num_hidden_layers=12, num_attention_heads=12, intermediate_size=3072)
+    model = modeling.BertModel(config=config)
+    all_encoder_layers, pooled_output = model(input_ids, token_type_ids, input_mask)
+    ```
+    """
+    def __init__(self, config, feature_size):
+        super(BertModel, self).__init__(config)
+        self.embeddings = BertEmbeddings(config)
+        self.feature_embeddings = nn.Embedding(feature_size, config.hidden_size)
+        self.encoder = BertEncoder(config)
+        self.pooler = BertPooler(config)
+        self.apply(self.init_bert_weights)
+
+    def forward(self, input_ids, feature_ids=None, token_type_ids=None, attention_mask=None, output_all_encoded_layers=True):
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_ids)
+        if token_type_ids is None:
+            token_type_ids = torch.zeros_like(input_ids)
+
+        # We create a 3D attention mask from a 2D tensor mask.
+        # Sizes are [batch_size, 1, 1, to_seq_length]
+        # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
+        # this attention mask is more simple than the triangular masking of causal attention
+        # used in OpenAI GPT, we just need to prepare the broadcast dimension here.
+        extended_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+
+        # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
+        # masked positions, this operation will create a tensor which is 0.0 for
+        # positions we want to attend and -10000.0 for masked positions.
+        # Since we are adding it to the raw scores before the softmax, this is
+        # effectively the same as removing these entirely.
+        extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
+        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
+
+        embedding_output = self.embeddings(input_ids, token_type_ids)
+        if feature_ids is not None:
+            feature_signal = self.feature_embeddings(feature_ids)
+            # Match the sequence length dimension to the input.
+            feature_signal = feature_signal.unsqueeze(1).expand_as(embedding_output)
+            embedding_output += feature_signal
+        encoded_layers = self.encoder(embedding_output,
+                                      extended_attention_mask,
+                                      output_all_encoded_layers=output_all_encoded_layers)
+        sequence_output = encoded_layers[-1]
+        pooled_output = self.pooler(sequence_output)
+        if not output_all_encoded_layers:
+            encoded_layers = encoded_layers[-1]
+        return encoded_layers, pooled_output
+
 
 class BertForMultitask(PreTrainedBertModel):
 
@@ -186,7 +269,10 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
         super(BertForMultitaskWithFeaturesOnTop, self).__init__(config)
         global ARGS
         
-        self.bert = BertModel(config)
+        if ARGS.category_signal:
+            self.bert = BertModelWithFeatureSignal(config, ARGS.num_categories)
+        else:
+            self.bert = BertModel(config)
         
         self.featurizer = features.Featurizer(
             tok2id, lexicon_feature_bits=ARGS.lexicon_feature_bits) 
@@ -216,7 +302,7 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
 
         self.category_emb = ARGS.category_emb
         if ARGS.category_emb:
-            self.category_embeddings = nn.Embedding(43, nfeats)
+            self.category_embeddings = nn.Embedding(ARGS.num_categories, nfeats)
 
         self.apply(self.init_bert_weights)
 
@@ -235,8 +321,15 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
         if CUDA:
             features = features.cuda()
 
-        sequence_output, pooled_output = self.bert(
-            input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+        if ARGS.category_signal:
+            category_ids = categories.max(-1)[1].type(
+                'torch.cuda.LongTensor' if CUDA else 'torch.LongTensor')
+            sequence_output, pooled_output = self.bert(
+                input_ids, category_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+        else:
+            sequence_output, pooled_output = self.bert(
+                input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+
 
         pooled_output = self.cls_dropout(pooled_output)
         cls_logits = self.cls_classifier(pooled_output)
