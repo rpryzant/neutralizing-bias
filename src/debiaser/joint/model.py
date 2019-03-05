@@ -159,7 +159,7 @@ class JointModel(nn.Module):
 
     def inference_forward(self,
             pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist,
-            rel_id=None, pos_ids=None, categories=None, beam_width=1):
+            rel_ids=None, pos_ids=None, categories=None, beam_width=1):
         global CUDA
 
         if beam_width == 1:
@@ -202,6 +202,7 @@ class JointModel(nn.Module):
         for i in range(max_len):
             # run input through the model
             with torch.no_grad():
+                # TODO(ndass): Calculate tok_probs once and just pass it into the decoder.
                 _, word_probs, tok_probs, _ = self.run_decoder(
                     pre_id, src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist,
                     rel_ids, pos_ids, categories)
@@ -214,11 +215,10 @@ class JointModel(nn.Module):
 
             tgt_input = get_top_hyp().contiguous().view(batch_size * beam_width, -1)
 
-        # TODO(ndass): Maintain tok_probs
-        return get_top_hyp()[0].detach().cpu().numpy(), None
+        return get_top_hyp()[0].detach().cpu().numpy(), tok_probs.detach().cpu().numpy()
 
     def inference_forward_greedy(self,
-            pre_id, post_start_id, pre_mask, pre_len, tok_dist,                        # debias arggs
+            pre_id, post_start_id, pre_mask, pre_len, tok_dist,                        # debias args
             rel_ids=None, pos_ids=None, categories=None, beam_width=None):             # tagging args
         global CUDA
         global ARGS
@@ -249,7 +249,7 @@ class JointModel(nn.Module):
         self.load_state_dict(torch.load(path))
                 
     def run_decoder(self, 
-            pre_id, src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist,     # debias arggs
+            pre_id, src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist,     # debias args
             rel_ids=None, pos_ids=None, categories=None):                           # tagging args
         global ARGS
 
