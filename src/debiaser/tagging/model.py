@@ -302,7 +302,8 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
 
         self.category_emb = ARGS.category_emb
         if ARGS.category_emb:
-            self.category_embeddings = nn.Embedding(ARGS.num_categories, nfeats)
+          size = ARGS.category_emb_size if ARGS.category_emb_size else nfeats
+            self.category_embeddings = nn.Embedding(ARGS.num_categories, size)
 
         self.apply(self.init_bert_weights)
 

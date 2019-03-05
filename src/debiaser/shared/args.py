@@ -126,6 +126,12 @@ parser.add_argument(
     action='store_true',
     help='concat category embedding vec to help tag (use with --concat_categories)')
 parser.add_argument(
+    "--category_emb_size",
+    type=int, default=0,
+    help=('size of the category embedding (0 means match the size of the word'
+         'embeddings if using category_signal and the number of features if'
+         'using concat_categories)'))
+parser.add_argument(
     "--add_category_emb",
     action='store_true',
     help='add the category embedding instead of concatenating (use with --category_emb)')
