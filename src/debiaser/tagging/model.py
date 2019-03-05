@@ -61,10 +61,14 @@ class BertModelWithFeatureSignal(BertModel):
     all_encoder_layers, pooled_output = model(input_ids, token_type_ids, input_mask)
     ```
     """
-    def __init__(self, config, feature_size):
+    def __init__(self, config, feature_size, emb_size):
         super(BertModel, self).__init__(config)
         self.embeddings = BertEmbeddings(config)
-        self.feature_embeddings = nn.Embedding(feature_size, config.hidden_size)
+        size = emb_size if emb_size else config.hidden_size
+        self.feature_embeddings = nn.Embedding(feature_size, size)
+        self.feature_projection = None
+        if size != config.hidden_size and size != 1:
+            self.feature_projection = nn.Linear(size, config.hidden_size)
         self.encoder = BertEncoder(config)
         self.pooler = BertPooler(config)
         self.apply(self.init_bert_weights)
@@ -93,6 +97,8 @@ class BertModelWithFeatureSignal(BertModel):
         embedding_output = self.embeddings(input_ids, token_type_ids)
         if feature_ids is not None:
             feature_signal = self.feature_embeddings(feature_ids)
+            if self.feature_projection is not None:
+                feature_signal = self.feature_projection(feature_signal)
             # Match the sequence length dimension to the input.
             feature_signal = feature_signal.unsqueeze(1).expand_as(embedding_output)
             embedding_output += feature_signal
@@ -143,14 +149,14 @@ class ConcatCombine(nn.Module):
     def __init__(self, hidden_size, feature_size, out_size, layers,
             dropout_prob, small=False, pre_enrich=False, activation=False,
             include_categories=False, category_emb=False,
-            add_category_emb=False):
+            add_category_emb=False, category_emb_size=90):
         super(ConcatCombine, self).__init__()
 
         self.include_categories = include_categories
         self.add_category_emb = add_category_emb
         if include_categories:
             if category_emb and not add_category_emb:
-                feature_size *= 2
+                feature_size += category_emb_size
             elif not category_emb:
                 feature_size += 43
 
@@ -270,7 +276,8 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
         global ARGS
         
         if ARGS.category_signal:
-            self.bert = BertModelWithFeatureSignal(config, ARGS.num_categories)
+            self.bert = BertModelWithFeatureSignal(
+              config, ARGS.num_categories, ARGS.category_emb_size)
         else:
             self.bert = BertModel(config)
         
@@ -278,6 +285,7 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
             tok2id, lexicon_feature_bits=ARGS.lexicon_feature_bits) 
         # TODO -- don't hardcode this...
         nfeats = 90 if ARGS.lexicon_feature_bits == 1 else 118
+        size = ARGS.category_emb_size if ARGS.category_emb_size else nfeats
 
         if ARGS.extra_features_method == 'concat':
             self.tok_classifier = ConcatCombine(
@@ -287,7 +295,8 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
                 activation=ARGS.activation_hidden,
                 include_categories=ARGS.concat_categories,
                 category_emb=ARGS.category_emb,
-                add_category_emb=ARGS.add_category_emb)
+                add_category_emb=ARGS.add_category_emb,
+                category_emb_size=size)
         else:
             self.tok_classifier = AddCombine(
                 config.hidden_size, nfeats, ARGS.combiner_layers,
@@ -302,7 +311,6 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
 
         self.category_emb = ARGS.category_emb
         if ARGS.category_emb:
-          size = ARGS.category_emb_size if ARGS.category_emb_size else nfeats
             self.category_embeddings = nn.Embedding(ARGS.num_categories, size)
 
         self.apply(self.init_bert_weights)
