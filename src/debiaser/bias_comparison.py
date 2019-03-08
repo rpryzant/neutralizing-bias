@@ -6,20 +6,21 @@ analysis of bias labeling.
 # python seq2seq/train.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.test --working_dir TEST --max_seq_len --train_batch_size 3 --test_batch_size 10  --hidden_size 32 --debug_skip
 
 import os
+import shutil
 import sys
 from tqdm import tqdm
 from simplediff import diff
 from tensorboardX import SummaryWriter
 import torch
+from sklearn.mixture import BayesianGaussianMixture as BGM
 from shared.args import ARGS
-import tensorflow as tf
-from tensorflow.contrib.tensorboard.plugins import projectors
 from pytorch_pretrained_bert.modeling import BertModel
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 
 
 embeddings = None
 tok2id = None
+SUBSET = 2000
 
 def get_difference_words(diff):
     '''
@@ -57,6 +58,9 @@ def setup():
     if not os.path.exists(ARGS.working_dir):
         os.makedirs(ARGS.working_dir)
 
+    if os.path.exists(ARGS.working_dir + '/00000'):
+        shutil.rmtree(ARGS.working_dir + '/00000')
+
     with open(ARGS.working_dir + '/command.sh', 'w') as f:
         f.write('python' + ' '.join(sys.argv) + '\n')
 
@@ -76,9 +80,9 @@ def main():
     tok2id['<del>'] = len(tok2id)
 
     skipped = 0
-    data_path = ARGS.train
+    train_data_path = ARGS.train
     embedding_diff_list = []
-    for i, line in enumerate(tqdm(open(data_path))):
+    for i, line in enumerate(tqdm(open(train_data_path))):
         parts = line.strip().split('\t')
 
         # if there pos/rel info
@@ -98,32 +102,61 @@ def main():
         words_diff = get_difference_words(tok_diff)
         embedding_diff = get_diff_embedding(words_diff)
         embedding_diff_list.append(embedding_diff)
+        if i == SUBSET:
+            break
+
+    print("Number of datapoints: {}".format(SUBSET))
     embedding_diff_total = torch.stack(embedding_diff_list).squeeze()
+    cluster_input = embedding_diff_total.detach().numpy()
+
+    print("Creating bgm")
+    bgm = BGM(n_components=4)
+    labels = bgm.fit_predict(cluster_input)
+    print("Writing out labels")
+
+    with open("labels.tsv", "w+") as labels_file:
+        for label in labels:
+            labels_file.write("{} \n".format(label))
 
     '''
     Clustering and visualizating word embeddings.
     '''
     writer.add_embedding(embedding_diff_total)
-    #Tensorflow Placeholders
-    '''
-    tf_embeddings = tf.convert_to_tensor(embedding_diff_total)
-    diff_vocab_size = embedding_diff_total.shape[0]
-    embedding_dim = embedding_diff_total.shape[1]
 
-    X_init = tf.placeholder(tf.float32, shape=(diff_vocab_size, embedding_dim), name="embeddings")
-    X = tf.Variable(X_init)
+    labels_predicted = []
+    print("Printing out examples")
 
-    #Initializer
-    init = tf.global_variables_initializer()
+    for i, line in enumerate(tqdm(open(train_data_path))):
+        parts = line.strip().split('\t')
+        # if there pos/rel info
+        if len(parts) == 7:
+            [revid, pre, post, _, _, _, _] = parts
+        # no pos/rel info
+        elif len(parts) == 5:
+            [revid, pre, post, _, _] = parts
+        # broken line
+        else:
+            skipped += 1
+            continue
 
-    #Start Tensorflow Session
-    sess = tf.Session()
-    sess.run(init, feed_dict={X_init: tf_embeddings})
+        tokens = pre.strip().split()
+        post_tokens = post.strip().split()
+        tok_diff = diff(tokens, post_tokens)
+        words_diff = get_difference_words(tok_diff)
+        embedding_diff = get_diff_embedding(words_diff).detach().numpy()
+        predicted_label = bgm.predict(embedding_diff)
+        if predicted_label not in labels_predicted:
+            labels_predicted.append(predicted_label)
+        print("Predicted Label: {}".format(predicted_label))
+        print("pre: ")
+        print(pre)
+        print("post: ")
+        print(post)
+        print("\n \n ")
+        keep_going = input("Continue? ") == 'y'
+        if not keep_going:
+            exit()
 
-    #Instance of Saver, save the graph.
-    saver = tf.train.Saver()
-    writer = tf.summary.FileWriter(TENSORBOARD_FILES_PATH, sess.graph)
-    '''
 
 if __name__ == '__main__':
     main()
