@@ -140,7 +140,7 @@ class JointModel(nn.Module):
             is_bias_probs = tok_dist
             tok_logits = None
         else:
-            is_bias_probs = run_tagger(
+            is_bias_probs = self.run_tagger(
                 pre_id, pre_mask, rel_ids, pos_ids, categories)
 
         post_log_probs, post_probs = self.debias_model(
