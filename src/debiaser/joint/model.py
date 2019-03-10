@@ -130,8 +130,10 @@ class JointModel(nn.Module):
             -10000.0 if ARGS.sequence_softmax else 0.0)
 
     def forward(self,
-            pre_id, post_in_id, pre_mask, pre_len, tok_dist,                        # debias args
-            rel_ids=None, pos_ids=None, categories=None, ignore_tagger=False):      # tagging args
+            # Debias args.
+            pre_id, post_in_id, pre_mask, pre_len, tok_dist,
+            # Tagger args.
+            rel_ids=None, pos_ids=None, categories=None, ignore_tagger=False):
         global ARGS
 
         if ignore_tagger:
@@ -139,7 +141,8 @@ class JointModel(nn.Module):
             tok_logits = None
         else:
             _, tok_logits = self.tagging_model(
-                pre_id, attention_mask=1.0-pre_mask, rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
+                pre_id, attention_mask=1.0-pre_mask, rel_ids=rel_ids,
+                pos_ids=pos_ids, categories=categories)
 
             tok_probs = tok_logits[:, :, :2]
             if ARGS.token_softmax:
@@ -158,36 +161,47 @@ class JointModel(nn.Module):
         return post_log_probs, post_probs, is_bias_probs, tok_logits
 
     def inference_forward(self,
-            pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist,
+            # Debias args.
+            pre_id, post_start_id, pre_mask, pre_len, max_len,
+            # Tagger args.
             rel_ids=None, pos_ids=None, categories=None, beam_width=1):
         global CUDA
 
         if beam_width == 1:
             return self.inference_forward_greedy(
                 pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist,
-                rel_id, pos_ids, categories)
+                rel_ids, pos_ids, categories)
 
-        # encode src
-        src_outputs, h_t, c_t = self.debias_model.run_encoder(pre_id, pre_len, pre_mask)
+        # Encode the source.
+        src_outputs, h_t, c_t = self.debias_model.run_encoder(
+            pre_id, pre_len, pre_mask)
 
-        # expand everything per beam. Order is beam x batch,
-        #  e.g. [batch, batch, batch] if beam width = 3
-        #  so to unpack we do tensor.view(beam, batch)
+        # Get the bias probabilities from the tagger.
+        is_bias_probs, _ = self.run_tagger(
+            pre_id, pre_mask, rel_ids=rel_ids, pos_ids=pos_ids,
+            categories=categories)
+
+        # Expand everything per beam. Order is (beam x batch),
+        # e.g. [batch, batch, batch] if beam width=3. To unpack, do
+        # tensor.view(beam, batch)
         src_outputs = src_outputs.repeat(beam_width, 1, 1)
         initial_hidden = (
             h_t.repeat(beam_width, 1),
             c_t.repeat(beam_width, 1))
         pre_mask = pre_mask.repeat(beam_width, 1)
         pre_len = pre_len.repeat(beam_width)
-        if tok_dist is not None:
-            tok_dist = tok_dist.repeat(beam_width, 1)
+        if is_bias_probs is not None:
+            is_bias_probs = is_bias_probs.repeat(beam_width, 1)
 
-        # build initial inputs and beams
+        # Build initial inputs and beams.
         batch_size = pre_id.shape[0]
-        beams = [Beam(beam_width, self.tok2id, cuda=CUDA) for k in range(batch_size)]
-        # transpose to move beam to first dim
-        tgt_input = torch.stack([b.get_current_state() for b in beams]
-            ).t().contiguous().view(-1, 1)
+        beams = [Beam(beam_width, self.debias_model.tok2id, cuda=CUDA)
+                 for k in range(batch_size)]
+
+        # Transpose to move beam to first dim.
+        tgt_input = torch.stack(
+            [b.get_current_state() for b in beams]).t().contiguous().view(
+            -1, 1)
 
         def get_top_hyp():
             out = []
@@ -195,64 +209,66 @@ class JointModel(nn.Module):
                 _, ks = b.sort_best()
                 hyps = torch.stack([torch.stack(b.get_hyp(k)) for k in ks])
                 out.append(hyps)
-            # move beam first. output is [beam, batch, len]
+
+            # Move beam first. `out` is [beam, batch, len].
             out = torch.stack(out).transpose(1, 0)
             return out
 
         for i in range(max_len):
-            # run input through the model
+            # Run input through the debiasing model.
             with torch.no_grad():
-                # TODO(ndass): Calculate tok_probs once and just pass it into the decoder.
-                _, word_probs, tok_probs, _ = self.run_decoder(
-                    pre_id, src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist,
-                    rel_ids, pos_ids, categories)
-            # tranpose to preserve ordering
+                _, word_probs = self.debias_model.run_decoder(
+                    pre_id, src_outputs, initial_hidden, tgt_input, pre_mask,
+                    is_bias_probs)
+
+            # Tranpose to preserve ordering.
             new_tok_probs = word_probs[:, -1, :].squeeze(1).view(
                 beam_width, batch_size, -1).transpose(1, 0)
 
             for bi in range(batch_size):
                 beams[bi].advance(new_tok_probs.data[bi])
 
-            tgt_input = get_top_hyp().contiguous().view(batch_size * beam_width, -1)
+            tgt_input = get_top_hyp().contiguous().view(
+                batch_size * beam_width, -1)
 
-        return get_top_hyp()[0].detach().cpu().numpy(), tok_probs.detach().cpu().numpy()
+        return (get_top_hyp()[0].detach().cpu().numpy(),
+                is_bias_probs.detach().cpu().numpy())
 
     def inference_forward_greedy(self,
-            pre_id, post_start_id, pre_mask, pre_len, tok_dist,                        # debias args
-            rel_ids=None, pos_ids=None, categories=None, beam_width=None):             # tagging args
+            # Debias args.
+            pre_id, post_start_id, pre_mask, pre_len, tok_dist,
+            # Tagger args.
+            rel_ids=None, pos_ids=None, categories=None, beam_width=None):
         global CUDA
         global ARGS
-        """ argmax decoding """
-        # Initialize target with <s> for every sentence
-        tgt_input = Variable(torch.LongTensor([
-                [post_start_id] for i in range(pre_id.size(0))
-        ]))
+        # Initialize target with <s> for every sentence.
+        tgt_input = Variable(torch.LongTensor(
+            [[post_start_id] for i in range(pre_id.size(0))]))
+
         if CUDA:
             tgt_input = tgt_input.cuda()
 
         for i in range(ARGS.max_seq_len):
-            # run input through the model
+            # Run input through the joint model.
             with torch.no_grad():
-                _, word_probs, tok_probs, _ = self.forward(
+                _, word_probs, is_bias_probs, _ = self.forward(
                     pre_id, tgt_input, pre_mask, pre_len, tok_dist,
                     rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
             next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
             tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
 
-        # [batch, len ] predicted indices
-        return tgt_input.detach().cpu().numpy(), tok_probs.detach().cpu().numpy()
+        # [batch, len] predicted indices.
+        return (tgt_input.detach().cpu().numpy(),
+                is_bias_probs.detach().cpu().numpy())
 
     def save(self, path):
         torch.save(self.state_dict(), path)
 
     def load(self, path):
         self.load_state_dict(torch.load(path))
-                
-    def run_decoder(self, 
-            pre_id, src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist,     # debias args
-            rel_ids=None, pos_ids=None, categories=None):                           # tagging args
-        global ARGS
 
+    def run_tagger(self, pre_id, pre_mask, rel_ids=None, pos_ids=None,
+                   categories=None):
         _, tok_logits = self.tagging_model(
             pre_id, attention_mask=1.0 - pre_mask, rel_ids=rel_ids,
             pos_ids=pos_ids, categories=categories)
@@ -268,11 +284,7 @@ class JointModel(nn.Module):
         if ARGS.sequence_softmax:
             is_bias_probs = self.time_sm(is_bias_probs)
 
-        log_probs, probs = self.debias_model.run_decoder(
-            pre_id, src_outputs, initial_hidden, tgt_input, pre_mask,
-            is_bias_probs)
-
-        return log_probs, probs, is_bias_probs, tok_logits
+        return is_bias_probs, tok_logits
 
     def save(self, path):
         torch.save(self.state_dict(), path)
