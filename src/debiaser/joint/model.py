@@ -140,7 +140,7 @@ class JointModel(nn.Module):
             is_bias_probs = tok_dist
             tok_logits = None
         else:
-            is_bias_probs = self.run_tagger(
+            is_bias_probs, tok_logits = self.run_tagger(
                 pre_id, pre_mask, rel_ids, pos_ids, categories)
 
         post_log_probs, post_probs = self.debias_model(
@@ -150,7 +150,7 @@ class JointModel(nn.Module):
 
     def inference_forward(self,
             # Debias args.
-            pre_id, post_start_id, pre_mask, pre_len, max_len,
+            pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist,
             # Tagger args.
             rel_ids=None, pos_ids=None, categories=None, beam_width=1):
         global CUDA
@@ -158,7 +158,7 @@ class JointModel(nn.Module):
         if beam_width == 1:
             return self.inference_forward_greedy(
                 pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist,
-                rel_ids, pos_ids, categories)
+                rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
 
         # Encode the source.
         src_outputs, h_t, c_t = self.debias_model.run_encoder(
@@ -224,7 +224,7 @@ class JointModel(nn.Module):
 
     def inference_forward_greedy(self,
             # Debias args.
-            pre_id, post_start_id, pre_mask, pre_len, tok_dist,
+            pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist,
             # Tagger args.
             rel_ids=None, pos_ids=None, categories=None, beam_width=None):
         global CUDA
@@ -236,7 +236,7 @@ class JointModel(nn.Module):
         if CUDA:
             tgt_input = tgt_input.cuda()
 
-        for i in range(ARGS.max_seq_len):
+        for i in range(max_len):
             # Run input through the joint model.
             with torch.no_grad():
                 _, word_probs, is_bias_probs, _ = self.forward(

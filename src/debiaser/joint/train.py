@@ -1,17 +1,8 @@
 """
 finetune both models jointly
 
-python joint/train.py \
-    --train ../../data/v6/corpus.wordbiased.tag.train \
-    --train_categories_file ../../data/v6/corpus.wordbiased.tag.train.categories \
-    --test ../../data/v6/corpus.wordbiased.tag.test.categories \
-    --pretrain_data ../../data/v6/corpus.unbiased.shuf \
-    --extra_features_top --pre_enrich --activation_hidden --category_input --tagging_pretrain_epochs 2 \
-    --pretrain_epochs 4 \
-    --learning_rate 0.0003 --epochs 2 --hidden_size 10 --train_batch_size 32 --test_batch_size 16 \
-    --bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax --sequence_softmax \
-    --working_dir TEST \
-    --debug_skip
+
+python joint/train.py     --train ../../data/v6/corpus.wordbiased.tag.train     --test ../../data/v6/corpus.wordbiased.tag.test.categories     --extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 1     --pretrain_epochs 4     --learning_rate 0.0003 --epochs 2 --hidden_size 10 --train_batch_size 4 --test_batch_size 4     --bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax --sequence_softmax     --working_dir TEST     --debug_skip
     
     """
 

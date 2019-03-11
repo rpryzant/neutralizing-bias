@@ -73,7 +73,7 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
 
         with torch.no_grad():
             predicted_toks, predicted_probs = model.inference_forward(
-                pre_id, post_start_id, pre_mask, pre_len, max_len,
+                pre_id, post_start_id, pre_mask, pre_len, max_len, pre_tok_label_id,
                 rel_ids=rel_ids, pos_ids=pos_ids, categories=categories,
                 beam_width=beam_width)
 
