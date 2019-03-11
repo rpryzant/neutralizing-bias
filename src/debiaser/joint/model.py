@@ -140,8 +140,7 @@ class JointModel(nn.Module):
         if ARGS.token_softmax:
             tok_probs = self.token_sm(tok_probs)
         is_bias_probs = tok_probs[:, :, -1]
-        is_bias_probs *= (1.0 - pre_mask).float()
-
+        is_bias_probs = is_bias_probs.masked_fill(pre_mask, 0.0)
 
         if ARGS.zero_threshold > -10000.0:
             is_bias_probs = self.tok_threshold(is_bias_probs)
