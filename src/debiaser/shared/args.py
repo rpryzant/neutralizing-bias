@@ -20,7 +20,7 @@ parser.add_argument(
     type=str, default=''
 )
 parser.add_argument(
-    "--inference_file",
+    "--inference_output",
     help="output path for inference outputs",
     type=str, default=''
 )

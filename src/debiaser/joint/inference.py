@@ -21,7 +21,7 @@ import utils as joint_utils
 
 
 
-assert ARGS.inference_file, "Need to specify inference_file arg!"
+assert ARGS.inference_output, "Need to specify inference_output arg!"
 
 
 # # # # # # # # ## # # # ## # # DATA # # # # # # # # ## # # # ## # #
@@ -74,14 +74,19 @@ joint_model = joint_model.JointModel(
 
 if ARGS.checkpoint is not None and os.path.exists(ARGS.checkpoint):
     print('LOADING FROM ' + ARGS.checkpoint)
-    joint_model.load_state_dict(torch.load(ARGS.checkpoint))
+    # TODO(rpryzant): is there a way to do this more elegantly? 
+    # https://pytorch.org/tutorials/beginner/saving_loading_models.html#saving-loading-model-across-devices
+    if CUDA:
+        joint_model.load_state_dict(torch.load(ARGS.checkpoint))
+    else:
+        joint_model.load_state_dict(torch.load(ARGS.checkpoint, map_location='cpu'))
     print('...DONE')
 
 
 # # # # # # # # # # # # EVAL # # # # # # # # # # # # # #
 joint_model.eval()
 hits, preds, golds, srcs = joint_utils.run_eval(
-    joint_model, eval_dataloader, tok2id, ARGS.inference_file,
+    joint_model, eval_dataloader, tok2id, ARGS.inference_output,
     ARGS.max_seq_len, ARGS.beam_width)
 
 print('eval/bleu', seq2seq_utils.get_bleu(preds, golds), 0)
