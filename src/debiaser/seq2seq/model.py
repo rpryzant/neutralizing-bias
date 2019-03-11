@@ -477,7 +477,6 @@ class Seq2Seq(nn.Module):
             pre_id, src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist, ignore_enrich)
         return log_probs, probs
 
-
     def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, beam_width=1):
         global CUDA
 
@@ -488,7 +487,7 @@ class Seq2Seq(nn.Module):
         # encode src
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
 
-        # expand everything per beam. Order is beam x batch, 
+        # expand everything per beam. Order is beam x batch,
         #  e.g. [batch, batch, batch] if beam width = 3
         #  so to unpack we do tensor.view(beam, batch)
         src_outputs = src_outputs.repeat(beam_width, 1, 1)
@@ -521,7 +520,7 @@ class Seq2Seq(nn.Module):
             # run input through the model
             with torch.no_grad():
                 _, word_probs = self.run_decoder(
-                    src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist)
+                    pre_id, src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist)
             # tranpose to preserve ordering
             new_tok_probs = word_probs[:, -1, :].squeeze(1).view(
                 beam_width, batch_size, -1).transpose(1, 0)
@@ -543,8 +542,6 @@ class Seq2Seq(nn.Module):
         ]))
         if CUDA:
             tgt_input = tgt_input.cuda()
-
-        out_logits = []
 
         for i in range(max_len):
             # run input through the model
