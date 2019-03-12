@@ -72,6 +72,9 @@ else:
 joint_model = joint_model.JointModel(
     debias_model=debias_model, tagging_model=tagging_model)
 
+if CUDA:
+    joint_model = joint_model.cuda()
+
 if ARGS.checkpoint is not None and os.path.exists(ARGS.checkpoint):
     print('LOADING FROM ' + ARGS.checkpoint)
     # TODO(rpryzant): is there a way to do this more elegantly? 
@@ -92,6 +95,8 @@ hits, preds, golds, srcs = joint_utils.run_eval(
 print('eval/bleu', seq2seq_utils.get_bleu(preds, golds), 0)
 print('eval/true_hits', np.mean(hits), 0)
 
-
+with open(ARGS.working_dir + '/stats.txt', 'w') as f:
+    f.write('eval/bleu %d' % seq2seq_utils.get_bleu(preds, golds))
+    f.write('eval/true_hits %d' % np.mean(hits))
 
 
