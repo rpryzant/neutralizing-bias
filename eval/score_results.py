@@ -81,7 +81,7 @@ def main(args):
       break
 
     # Update the data structures that keep track of scores.
-    unlabeled_hashes.add(src_hash)
+    labeled_hashes.add(src_hash)
     scores_dict[filename][src_hash] = score
     os.system('clear')
     i += 1
