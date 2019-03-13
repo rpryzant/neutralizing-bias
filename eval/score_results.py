@@ -1,8 +1,7 @@
 """Command line interface to score inference results.
 
 Example usage:
-  python score_results.py --results_dir path/to/inference_outputs
-  python score_results.py --results_dir path/to/inference_outputs --show_results
+  python score_results.py --results_dir path/to/inference_outputs --scores_file my_scores_file
 """
 import hashlib
 import argparse
