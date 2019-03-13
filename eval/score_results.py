@@ -69,7 +69,7 @@ def main(args):
   i = 0
   while True:
     filename = choice(list(results_dict.keys()))
-    for i in range(100): #hacky: go until you get a cache miss
+    for _ in range(100): #hacky: go until you get a cache miss
       src_hash = choice(list(results_dict[filename].keys()))
       if src_hash not in labeled_hashes:
         break
