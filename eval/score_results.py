@@ -4,94 +4,76 @@ Example usage:
   python score_results.py --results_dir path/to/inference_outputs
   python score_results.py --results_dir path/to/inference_outputs --show_results
 """
-
 import hashlib
-import utils
 import argparse
 import os
-from random import shuffle
+from random import shuffle, choice
 from collections import defaultdict
 import json
+from tqdm import tqdm
 
-SCORED_HASHES = 'hashes.txt'
-SCORES = 'scores.txt'
+import utils
 
-MIN_SCORE = '0'
-MAX_SCORE = '5'
+
+
+MIN_SCORE = '1'
+MAX_SCORE = '2'
 
 def main(args):
-  results_files = os.listdir(args.results_dir)
 
-  # Load hashes of results that have been labeled already.
+  # Load save file
   try:
-    with open(SCORED_HASHES, 'r') as f:
-      labeled_hashes = json.load(f)
+    with open(args.scores_file, 'r') as f:
+      # Load hashes of results that have been labeled already.
+      tmp = json.load(f)
+      scores_dict = defaultdict(lambda: defaultdict(int))
+      for filename in tmp:
+        for src_hash in tmp[filename]:
+          scores_dict[filename][src_hash] = tmp[filename][src_hash]
+
+      labeled_hashes = set([
+        src_hash for file_dict in scores_dict.values() for src_hash in file_dict.keys()
+      ])
       print(f'Found {len(labeled_hashes)} previously labeled examples.')
   except:
-    labeled_hashes = []
+    labeled_hashes = set()
+    scores_dict = defaultdict(lambda: defaultdict(int))
 
-  # Read in results files.
-  print("Reading in results files:")
-  unlabeled_outputs = {}
-  for results_file in results_files:
-    outputs = utils.parse_results_file(
-      os.path.join(args.results_dir, results_file))
-    print(results_file.encode('utf-8'))
-    file_hash = hashlib.md5(results_file.encode('utf-8')).hexdigest()
-    for src_hash in outputs:
-      if src_hash not in labeled_hashes:
-        output = outputs[src_hash]
-        output['file_hash'] = file_hash
-        unlabeled_outputs[src_hash] = output
+  # Load results files
+  results_files = os.listdir(args.results_dir)
+  results_dict = {
+    results_path: utils.parse_results_file(
+      os.path.join(args.results_dir, results_path), ignore_unchanged=True)
+    for results_path in results_files
+  }
 
-  scores = defaultdict(lambda: defaultdict(int))
-  # Load hashes of results that have been labeled already.
-  try:
-    with open(SCORES, 'r') as f:
-      scores_dict = json.load(f)
-      num_scores = sum([sum(scores_dict[file].values()) for file in scores_dict])
-      print(f'Found {num_scores} scores in {len(scores_dict)} files.')
-      for file in scores_dict:
-        for label in scores_dict[file]:
-          scores[file][label] = scores_dict[file][label]
-  except:
-    pass
+  # Get examples that haven't been labeled yet
+  num_unlabeled_outputs = len([
+    (filename, src_hash) 
+    for filename in results_dict.keys()
+    for src_hash in results_dict[filename].keys()
+    if src_hash not in labeled_hashes
+  ])
+  print(f'Found {num_unlabeled_outputs} examples to label.')
 
-  num_scores = sum([sum(scores[file].values()) for file in scores])
-  assert num_scores == len(labeled_hashes)
-
-  if args.show_results:
-    print()
-    response = input('Are you sure you want to view the results? (y/n) ')
-    if response.lower() == 'y':
-      os.system('clear')
-      for results_file in results_files:
-        file_hash = hashlib.md5(results_file.encode('utf-8')).hexdigest()
-        file_scores = scores[file_hash]
-        print(results_file)
-        print(dict(file_scores))
-    exit()
-
-  # Suffle the source hashes (randomizes the order that sentences are shown).
-  hashes = list(unlabeled_outputs.keys())
-  shuffle(hashes)
+  # label examples (random uniform across files)
   i = 0
-
-  print()
   while True:
-    unlabeled_output = unlabeled_outputs[hashes[i]]
+    filename = choice(list(results_dict.keys()))
+    src_hash = choice(list(results_dict[filename].keys()))
+    if src_hash in labeled_hashes:
+      continue
+
+    unlabeled_output = results_dict[filename][src_hash]
+    print('%d / %d' % (i, num_unlabeled_outputs))
     print(f'Source:\t\t{unlabeled_output["src"]}')
     print(f'Prediction:\t{unlabeled_output["pred"]}')
 
     # Get a score from the user.
     score = input(
       """Rate the quality of the output on a scale of %s-%s.
-         0: No change
-         1: TODO
-         2: TODO
-         3: TODO
-         4: TODO
-         5: TODO
+         1: Unsuccessful
+         2: Successful
          Enter -1 to exit.\n""" % (MIN_SCORE, MAX_SCORE))
     while (score < MIN_SCORE or MAX_SCORE < score) and score != '-1':
       score = input(f'Invalid score. Rate the quality of the output on a '
@@ -100,19 +82,15 @@ def main(args):
       break
 
     # Update the data structures that keep track of scores.
-    scores[unlabeled_output['file_hash']][score] += 1
-    labeled_hashes.append(hashes[i])
-    i += 1
+    scores_dict[filename][src_hash] = score
     os.system('clear')
+    i += 1
 
   # Save data structures.
-  with open(SCORES, 'w') as f:
+  with open(args.scores_file, 'w') as f:
     print("Saving scores.")
-    json.dump(scores, f)
+    json.dump(scores_dict, f)
 
-  with open(SCORED_HASHES, 'w') as f:
-    print("Saving scored examples.")
-    json.dump(labeled_hashes, f)
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
@@ -123,9 +101,10 @@ if __name__ == '__main__':
   )
 
   parser.add_argument(
-    "--show_results",
-    help="If true, display the inference results.",
-    action="store_true"
+    "--scores_file",
+    help="File to dump scores into.",
+    default='scores.txt',
+    required=True
   )
 
   main(parser.parse_args())
