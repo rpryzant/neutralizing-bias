@@ -18,6 +18,16 @@ import utils
 MIN_SCORE = '1'
 MAX_SCORE = '2'
 
+def detokenize(s):
+    out = []
+    for w in s.split():
+        if w.startswith('##') and len(out) > 0:
+            out[-1] += w[2:]
+        else:
+            out.append(w)
+    return ' '.join(out)
+
+
 def main(args):
 
   # Load save file
@@ -59,14 +69,17 @@ def main(args):
   i = 0
   while True:
     filename = choice(list(results_dict.keys()))
-    src_hash = choice(list(results_dict[filename].keys()))
+    for i in range(100): #hacky: go until you get a cache miss
+      src_hash = choice(list(results_dict[filename].keys()))
+      if src_hash not in labeled_hashes:
+        break
     if src_hash in labeled_hashes:
       continue
 
     unlabeled_output = results_dict[filename][src_hash]
     print('%d / %d' % (i, num_unlabeled_outputs))
-    print(f'Source:\t\t{unlabeled_output["src"]}')
-    print(f'Prediction:\t{unlabeled_output["pred"]}')
+    print(f'Source:\t\t{detokenize(str(unlabeled_output["src"]))}')
+    print(f'Prediction:\t{detokenize(str(unlabeled_output["pred"]))}')
 
     # Get a score from the user.
     score = input(
