@@ -32,8 +32,8 @@ def parse_results_file(fp, ignore_unchanged=False):
     for l in open(fp):
         l = l.strip()
         if '#########' in l and is_complete(cur):
-            src_hash = hashlib.md5(cur['src']).hexdigest()
-            pred_hash = hashlib.md5(cur['pred']).hexdigest()
+            src_hash = hashlib.md5(cur['src'].encode()).hexdigest()
+            pred_hash = hashlib.md5(cur['pred'].encode()).hexdigest()
             if ignore_unchanged:
                 if not src_hash == pred_hash and not punct_diff(str(cur['src']), str(cur['pred'])):
                     out[src_hash] = cur
@@ -42,9 +42,10 @@ def parse_results_file(fp, ignore_unchanged=False):
 
             cur = {}
         elif 'IN SEQ' in l:
-            cur['src'] = eval(l.split('\t')[-1])
+            # decode into str from bytes
+            cur['src'] = eval(l.split('\t')[-1]).decode()
         elif 'PRED SEQ' in l:
-            cur['pred'] = eval(l.split('\t')[-1])
+            cur['pred'] = eval(l.split('\t')[-1]).decode()
         elif 'PRED DIST' in l:
             cur['dist'] = eval(l.split('\t')[-1])
 
