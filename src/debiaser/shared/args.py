@@ -7,12 +7,11 @@ parser.add_argument(
 parser.add_argument(
     "--test",
     help="test prefix",
-    required=True
 )
 parser.add_argument(
     "--working_dir",
     help="train continuously on one batch of data",
-    type=str, required=True
+    type=str
 )
 parser.add_argument(
     "--checkpoint",

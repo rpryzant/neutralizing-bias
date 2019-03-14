@@ -145,7 +145,6 @@ else:
 
 # # # # # # # # ## # # # ## # # DEBIAS MODEL # # # # # # # # ## # # # ## # #
 # bulid model
-# if ARGS.no_tok_enrich:
 if ARGS.pointer_generator:
     debias_model = seq2seq_model.PointerSeq2Seq(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
