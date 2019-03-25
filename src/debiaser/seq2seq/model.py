@@ -587,10 +587,14 @@ class PointerSeq2Seq(Seq2Seq):
 
         # optionally enrich src with tok enrichment
         if not ARGS.no_tok_enrich and not ignore_enrich:
-            enrichment = self.enricher(self.enrich_input).repeat(
-                src_outputs.shape[0], src_outputs.shape[1], 1)
-            enrichment = tok_dist.unsqueeze(2) * enrichment
-            src_outputs = src_outputs + enrichment
+            if ARGS.concat_join_baseline:
+                src_outputs = torch.cat((tok_dist, src_outputs), -1)
+                src_outputs = self.concat_joiner(src_outputs)
+            else:
+                enrichment = self.enricher(self.enrich_input).repeat(
+                    src_outputs.shape[0], src_outputs.shape[1], 1)
+                enrichment = tok_dist.unsqueeze(2) * enrichment
+                src_outputs = src_outputs + enrichment
     
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_output_probs = []
