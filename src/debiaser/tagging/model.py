@@ -222,7 +222,8 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
 
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, 
-        labels=None, rel_ids=None, pos_ids=None, categories=None):
+        labels=None, rel_ids=None, pos_ids=None, categories=None,
+        return_vecs=False):
         global ARGS
         global CUDA
 
@@ -237,6 +238,9 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
 
         sequence_output, pooled_output = self.bert(
             input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+
+        if return_vecs:
+            return None, sequence_output
 
         pooled_output = self.cls_dropout(pooled_output)
         cls_logits = self.cls_classifier(pooled_output)

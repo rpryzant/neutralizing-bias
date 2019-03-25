@@ -132,9 +132,16 @@ class JointModel(nn.Module):
 
     def run_tagger(self, pre_id, pre_mask, rel_ids=None, pos_ids=None,
                    categories=None):
+        global ARGS
+
         _, tok_logits = self.tagging_model(
             pre_id, attention_mask=1.0 - pre_mask, rel_ids=rel_ids,
-            pos_ids=pos_ids, categories=categories)
+            pos_ids=pos_ids, categories=categories,
+            return_vecs=ARGS.concat_join_baseline)
+
+        if ARGS.concat_join_baseline:
+            # tok_logits is actually the word vecs
+            return tok_logits, tok_logits
 
         tok_probs = tok_logits[:, :, :2]
         if ARGS.token_softmax:
@@ -169,6 +176,7 @@ class JointModel(nn.Module):
             pre_id, post_in_id, pre_mask, pre_len, is_bias_probs)
 
         return post_log_probs, post_probs, is_bias_probs, tok_logits
+
 
     def inference_forward(self,
             # Debias args.

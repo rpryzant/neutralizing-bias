@@ -88,6 +88,10 @@ parser.add_argument(
     "--debias_checkpoint",
     type=str, default=None,
     help='debiaser checkpoint to load')
+parser.add_argument(
+    "--concat_join_baseline",
+    action='store_true',
+    help='baseline where join embeddings are swapped for emb concat')
 
 
 
