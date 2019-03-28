@@ -33,7 +33,7 @@ def train_for_epoch(model, dataloader, optimizer, debias_loss_fn, tagging_loss_f
 
         loss = debias_loss_fn(post_log_probs, post_out_id, post_tok_label_id)
         
-        if tagging_loss_fn is not None and ARGS.tax_loss_mixing_prob > 0:
+        if tagging_loss_fn is not None and ARGS.tag_loss_mixing_prob > 0:
             tok_loss = tagging_loss_fn(tok_logits, pre_tok_label_id, apply_mask=pre_tok_label_id)
             loss = loss + (ARGS.tag_loss_mixing_prob * tok_loss)
 
