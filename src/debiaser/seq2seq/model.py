@@ -436,9 +436,48 @@ class Seq2Seq(nn.Module):
             param.data.uniform_(-initrange, initrange)
     
     def run_encoder(self, pre_id, pre_len, pre_mask):
+        global ARGS
+        global CUDA
         src_emb = self.embeddings(pre_id)
-        src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
-        src_outputs = self.bridge(src_outputs)
+        if ARGS.bert_encoder:
+            # final_hidden_states is [batch_size, sequence_length, hidden_size].
+            final_hidden_states, _ = self.encoder(pre_id,
+                attention_mask=1.0-pre_mask, output_all_encoded_layers=False)
+            seq_len = final_hidden_states.size()[1]
+
+            # src_outputs is [batch_size, sequence_length, hidden_size].
+            src_outputs = self.bridge(final_hidden_states).cpu()
+
+            # TODO(ndass): Pick how to reduce the sequence dimension.
+
+            # Project sequence length to 2 (number of directions).
+            # transposed = src_outputs.transpose(1, 2)
+            # src_h_t = nn.Linear(seq_len, 2)(transposed).transpose(1, 2)
+            # src_c_t = nn.Linear(seq_len, 2)(transposed).transpose(1, 2)
+
+            # Average across the sequence length dimension and repeat for
+            # both directions (The BERT encoding is already bidirectional).
+            src_h_t = torch.mean(src_outputs, 1, keepdim=True).repeat(1, 2, 1)
+            src_c_t = torch.mean(src_outputs, 1, keepdim=True).repeat(1, 2, 1)
+
+            # Project hidden size to ARGS.hidden_size / num_directions.
+            src_h_t = nn.Sigmoid()(nn.Linear(
+                ARGS.hidden_size, ARGS.hidden_size // 2)(src_h_t))
+            src_c_t = nn.Sigmoid()(nn.Linear(
+                ARGS.hidden_size, ARGS.hidden_size // 2)(src_c_t))
+
+            # src_h_t and src_c_t are [num_directions, batch_size, hidden_size].
+            src_h_t = src_h_t.transpose(0, 1)
+            src_c_t = src_c_t.transpose(0, 1)
+
+            if CUDA:
+                src_outputs = src_outputs.cuda()
+                src_h_t = src_h_t.cuda()
+                src_c_t = src_c_t.cuda()
+        else:
+            src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len,
+                pre_mask)
+            src_outputs = self.bridge(src_outputs)
         h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
         c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
 
@@ -521,7 +560,7 @@ class Seq2Seq(nn.Module):
             with torch.no_grad():
                 _, word_probs = self.run_decoder(
                     pre_id, src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist)
-            # tranpose to preserve ordering
+            # transpose to preserve ordering
             new_tok_probs = word_probs[:, -1, :].squeeze(1).view(
                 beam_width, batch_size, -1).transpose(1, 0)
 
