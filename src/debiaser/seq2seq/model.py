@@ -440,7 +440,6 @@ class Seq2Seq(nn.Module):
         src_outputs = self.bridge(src_outputs) #linear layer applied to all of the hidden states
         h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1) #Recal only 1 layer, so this splits up by direction
         c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
-
         return src_outputs, h_t, c_t
 
     def run_decoder(self, pre_id, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, ignore_enrich=False):
@@ -573,9 +572,8 @@ class PointerDecoder(nn.Module):
     decoder instead of sequentially feeding in the previous time-steps prediction
     as the input for the next prediction.
     '''
-    def __init__(self, decoder_inputs, encoder_hidden_states, emb_dim,
-                 encoder_hidden_dim, decoder_hidden_dim, attention_dim,
-                 vocab_size, dropout, pack=True):
+    def __init__(self, emb_dim, encoder_hidden_dim, decoder_hidden_dim,
+                 attention_dim, vocab_size, dropout, pack=True):
 
         '''
         decoder_inputs :
@@ -586,56 +584,41 @@ class PointerDecoder(nn.Module):
         attention_dim:
         vocab_size:
         dropout:
-        pack: 
+        pack:
         '''
         super(PointerDecoder, self).__init__()
 
         self.decoder_lstm = nn.LSTM(
-                    input_size=emb_dim,
-                    hidden_size=hidden_decoder_dim,
-                    num_layers=2,
-                    batch_first=True,
-                    dropout=dropout)
+            input_size=emb_dim,
+            hidden_size = encoder_hidden_dim,
+            num_layers=2,
+            batch_first=True,
+            dropout=dropout)
         self.pack = pack
 
-
-
-        # How do we include the final states of the encoder into the model
-        # How do we pass in the input consecutively?
-        # Whats the difference to normal seq2seq models
-
-        self.W_s = nn.Linear(hidden_decoder_dim, attention_dim, bias=False)
-        self.W_h = nn.Linear(hidden_encoder_dim, attention_dim, bias=False)
+        self.W_s = nn.Linear(decoder_hidden_dim, attention_dim, bias=False)
+        self.W_h = nn.Linear(encoder_hidden_dim, attention_dim, bias=False)
         self.b_attn = Parameter(torch.Tensor(attention_dim))
-        self.v = nn.Linear(attention_dim, num_time_steps, bias=False)
+        self.v = nn.Linear(attention_dim, 1, bias=False)
 
-        concat_dim = hidden_decoder_dim + attention_dim
-        # TODO: consider more the output dimension of the first fc
-        self.fc_1 = nn.Linear(concat_dim, concat_dim * 2)
+        concat_dim = encoder_hidden_dim + attention_dim
+        self.fc_1 = nn.Linear(concat_dim, concat_dim * 2) #TODO: consider changing
         self.fc_2 = nn.Linear(concat_dim * 2, vocab_size)
 
-        # Need to create an LSTM for the decoder too in order to produce s
-
+    def forward(self, decoder_inputs, input_lens, encoder_hidden_states):
         '''
-        At each timestep we need to compute the attention of the
-
-        So the attention vector needs to be of the same length at the number
-        of timesteps that we have encoder hidden_dims for
-
-        dim(a) = number of sequences available for h
-
-        this means that e must also have the same dimension as the
-        number of sequences available for h ?
-
-        But Wh and Ws and b_attn can all live in a new attention dimension
-        v has to bring from attention dimension to number of sequence dimension
+        First passes in the decoder_inputs through an LSTM and then applies
+        Bahdanau attention in order to create a final prediction of the
+        next word from the total vocabulary.
         '''
-
-    def forward(self, src_embedding, srclens):
+        print("Inside the forward pass of the decoder")
+        print("Shape of the decoder_inputs is: {}".format(decoder_inputs.shape))
+        exit()
         if self.pack:
-            inputs = pack_padded_sequence(src_embedding, srclens, batch_first=True)
+            inputs = pack_padded_sequence(decoder_inputs, input_lens, batch_first=True)
         else:
             inputs = src_embedding
+
 
 class PointerSeq2Seq(Seq2Seq):
     """ https://arxiv.org/pdf/1704.04368.pdf """
@@ -657,7 +640,12 @@ class PointerSeq2Seq(Seq2Seq):
         self.encoder = LSTMEncoder(self.emb_dim, self.hidden_dim, layers=1,
                                    bidirectional=True, dropout=self.dropout)
 
-        self.decoder = PointerDecoder(hidden_size, )
+        #NOTE: currently setting the hidden size of the encoder and decoder lstm
+        # to have the same value; also setting the value of the attention dim
+        # to have the same size as the hidden size
+        attention_dim = hidden_size
+        self.decoder = PointerDecoder(emb_dim, hidden_size, hidden_size, attention_dim,
+                                      vocab_size, dropout)
 
         self.init_weights()
 
@@ -691,25 +679,38 @@ class PointerSeq2Seq(Seq2Seq):
 
     def init_weights(self):
         """Initialize weights."""
-        initrange = 0.1
+        initrange = 0.1 # update using Xavier-He; but only after establishing baseline comparison
         for param in self.parameters():
             param.data.uniform_(-initrange, initrange)
 
+    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None, ignore_enrich=False):
+        '''
+        Observe that pre refers to the ids of the tokens in the original version
+        of the text we are debiasing. Post_in_id refers to the ids of the tokens
+        in the debiased version of the text (includes a start token).
+        '''
+        src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
+        #log_probs, probs = self.run_decoder(
+        #    pre_id, src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist, ignore_enrich)
+        #return log_probs, probs
 
-    def forward(self):
-        pass
-
-    def run_encoder(self):
+    def run_encoder(self, pre_id, pre_len, pre_mask):
         '''
         Pipes all of the input tokens through a bidirectional LSTM. Should
         be the same as in the baseline Seq2Seq Model.
         '''
-        global ARGS
+        print("Inside of the encoder")
+        src_emb = self.embeddings(pre_id)
+        src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
+        src_outputs = self.bridge(src_outputs) #linear layer applied to all of the hidden states
+        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1) #Recal only 1 layer, so this splits up by direction
+        c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+        return src_outputs, h_t, c_t
 
 
     def run_decoder(self, pre_id, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, ignore_enrich=False):
         global ARGS
-
+        return None
 
         '''
         # optionally enrich src with tok enrichment
