@@ -443,31 +443,22 @@ class Seq2Seq(nn.Module):
         global CUDA
         src_emb = self.embeddings(pre_id)
         if ARGS.bert_encoder:
-            # final_hidden_states is [batch_size, sequence_length, hidden_size].
+            # final_hidden_states is [batch_size, sequence_length,
+            # hidden_size].
             final_hidden_states, _ = self.encoder(pre_id,
-                attention_mask=1.0-pre_mask, output_all_encoded_layers=False)
+                attention_mask=1.0 - pre_mask, output_all_encoded_layers=False)
             seq_len = final_hidden_states.size()[1]
 
             # src_outputs is [batch_size, sequence_length, hidden_size].
             src_outputs = self.bridge(final_hidden_states)
 
             # Average across the sequence length dimension.
-            src_h_t = torch.mean(src_outputs, 1, keepdim=True)
-            src_c_t = torch.mean(src_outputs, 1, keepdim=True)
+            src_h_t = torch.mean(src_outputs, 1)
+            src_c_t = torch.mean(src_outputs, 1)
 
             # Project hidden size to ARGS.hidden_size.
-            src_h_t = nn.Sigmoid()(self.h_t_projection(src_h_t))
-            src_c_t = nn.Sigmoid()(self.c_t_projection(src_c_t))
-
-            # src_h_t and src_c_t are [1, batch_size, hidden_size].
-            src_h_t = src_h_t.transpose(0, 1)
-            src_c_t = src_c_t.transpose(0, 1)
-
-            # TODO(ndass): Uncomment if necessary.
-            # if CUDA:
-            #     src_outputs = src_outputs.cuda()
-            #     src_h_t = src_h_t.cuda()
-            #     src_c_t = src_c_t.cuda()
+            h_t = nn.Sigmoid()(self.h_t_projection(src_h_t))
+            c_t = nn.Sigmoid()(self.c_t_projection(src_c_t))
         else:
             src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len,
                 pre_mask)
