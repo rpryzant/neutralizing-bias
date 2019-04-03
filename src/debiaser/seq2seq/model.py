@@ -386,6 +386,9 @@ class Seq2Seq(nn.Module):
         self.encoder = LSTMEncoder(
             self.emb_dim, self.hidden_dim, layers=1, bidirectional=True, dropout=self.dropout)
 
+        self.h_t_projection = nn.Linear(ARGS.hidden_size, ARGS.hidden_size)
+        self.c_t_projection = nn.Linear(ARGS.hidden_size, ARGS.hidden_size)
+
                                                 
         self.bridge = nn.Linear(768 if ARGS.bert_encoder else self.hidden_dim, self.hidden_dim)
         
@@ -446,40 +449,31 @@ class Seq2Seq(nn.Module):
             seq_len = final_hidden_states.size()[1]
 
             # src_outputs is [batch_size, sequence_length, hidden_size].
-            src_outputs = self.bridge(final_hidden_states).cpu()
+            src_outputs = self.bridge(final_hidden_states)
 
-            # TODO(ndass): Pick how to reduce the sequence dimension.
+            # Average across the sequence length dimension.
+            src_h_t = torch.mean(src_outputs, 1, keepdim=True)
+            src_c_t = torch.mean(src_outputs, 1, keepdim=True)
 
-            # Project sequence length to 2 (number of directions).
-            # transposed = src_outputs.transpose(1, 2)
-            # src_h_t = nn.Linear(seq_len, 2)(transposed).transpose(1, 2)
-            # src_c_t = nn.Linear(seq_len, 2)(transposed).transpose(1, 2)
+            # Project hidden size to ARGS.hidden_size.
+            src_h_t = nn.Sigmoid()(self.h_t_projection(src_h_t))
+            src_c_t = nn.Sigmoid()(self.c_t_projection(src_c_t))
 
-            # Average across the sequence length dimension and repeat for
-            # both directions (The BERT encoding is already bidirectional).
-            src_h_t = torch.mean(src_outputs, 1, keepdim=True).repeat(1, 2, 1)
-            src_c_t = torch.mean(src_outputs, 1, keepdim=True).repeat(1, 2, 1)
-
-            # Project hidden size to ARGS.hidden_size / num_directions.
-            src_h_t = nn.Sigmoid()(nn.Linear(
-                ARGS.hidden_size, ARGS.hidden_size // 2)(src_h_t))
-            src_c_t = nn.Sigmoid()(nn.Linear(
-                ARGS.hidden_size, ARGS.hidden_size // 2)(src_c_t))
-
-            # src_h_t and src_c_t are [num_directions, batch_size, hidden_size].
+            # src_h_t and src_c_t are [1, batch_size, hidden_size].
             src_h_t = src_h_t.transpose(0, 1)
             src_c_t = src_c_t.transpose(0, 1)
 
-            if CUDA:
-                src_outputs = src_outputs.cuda()
-                src_h_t = src_h_t.cuda()
-                src_c_t = src_c_t.cuda()
+            # TODO(ndass): Uncomment if necessary.
+            # if CUDA:
+            #     src_outputs = src_outputs.cuda()
+            #     src_h_t = src_h_t.cuda()
+            #     src_c_t = src_c_t.cuda()
         else:
             src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len,
                 pre_mask)
             src_outputs = self.bridge(src_outputs)
-        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
-        c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+            h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
+            c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
 
         return src_outputs, h_t, c_t
 
