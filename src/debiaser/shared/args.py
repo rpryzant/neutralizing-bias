@@ -260,7 +260,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--bert_encoder",
-    help="freeze pretrained embeddings",
+    help="use bert as the encoder for seq2seq model",
     action='store_true'
 )
 

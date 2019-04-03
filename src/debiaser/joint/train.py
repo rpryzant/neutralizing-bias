@@ -153,6 +153,9 @@ else:
     debias_model = seq2seq_model.Seq2Seq(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
         emb_dim=768, dropout=0.2, tok2id=tok2id)
+if ARGS.bert_encoder:
+    debias_model.encoder = tag_model.bert
+    debias_model.embeddings = tag_mode.bert.word_embeddings
 if CUDA:
     debias_model = debias_model.cuda()
 
