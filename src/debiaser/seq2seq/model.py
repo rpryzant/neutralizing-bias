@@ -650,7 +650,7 @@ class PointerDecoder(nn.Module):
             coverage_vecs.append(coverage_vec)
 
             # Updating coverage vector
-            coverage_vec += a_t.squeeze(2)
+            coverage_vec = coverage_vec + a_t.squeeze(2) #changed
             context_vec_t = torch.matmul(encoder_hidden_states.permute(0, 2, 1),a_t)
             context_vec_t = context_vec_t.squeeze(2)
             s_t = s[:, t, :]
@@ -777,8 +777,8 @@ class PointerSeq2Seq(nn.Module):
         probs = 0.0
         log_probs = 0.0
         tgt_emb = self.embeddings(tgt_in_id)
-        logits, copy_matrices, a_vecs, coverage_vecs, p_gens = self.decoder(tgt_in_id, tgt_emb, encoder_hidden_states,
-                          decoder_initial_state)
+        logits, copy_matrices, a_vecs, coverage_vecs, p_gens = self.decoder(tgt_in_id, tgt_emb,
+                            encoder_hidden_states, decoder_initial_state)
         return (logits, copy_matrices, a_vecs, coverage_vecs, p_gens)
         '''
         # optionally enrich src with tok enrichment
