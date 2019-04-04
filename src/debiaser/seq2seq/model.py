@@ -612,13 +612,14 @@ class PointerDecoder(nn.Module):
         self.fc_1 = nn.Linear(concat_dim, concat_dim * 2) #TODO: consider changing the hidden_dim
         self.fc_2 = nn.Linear(concat_dim * 2, vocab_size)
 
-    def forward(self, decoder_inputs, encoder_hidden_states, decoder_initial_state):
+        self.vocab_size = vocab_size
+
+    def forward(self, input_ids, decoder_inputs, encoder_hidden_states, decoder_initial_state):
         '''
         First passes in the decoder_inputs through an LSTM and then applies
         Bahdanau attention in order to create a final prediction of the
         next word from the total vocabulary.
         '''
-
         #TODO: allow to differentiate between teacher forcing and sequentially passing in input
         s_0, c_0 = decoder_initial_state
         #  TODO: if we change the number of layers in the model
@@ -630,10 +631,14 @@ class PointerDecoder(nn.Module):
         Wh_h = self.W_h(encoder_hidden_states)
         Ws_s = self.W_s(s)
 
-        #print(encoder_hidden_states.shape)
+        seq_len_encoder = encoder_hidden_states.shape[1]
         seq_len_decoder = s.shape[1]
-        a = []
-        coverage_vecs = []
+        batch_size = s.shape[0]
+        a_vecs = [] #vectors with attention distributions for all timesteps
+        coverage_vecs = [] #vectors with coverage vectors for all timesteps
+        p_gens = []
+        logits = []
+        copy_matrices = []
         # coverage vector has same size as attention vectors
         coverage_vec = torch.zeros(encoder_hidden_states.shape[:2])
         for t in range(seq_len_decoder):
@@ -641,12 +646,12 @@ class PointerDecoder(nn.Module):
             e_t = self.tanh(Wh_h + Ws_s[:, t, :].unsqueeze(1) + Wc_c + self.b_attn)
             e_t = self.v(e_t)
             a_t = self.soft_max(e_t)
-            a.append(a_t)
+            a_vecs.append(a_t.squeeze(2))
             coverage_vecs.append(coverage_vec)
 
             # Updating coverage vector
             coverage_vec += a_t.squeeze(2)
-            context_vec_t = torch.matmul(encoder_hidden_states.permute(0,2,1),a_t)
+            context_vec_t = torch.matmul(encoder_hidden_states.permute(0, 2, 1),a_t)
             context_vec_t = context_vec_t.squeeze(2)
             s_t = s[:, t, :]
 
@@ -655,20 +660,22 @@ class PointerDecoder(nn.Module):
             w_s = self.w_s_ptr(s_t)
             w_h = self.w_h_ptr(context_vec_t)
             p_gen = self.sigmoid(w_x + w_s + w_h + self.b_ptr)
-            print(p_gen.shape)
-            exit()
+            p_gens.append(p_gen)
 
-            # need to calculate te
-
+            # need to calculate the copying matrix
+            copy_matrix = torch.zeros(batch_size, self.vocab_size)
+            for b in range(batch_size):
+                for i in range(seq_len_encoder):
+                    curr_idx = input_ids[b, i]
+                    copy_matrix[b, curr_idx] += a_t.squeeze(2)[b,i]
 
             concat_output = torch.cat((s_t, context_vec_t), dim=1)
             concat_output = self.fc_1(concat_output)
             output_logits = self.fc_2(concat_output)
-
-            print("finished one time step loop")
-            exit()
-
-        return (s, final_state)
+            logits.append(output_logits)
+            copy_matrices.append(copy_matrix)
+        #TODO: rename variables for better claritys
+        return (logits, copy_matrices, a_vecs, coverage_vecs, p_gens)
 
 # TODO: Change this to a child class of the basic seq2seq
 class PointerSeq2Seq(nn.Module):
@@ -740,8 +747,8 @@ class PointerSeq2Seq(nn.Module):
         in the debiased version of the text (includes a start token).
         '''
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len)
-        log_probs, probs = self.run_decoder(post_in_id, src_outputs, (h_t, c_t))
-        return log_probs, probs
+        logits, copy_matrices, a_vecs, coverage_vecs, p_gens = self.run_decoder(post_in_id, src_outputs, (h_t, c_t))
+        return (logits, copy_matrices, a_vecs, coverage_vecs, p_gens)
 
     def run_encoder(self, pre_id, pre_len):
         '''
@@ -770,9 +777,9 @@ class PointerSeq2Seq(nn.Module):
         probs = 0.0
         log_probs = 0.0
         tgt_emb = self.embeddings(tgt_in_id)
-        s, (s_t, s_c_t) = self.decoder(tgt_emb, encoder_hidden_states,
+        logits, copy_matrices, a_vecs, coverage_vecs, p_gens = self.decoder(tgt_in_id, tgt_emb, encoder_hidden_states,
                           decoder_initial_state)
-        return (log_probs, probs)
+        return (logits, copy_matrices, a_vecs, coverage_vecs, p_gens)
         '''
         # optionally enrich src with tok enrichment
         if not ARGS.no_tok_enrich and not ignore_enrich:
