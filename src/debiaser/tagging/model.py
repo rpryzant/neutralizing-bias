@@ -490,7 +490,7 @@ class BertEncoderF(nn.Module):
 
 
 class TaggerFromDebiaser(nn.Module):
-    def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None):
+    def __init__(self, cls_num_labels=2, tok_num_labels=2, tok2id=None):
         super(TaggerFromDebiaser, self).__init__()
 
         global ARGS
@@ -512,17 +512,17 @@ class TaggerFromDebiaser(nn.Module):
 
         self.cls_classifier = nn.Sequential(
             nn.Linear(ARGS.hidden_size, ARGS.hidden_size),
-            nn.Dropout(config.hidden_dropout_prob),
+            nn.Dropout(0.1),
             nn.ReLU(),
             nn.Linear(ARGS.hidden_size, cls_num_labels),
-            nn.Dropout(config.hidden_dropout_prob))
+            nn.Dropout(0.1))
 
         self.tok_classifier = nn.Sequential(
             nn.Linear(ARGS.hidden_size, ARGS.hidden_size),
-            nn.Dropout(config.hidden_dropout_prob),
+            nn.Dropout(0.1),
             nn.ReLU(),
             nn.Linear(ARGS.hidden_size, tok_num_labels),
-            nn.Dropout(config.hidden_dropout_prob))
+            nn.Dropout(0.1))
 
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None,
