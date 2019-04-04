@@ -10,7 +10,7 @@ import sys; sys.path.append('tagging/')   # so that the joint model can see this
 import features
 from shared.args import ARGS
 from shared.constants import CUDA
-
+import seq2seq.model as seq2seq_model
 
 
 def gelu(x):
@@ -39,7 +39,7 @@ class BertForMultitask(PreTrainedBertModel):
 
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, 
-        labels=None, rel_ids=None, pos_ids=None, categories=None):
+        labels=None, rel_ids=None, pos_ids=None, categories=None, pre_len=None):
         global ARGS
         sequence_output, pooled_output = self.bert(
             input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
@@ -222,7 +222,7 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
 
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, 
-        labels=None, rel_ids=None, pos_ids=None, categories=None):
+        labels=None, rel_ids=None, pos_ids=None, categories=None, pre_len=None):
         global ARGS
         global CUDA
 
@@ -306,7 +306,7 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
 
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, 
-        labels=None, rel_ids=None, pos_ids=None, categories=None):
+        labels=None, rel_ids=None, pos_ids=None, categories=None, pre_len=None):
 
         features = self.featurizer.featurize_batch(
             input_ids.detach().cpu().numpy(),
@@ -318,8 +318,8 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
             features = features.cuda()
         
         sequence_output, pooled_output = self.bert(
-            input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False,
-            features=features)
+            input_ids, token_type_ids, attention_mask,
+            output_all_encoded_layers=False, features=features)
 
         sequence_output = self.cls_dropout(sequence_output)
         cls_logits = self.cls_classifier(pooled_output)
@@ -489,5 +489,50 @@ class BertEncoderF(nn.Module):
         return all_encoder_layers, all_layer_attns
 
 
+class TaggerFromDebiaser(nn.Module):
+    def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None):
+        global ARGS
+        global CUDA
+
+        if ARGS.pointer_generator:
+            self.debias_model = seq2seq_model.PointerSeq2Seq(
+                vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
+                emb_dim=768, dropout=0.2, tok2id=tok2id)
+        else:
+            self.debias_model = seq2seq_model.Seq2Seq(
+                vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
+                emb_dim=768, dropout=0.2, tok2id=tok2id)
+
+        assert ARGS.debias_checkpoint
+        print('LOADING DEBIASER FROM ' + ARGS.debias_checkpoint)
+        self.debias_model.load_state_dict(torch.load(ARGS.debias_checkpoint))
+        print('...DONE')
+
+        self.cls_classifier = nn.Sequential(
+            nn.Linear(ARGS.hidden_size, ARGS.hidden_size),
+            nn.Dropout(config.hidden_dropout_prob),
+            nn.ReLU(),
+            nn.Linear(ARGS.hidden_size, cls_num_labels),
+            nn.Dropout(config.hidden_dropout_prob))
+
+        self.tok_classifier = nn.Sequential(
+            nn.Linear(ARGS.hidden_size, ARGS.hidden_size),
+            nn.Dropout(config.hidden_dropout_prob),
+            nn.ReLU(),
+            nn.Linear(ARGS.hidden_size, tok_num_labels),
+            nn.Dropout(config.hidden_dropout_prob))
 
 
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None,
+        labels=None, rel_ids=None, pos_ids=None, categories=None, pre_len=None):
+
+        pre_mask = 1.0-attention_mask
+
+        # src_outputs is [batch_size, sequence_length, hidden_size].
+        src_outputs, h_t, _ = self.debias_model.run_encoder(
+            input_ids, pre_len, pre_mask)
+
+        cls_logits = self.cls_classifier(h_t)
+        tok_logits = self.tok_classifier(src_outputs)
+
+        return cls_logits, tok_logits

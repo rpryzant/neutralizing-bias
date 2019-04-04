@@ -14,9 +14,6 @@ import sys; sys.path.append('.')
 from shared.args import ARGS
 from shared.constants import CUDA
 
-
-
-
 def tile(x, count, dim=0):
     """
     Tiles x on dimension dim count times.

@@ -9,9 +9,6 @@ from shared.args import ARGS
 from shared.constants import CUDA
 
 
-
-
-
 def build_optimizer(model, num_train_steps, learning_rate):
     param_optimizer = list(model.named_parameters())
     no_decay = ['bias', 'gamma', 'beta']
@@ -108,7 +105,7 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
         ) = batch
 
         with torch.no_grad():
-            bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask,
+            _, tok_logits = model(pre_id, attention_mask=1.0-pre_mask,
                 rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
             tok_loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
         out['input_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in pre_id.cpu().numpy()]
@@ -140,8 +137,9 @@ def train_for_epoch(model, train_dataloader, loss_fn, optimizer):
             tok_label_id, _,
             rel_ids, pos_ids, categories
         ) = batch
-        bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask, 
-            rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
+        _, tok_logits = model(pre_id, attention_mask=1.0-pre_mask,
+            rel_ids=rel_ids, pos_ids=pos_ids, categories=categories,
+            pre_len=pre_len)
         loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
         loss.backward()
         optimizer.step()

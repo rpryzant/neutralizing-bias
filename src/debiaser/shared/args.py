@@ -189,7 +189,10 @@ parser.add_argument("--combine4", help="combine location 4", action='store_true'
 parser.add_argument("--combine5", help="combine location 5", action='store_true')
 parser.add_argument("--combine6", help="combine location 6", action='store_true')
 
-
+parser.add_argument('tagger_from_debiaser',
+    help=('Use the encoder from a debiasing model checkpoint with a 2 layers '
+          'on top to predict the bias logits and token logits.'),
+    action='store_true')
 
 
 
