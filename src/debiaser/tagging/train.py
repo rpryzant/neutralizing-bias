@@ -69,7 +69,7 @@ if ARGS.tagger_from_debiaser:
     model = tagging_model.TaggerFromDebiaser(
         cls_num_labels=ARGS.num_categories, tok_num_labels=ARGS.num_tok_labels,
         tok2id=tok2id)
-if ARGS.extra_features_top:
+elif ARGS.extra_features_top:
     model = tagging_model.BertForMultitaskWithFeaturesOnTop.from_pretrained(
             ARGS.bert_model,
             cls_num_labels=ARGS.num_categories,

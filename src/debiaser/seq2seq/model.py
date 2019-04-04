@@ -370,7 +370,7 @@ class Seq2Seq(nn.Module):
         global ARGS
         global CUDA
 
-        super(Seq2Seq, self).__init__()        
+        super(Seq2Seq, self).__init__()
 
         self.vocab_size = vocab_size
         self.hidden_dim = hidden_size
