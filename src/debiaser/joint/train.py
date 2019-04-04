@@ -164,7 +164,7 @@ debias_loss_fn, cross_entropy_loss = seq2seq_utils.build_loss_fn(vocab_size=len(
 
 if ARGS.debias_checkpoint is not None and os.path.exists(ARGS.debias_checkpoint):
     print('LOADING DEBIASER FROM ' + ARGS.debias_checkpoint)
-    tag_model.load_state_dict(torch.load(ARGS.debias_checkpoint))
+    debias_model.load_state_dict(torch.load(ARGS.debias_checkpoint))
     print('...DONE')
 
 elif ARGS.pretrain_data:
