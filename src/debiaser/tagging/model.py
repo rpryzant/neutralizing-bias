@@ -491,6 +491,8 @@ class BertEncoderF(nn.Module):
 
 class TaggerFromDebiaser(nn.Module):
     def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None):
+        super(TaggerFromDebiaser, self).__init__()
+
         global ARGS
         global CUDA
 
