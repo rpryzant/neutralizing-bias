@@ -780,6 +780,13 @@ class PointerSeq2Seq(nn.Module):
         logits, copy_matrices, a_vecs, coverage_vecs, p_gens = self.decoder(tgt_in_id, tgt_emb,
                             encoder_hidden_states, decoder_initial_state)
         return (logits, copy_matrices, a_vecs, coverage_vecs, p_gens)
+
+    def save(self, path):
+        torch.save(self.state_dict(), path)
+
+    def load(self, path):
+        self.load_state_dict(torch.load(path))
+
         '''
         # optionally enrich src with tok enrichment
         if not ARGS.no_tok_enrich and not ignore_enrich:

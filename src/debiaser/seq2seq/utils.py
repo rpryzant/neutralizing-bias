@@ -169,7 +169,7 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
         model.zero_grad()
 
         losses.append(loss.detach().cpu().numpy())
-        print("Gone through loop")
+        print(loss.item())
 
     return losses
 
