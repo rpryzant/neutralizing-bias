@@ -567,28 +567,25 @@ class PointerDecoder(nn.Module):
     as the input for the next prediction.
     '''
     def __init__(self, emb_dim, encoder_hidden_dim, decoder_hidden_dim,
-                 attention_dim, vocab_size, dropout):
+                 attention_dim, vocab_size, dropout, lstm_layers=1):
 
         '''
-        decoder_inputs :
-        encoder_hidden_states :
-        emb_dim :
-        encoder_hidden_dim:
-        decoder_hidden_dim:
-        attention_dim:
-        vocab_size:
-        dropout:
-        pack:
+        emb_dim (Int): The size of the word embeddings (768 by default)
+        encoder_hidden_dim (Int): The hidden dimension of the encoder lstm
+        decoder_hidden_dim (Int): The hidden dimension of the decoder lstm
+        attention_dim (Int): The hidden dimension of the attention layer
+        vocab_size (Int): The size of the vocab
+        dropout (Float): Probability of dropping certain parameters from model during training
+        lstm_layers (Int): Number of layers per LSTM Cell in the decoder lstm
         '''
         super(PointerDecoder, self).__init__()
 
         self.decoder_lstm = nn.LSTM(
             input_size=emb_dim,
-            hidden_size=encoder_hidden_dim,
-            num_layers=1,
+            hidden_size=decoder_hidden_dim,
+            num_layers=lstm_layers,
             batch_first=True,
             dropout=dropout)
-        attention_dim = 69
 
         # parameters for calculating the Bahdanau attention score
         self.W_s = nn.Linear(decoder_hidden_dim, attention_dim, bias=False)
@@ -609,24 +606,35 @@ class PointerDecoder(nn.Module):
 
 
         concat_dim = encoder_hidden_dim + decoder_hidden_dim
-        self.fc_1 = nn.Linear(concat_dim, concat_dim * 2) #TODO: consider changing the hidden_dim
+        self.fc_1 = nn.Linear(concat_dim, concat_dim * 2)
         self.fc_2 = nn.Linear(concat_dim * 2, vocab_size)
 
         self.vocab_size = vocab_size
+        self.encoder_hidden_dim = encoder_hidden_dim
+        self.decoder_hidden_dim = decoder_hidden_dim
+        self.lstm_layers = lstm_layers
 
     def forward(self, input_ids, decoder_inputs, encoder_hidden_states, decoder_initial_state):
         '''
         First passes in the decoder_inputs through an LSTM and then applies
         Bahdanau attention in order to create a final prediction of the
         next word from the total vocabulary.
+
+        decoder_inputs (FloatTensor): The input sequence passed into the decoder
+        encoder_hidden_states (FloatTensor): The final hidden state layer of each
+            timestep from the encoder lstm 
+        decoder_initial_state (FloatTensor): The final lstm cell and hidden cell
         '''
-        #TODO: allow to differentiate between teacher forcing and sequentially passing in input
-        s_0, c_0 = decoder_initial_state
-        #  TODO: if we change the number of layers in the model
-        #  this will have to be updated
-        s_0 = s_0.unsqueeze(0)
-        c_0 = c_0.unsqueeze(0)
-        s, final_state = self.decoder_lstm(decoder_inputs, (s_0, c_0))
+
+        # Checking to see if we reuse the hidden states of the
+        # encoder module lstm
+        if (self.encoder_hidden_dim == self.decoder_hidden_dim and s_0.shape[0] == self.lstm_layers):
+            s_0, c_0 = decoder_initial_state
+            s_0 = s_0.unsqueeze(0)
+            c_0 = c_0.unsqueeze(0)
+            s, final_state = self.decoder_lstm(decoder_inputs, (s_0, c_0))
+        else:
+            s, final_state = self.decoder_lstm(decoder_inputs)
 
         Wh_h = self.W_h(encoder_hidden_states)
         Ws_s = self.W_s(s)
@@ -677,68 +685,36 @@ class PointerDecoder(nn.Module):
         #TODO: rename variables for better claritys
         return (logits, copy_matrices, a_vecs, coverage_vecs, p_gens)
 
-# TODO: Change this to a child class of the basic seq2seq
-class PointerSeq2Seq(nn.Module):
+class PointerSeq2Seq(Seq2Seq):
     """ https://arxiv.org/pdf/1704.04368.pdf """
-    def __init__(self, vocab_size, hidden_size, emb_dim, dropout, tok2id):
+    def __init__(self, vocab_size, encoder_hidden_size,
+                decoder_hidden_size, attention_hidden_size,
+                emb_dim, dropout, tok2id):
+        '''
+        A Pointer-Generator Network for generating debiased text. The structure
+        of this model follows https://arxiv.org/abs/1409.0473. In this implementation
+        we subclass the Seq2Seq model.
+        '''
         global CUDA
         global ARGS
 
-        super(PointerSeq2Seq, self).__init__()
-
-        self.vocab_size = vocab_size
-        self.hidden_dim = hidden_size
-        self.emb_dim = emb_dim
-        self.dropout = dropout
-        self.pad_id = 0
-        self.tok2id = tok2id
+        super(PointerSeq2Seq, self).__init__(
+            vocab_size,
+            encoder_hidden_size,
+            emb_dim,
+            dropout,
+            tok2id)
 
         self.embeddings = nn.Embedding(self.vocab_size, self.emb_dim, self.pad_id)
         self.encoder = LSTMEncoder(self.emb_dim, self.hidden_dim, layers=1,
                                    bidirectional=True, dropout=self.dropout)
+        self.decoder = PointerDecoder(emb_dim,
+                                      encoder_hidden_size,
+                                      decoder_hidden_size,
+                                      attention_hidden_size,
+                                      vocab_size,
+                                      dropout)
 
-        #NOTE: currently setting the hidden size of the encoder and decoder lstm
-        # to have the same value; also setting the value of the attention dim
-        # to have the same size as the hidden size
-        attention_dim = hidden_size
-        self.decoder = PointerDecoder(emb_dim, hidden_size, hidden_size, attention_dim,
-                                      vocab_size, dropout)
-
-        self.init_weights()
-
-        # pretrained embs from bert (after init to avoid overwrite)
-        if ARGS.bert_word_embeddings or ARGS.bert_full_embeddings or ARGS.bert_encoder:
-            model = BertModel.from_pretrained(
-                'bert-base-uncased',
-                ARGS.working_dir + '/cache')
-
-            if ARGS.bert_word_embeddings:
-                self.embeddings = copy.deepcopy(model.embeddings.word_embeddings)
-
-            if ARGS.bert_full_embeddings:
-                self.embeddings = copy.deepcopy(model.embeddings)
-
-            if ARGS.bert_encoder:
-                self.encoder = model
-                # share bert word embeddings with decoder
-                self.embeddings = model.embeddings.word_embeddings
-
-            if ARGS.freeze_embeddings:
-                for param in self.embeddings.parameters():
-                    param.requires_grad = False
-
-            if not ARGS.no_tok_enrich:
-                self.enrich_input = torch.ones(hidden_size)
-                if CUDA:
-                    self.enrich_input = self.enrich_input.cuda()
-                self.enricher = nn.Linear(hidden_size, hidden_size)
-
-
-    def init_weights(self):
-        """Initialize weights."""
-        initrange = 0.1 # update using Xavier-He; but only after establishing baseline comparison
-        for param in self.parameters():
-            param.data.uniform_(-initrange, initrange)
 
     def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None, ignore_enrich=False):
         '''
@@ -755,8 +731,6 @@ class PointerSeq2Seq(nn.Module):
         Pipes all of the input tokens through a bidirectional LSTM. Should
         be the same as in the baseline Seq2Seq Model.
         '''
-        # TODO: need to add back the bridge layer; make this value definable
-        # from within the args file
         src_emb = self.embeddings(pre_id)
         src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len)
         h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1) #Recal only 1 layer, so this splits up by direction
@@ -769,67 +743,10 @@ class PointerSeq2Seq(nn.Module):
         from run_encoder;
         The decoder_initial_state is simply the last hidden and cell layer calcualted
         from the forward pass through the encoder
-        Observe that we are curently not including the length of the tgt_in
+        Observe that we are currently not including the length of the tgt_in
         so we cannot do any sort of padding but it's all good
         '''
-        global ARGS
-        # TODO: remove these placeholder values
-        probs = 0.0
-        log_probs = 0.0
         tgt_emb = self.embeddings(tgt_in_id)
         logits, copy_matrices, a_vecs, coverage_vecs, p_gens = self.decoder(tgt_in_id, tgt_emb,
                             encoder_hidden_states, decoder_initial_state)
         return (logits, copy_matrices, a_vecs, coverage_vecs, p_gens)
-
-    def save(self, path):
-        torch.save(self.state_dict(), path)
-
-    def load(self, path):
-        self.load_state_dict(torch.load(path))
-
-        '''
-        # optionally enrich src with tok enrichment
-        if not ARGS.no_tok_enrich and not ignore_enrich:
-            enrichment = self.enricher(self.enrich_input).repeat(
-                src_outputs.shape[0], src_outputs.shape[1], 1)
-            enrichment = tok_dist.unsqueeze(2) * enrichment
-            src_outputs = src_outputs + enrichment
-
-        tgt_emb = self.embeddings(tgt_in_id)
-        tgt_output_probs = []
-
-        hidden = dec_initial_state
-
-        # manually crank the decoder
-        for ti in range(tgt_emb.shape[1]):
-            tgt_emb_i = tgt_emb[:, ti, :].unsqueeze(1)
-
-            output_i, (h_tilde_i, ci), attn, attn_ctx, raw_hidden = self.decoder(
-                tgt_emb_i, hidden, src_outputs, pre_mask)
-
-            output_i = output_i.squeeze(1)
-            attn = attn.squeeze(0)
-            h_i = raw_hidden.squeeze(0)
-
-            # no coverage, so just use tgt_emb instead of combining it like abi did
-            p_gen = self.p_gen_W(torch.cat([
-                attn_ctx.squeeze(0), h_i,
-                ci.squeeze(0), tgt_emb_i.squeeze(1)
-            ], -1))
-            p_gen = self.p_gen_sigmoid(p_gen)
-
-            gen_probs = p_gen * self.softmax(self.output_projection(output_i))
-            pointer_probs = (1 - p_gen) * attn
-            gen_probs.scatter_add_(1, pre_id, pointer_probs)
-
-            tgt_output_probs.append(gen_probs)
-
-            hidden = (h_tilde_i.squeeze(0), ci.squeeze(0))
-
-        probs = torch.stack(tgt_output_probs)
-        probs = probs.permute(1, 0, 2)
-
-        log_probs = torch.log(probs)
-
-        return log_probs, probs
-        '''
