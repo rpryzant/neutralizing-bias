@@ -241,6 +241,13 @@ parser.add_argument(
     action='store_true'
 )
 
+parser.add_argument(
+    "--lambda_coverage_weight",
+    help="Trade-off weight for coverage loss and CE loss for pointer network ",
+    type=float, default=0.5
+)
+
+
 # word-embedding size
 
 parser.add_argument(
