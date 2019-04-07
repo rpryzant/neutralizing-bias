@@ -218,10 +218,21 @@ parser.add_argument(
 )
 parser.add_argument(
     "--hidden_size",
-    help="hidden size of encoder/decoder",
+    help="hidden size of encoder",
     type=int, default=256
 )
 
+parser.add_argument(
+    "--decoder_hidden_size",
+    help="hidden size of decoder; by default same size as encoder",
+    type=int, default=256
+)
+
+parser.add_argument(
+    "--attention_hidden_size",
+    help="hidden size of attention layers in pointer-generator model",
+    type=int, default=256
+)
 
 # pointer args
 parser.add_argument(
