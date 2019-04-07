@@ -15,9 +15,6 @@ import sys; sys.path.append('.')
 from shared.args import ARGS
 from shared.constants import CUDA
 
-
-
-
 def tile(x, count, dim=0):
     """
     Tiles x on dimension dim count times.
@@ -594,6 +591,7 @@ class PointerDecoder(nn.Module):
         self.b_attn = Parameter(torch.Tensor(attention_dim))
         self.v = nn.Linear(attention_dim, 1, bias=False)
         self.soft_max = nn.Softmax(dim=1)
+        self.log_softmax_layer = nn.LogSoftmax(dim=1)
         self.tanh = nn.Tanh()
         self.sigmoid = nn.Sigmoid()
 
@@ -622,7 +620,7 @@ class PointerDecoder(nn.Module):
 
         decoder_inputs (FloatTensor): The input sequence passed into the decoder
         encoder_hidden_states (FloatTensor): The final hidden state layer of each
-            timestep from the encoder lstm 
+            timestep from the encoder lstm
         decoder_initial_state (FloatTensor): The final lstm cell and hidden cell
         '''
 
@@ -632,9 +630,9 @@ class PointerDecoder(nn.Module):
             s_0, c_0 = decoder_initial_state
             s_0 = s_0.unsqueeze(0)
             c_0 = c_0.unsqueeze(0)
-            s, final_state = self.decoder_lstm(decoder_inputs, (s_0, c_0))
+            s, _ = self.decoder_lstm(decoder_inputs, (s_0, c_0))
         else:
-            s, final_state = self.decoder_lstm(decoder_inputs)
+            s, _ = self.decoder_lstm(decoder_inputs)
 
         Wh_h = self.W_h(encoder_hidden_states)
         Ws_s = self.W_s(s)
@@ -642,11 +640,17 @@ class PointerDecoder(nn.Module):
         seq_len_encoder = encoder_hidden_states.shape[1]
         seq_len_decoder = s.shape[1]
         batch_size = s.shape[0]
-        a_vecs = [] #vectors with attention distributions for all timesteps
-        coverage_vecs = [] #vectors with coverage vectors for all timesteps
-        p_gens = []
-        logits = []
-        copy_matrices = []
+
+        # These following lists are the values we return from the forward step
+        # of the decoder model
+
+        attention_vec_list = [] #vectors with attention distributions for all timesteps
+        coverage_vec_list = [] #vectors with coverage vectors for all timesteps
+        prob_gen_lists = [] #scalars with the probability of generation for all timesteps
+        probs_list = [] #the output logits of the model for each timestep
+        # a list of 'copying matrices' for pointer mechanism; represent the frequency of words
+        copy_matrices_list = []
+
         # coverage vector has same size as attention vectors
         coverage_vec = torch.zeros(encoder_hidden_states.shape[:2])
         for t in range(seq_len_decoder):
@@ -654,8 +658,8 @@ class PointerDecoder(nn.Module):
             e_t = self.tanh(Wh_h + Ws_s[:, t, :].unsqueeze(1) + Wc_c + self.b_attn)
             e_t = self.v(e_t)
             a_t = self.soft_max(e_t)
-            a_vecs.append(a_t.squeeze(2))
-            coverage_vecs.append(coverage_vec)
+            attention_vec_list.append(a_t.squeeze(2))
+            coverage_vec_list.append(coverage_vec)
 
             # Updating coverage vector
             coverage_vec = coverage_vec + a_t.squeeze(2) #changed
@@ -668,7 +672,7 @@ class PointerDecoder(nn.Module):
             w_s = self.w_s_ptr(s_t)
             w_h = self.w_h_ptr(context_vec_t)
             p_gen = self.sigmoid(w_x + w_s + w_h + self.b_ptr)
-            p_gens.append(p_gen)
+            prob_gen_lists.append(p_gen)
 
             # need to calculate the copying matrix
             copy_matrix = torch.zeros(batch_size, self.vocab_size)
@@ -680,10 +684,15 @@ class PointerDecoder(nn.Module):
             concat_output = torch.cat((s_t, context_vec_t), dim=1)
             concat_output = self.fc_1(concat_output)
             output_logits = self.fc_2(concat_output)
-            logits.append(output_logits)
-            copy_matrices.append(copy_matrix)
-        #TODO: rename variables for better claritys
-        return (logits, copy_matrices, a_vecs, coverage_vecs, p_gens)
+            output_probs = self.log_softmax_layer(output_logits)
+            probs_list.append(output_probs)
+            copy_matrices_list.append(copy_matrix)
+
+        return (probs_list,
+                copy_matrices_list,
+                attention_vec_list,
+                coverage_vec_list,
+                prob_gen_lists)
 
 class PointerSeq2Seq(Seq2Seq):
     """ https://arxiv.org/pdf/1704.04368.pdf """
@@ -715,7 +724,6 @@ class PointerSeq2Seq(Seq2Seq):
                                       vocab_size,
                                       dropout)
 
-
     def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None, ignore_enrich=False):
         '''
         Observe that pre refers to the ids of the tokens in the original version
@@ -723,8 +731,16 @@ class PointerSeq2Seq(Seq2Seq):
         in the debiased version of the text (includes a start token).
         '''
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len)
-        logits, copy_matrices, a_vecs, coverage_vecs, p_gens = self.run_decoder(post_in_id, src_outputs, (h_t, c_t))
-        return (logits, copy_matrices, a_vecs, coverage_vecs, p_gens)
+        (probs_list,
+        copy_matrices_list,
+        attention_vec_list,
+        coverage_vec_list,
+        prob_gen_lists) = self.run_decoder(post_in_id, src_outputs, (h_t, c_t))
+        return (probs_list,
+                copy_matrices_list,
+                attention_vec_list,
+                coverage_vec_list,
+                prob_gen_lists)
 
     def run_encoder(self, pre_id, pre_len):
         '''
@@ -747,6 +763,15 @@ class PointerSeq2Seq(Seq2Seq):
         so we cannot do any sort of padding but it's all good
         '''
         tgt_emb = self.embeddings(tgt_in_id)
-        logits, copy_matrices, a_vecs, coverage_vecs, p_gens = self.decoder(tgt_in_id, tgt_emb,
-                            encoder_hidden_states, decoder_initial_state)
-        return (logits, copy_matrices, a_vecs, coverage_vecs, p_gens)
+
+        (probs_list,
+         copy_matrices_list,
+         attention_vec_list,
+         coverage_vec_list,
+         prob_gen_lists) = self.decoder(tgt_in_id, tgt_emb,
+                                        encoder_hidden_states, decoder_initial_state)
+        return (probs_list,
+                 copy_matrices_list,
+                 attention_vec_list,
+                 coverage_vec_list,
+                 prob_gen_lists)

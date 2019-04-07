@@ -35,7 +35,6 @@ from shared.constants import CUDA
 
 import utils
 
-
 BERT_MODEL = "bert-base-uncased"
 
 if not os.path.exists(ARGS.working_dir):
@@ -77,19 +76,26 @@ eval_dataloader, num_eval_examples = get_dataloader(
 # # # # # # # # ## # # # ## # # MODELS # # # # # # # # ## # # # ## # #
 if ARGS.pointer_generator:
     model = seq2seq_model.PointerSeq2Seq(
-        vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
-        emb_dim=768, dropout=0.2, tok2id=tok2id) # 768 = bert hidden size
+        vocab_size=len(tok2id),
+        encoder_hidden_size=ARGS.hidden_size,
+        decoder_hidden_size=ARGS.decoder_hidden_size,
+        attention_hidden_size=ARGS.attention_hidden_size,
+        emb_dim=768, # 768 = standard bert hidden size
+        dropout=0.2,
+        tok2id=tok2id,)
 else:
     model = seq2seq_model.Seq2Seq(
-        vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
-        emb_dim=768, dropout=0.2, tok2id=tok2id)
+        vocab_size=len(tok2id),
+        hidden_size=ARGS.hidden_size,
+        emb_dim=768,
+        dropout=0.2,
+        tok2id=tok2id)
 if CUDA:
     model = model.cuda()
 
 model_parameters = filter(lambda p: p.requires_grad, model.parameters())
 params = sum([np.prod(p.size()) for p in model_parameters])
 print('NUM PARAMS: ', params)
-
 
 
 # # # # # # # # ## # # # ## # # OPTIMIZER, LOSS # # # # # # # # ## # # # ## # #
@@ -127,16 +133,7 @@ if ARGS.pretrain_data:
             ignore_enrich=not ARGS.use_pretrain_enrich)
         writer.add_scalar('pretrain/loss', np.mean(losses), epoch)
 
-
-
 # # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
-# print('INITIAL EVAL...')
-# model.eval()
-# hits, preds, golds, srcs = utils.run_eval(
-#     model, eval_dataloader, tok2id, ARGS.working_dir + '/results_initial.txt',
-#     ARGS.max_seq_len, ARGS.beam_width)
-# writer.add_scalar('eval/bleu', utils.get_bleu(preds, golds), 0)
-# writer.add_scalar('eval/true_hits', np.mean(hits), 0)
 
 for epoch in range(ARGS.epochs):
     print('EPOCH ', epoch)

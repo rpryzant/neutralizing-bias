@@ -63,7 +63,7 @@ def build_loss_fn(vocab_size):
         criterion = criterion.cuda()
         per_tok_criterion = per_tok_criterion.cuda()
 
-    def cross_entropy_coverage(logits, copy_matrices, a_vecs, coverage_vecs, p_gens, labels):
+    def cross_entropy_coverage(log_probs, copy_matrices, a_vecs, coverage_vecs, p_gens, labels):
         '''
         For the coverage loss we also need to define a lambda hyper-parameter
         that weighs off between only using cross-entropy loss and minimizing
@@ -72,13 +72,10 @@ def build_loss_fn(vocab_size):
         The parameters are all passed in as lists which have the length of the
         sequence length of the decoder inputs.
         '''
-        lambda_weight = 0.5 #TODO: make this an ARGS parameter
-
-        # TODO: either keep here or move to decoder model
-        softmax_layer = torch.nn.LogSoftmax(dim=2)
+        lambda_weight = ARGS.lambda_coverage_weight
 
         p_gens_tensor = torch.stack(p_gens)
-        vocab_probs_tensor = softmax_layer(torch.stack(logits))
+        vocab_probs_tensor = torch.stack(log_probs)
         copy_tensor = torch.stack(copy_matrices)
 
         predictions = p_gens_tensor * vocab_probs_tensor + (1-p_gens_tensor) * copy_tensor
@@ -93,7 +90,7 @@ def build_loss_fn(vocab_size):
             sum = torch.sum(min_vec)
             coverage_loss += sum
         coverage_loss *= lambda_weight
-        batch_size = logits[0].shape[0]
+        batch_size = log_probs[0].shape[0]
         seq_len = len(a_vecs)
         coverage_loss /= (batch_size * seq_len)
 
@@ -155,10 +152,19 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
             distributions so that these can be fed into the calculation
             of the loss described in: https://arxiv.org/pdf/1704.04368.pdf.
             '''
-            logits, copy_matrices, a_vecs, coverage_vecs, p_gens = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, ignore_enrich=ignore_enrich)
+            (logits_list,
+            copy_matrices_list,
+            attention_vec_list,
+            coverage_vec_list,
+            prob_gen_lists) = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, ignore_enrich=ignore_enrich)
             # Need post_out_id for CE loss that is added to the additional
             # coverage loss
-            loss = loss_fn(logits, copy_matrices, a_vecs, coverage_vecs, p_gens, post_out_id)
+            loss = loss_fn(logits_list,
+                            copy_matrices_list,
+                            attention_vec_list,
+                            coverage_vec_list,
+                            prob_gen_lists,
+                            post_out_id)
         else:
             log_probs, probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, ignore_enrich=ignore_enrich)
             loss = loss_fn(log_probs, post_out_id, post_tok_label_id)
