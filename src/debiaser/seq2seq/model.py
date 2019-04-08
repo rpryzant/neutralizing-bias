@@ -469,7 +469,6 @@ class Seq2Seq(nn.Module):
             pre_id, src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist, ignore_enrich)
         return log_probs, probs
 
-
     def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, beam_width=1):
         global CUDA
 
@@ -618,7 +617,10 @@ class PointerDecoder(nn.Module):
         Bahdanau attention in order to create a final prediction of the
         next word from the total vocabulary.
 
-        decoder_inputs (FloatTensor): The input sequence passed into the decoder
+        input_ids (IntTensor): The id of the input tensor that is passed into
+            the encoder
+        decoder_inputs (FloatTensor): The input sequence passed into the decoder;
+            these inputs are the word embeddings of the input_ids
         encoder_hidden_states (FloatTensor): The final hidden state layer of each
             timestep from the encoder lstm
         decoder_initial_state (FloatTensor): The final lstm cell and hidden cell
@@ -679,6 +681,9 @@ class PointerDecoder(nn.Module):
             for b in range(batch_size):
                 for i in range(seq_len_encoder):
                     curr_idx = input_ids[b, i]
+                    if curr_idx == 0:
+                        # skipping if we hit padding
+                        continue
                     copy_matrix[b, curr_idx] += a_t.squeeze(2)[b,i]
 
             concat_output = torch.cat((s_t, context_vec_t), dim=1)
@@ -735,7 +740,7 @@ class PointerSeq2Seq(Seq2Seq):
         copy_matrices_list,
         attention_vec_list,
         coverage_vec_list,
-        prob_gen_lists) = self.run_decoder(post_in_id, src_outputs, (h_t, c_t))
+        prob_gen_lists) = self.run_decoder(pre_id, post_in_id, src_outputs, (h_t, c_t))
         return (probs_list,
                 copy_matrices_list,
                 attention_vec_list,
@@ -753,7 +758,7 @@ class PointerSeq2Seq(Seq2Seq):
         c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
         return src_outputs, h_t, c_t
 
-    def run_decoder(self, tgt_in_id, encoder_hidden_states, decoder_initial_state):
+    def run_decoder(self, pre_id, tgt_in_id, encoder_hidden_states, decoder_initial_state):
         '''
         The encoder_hidden_states is simply the src_outputs which we calculate
         from run_encoder;
@@ -768,10 +773,100 @@ class PointerSeq2Seq(Seq2Seq):
          copy_matrices_list,
          attention_vec_list,
          coverage_vec_list,
-         prob_gen_lists) = self.decoder(tgt_in_id, tgt_emb,
+         prob_gen_lists) = self.decoder(pre_id, tgt_emb,
                                         encoder_hidden_states, decoder_initial_state)
         return (probs_list,
                  copy_matrices_list,
                  attention_vec_list,
                  coverage_vec_list,
                  prob_gen_lists)
+
+    def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, beam_width=1):
+        '''
+        Runs forward inference through pointer seq-to-seq model.
+        '''
+        global CUDA
+
+        beam_width=2 #NOTE: temporarily setting to this
+
+        if beam_width == 1:
+            return self.inference_forward_greedy(
+                pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist)
+        print("skipping greedy")
+        # encode src
+        src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len)
+
+        # expand everything per beam. Order is beam x batch,
+        #  e.g. [batch, batch, batch] if beam width = 3
+        #  so to unpack we do tensor.view(beam, batch)
+        src_outputs = src_outputs.repeat(beam_width, 1, 1)
+        initial_hidden = (
+            h_t.repeat(beam_width, 1),
+            c_t.repeat(beam_width, 1))
+        pre_mask = pre_mask.repeat(beam_width, 1)
+        pre_len = pre_len.repeat(beam_width)
+        if tok_dist is not None:
+            tok_dist = tok_dist.repeat(beam_width, 1)
+
+        # build initial inputs and beams
+        batch_size = pre_id.shape[0]
+        beams = [Beam(beam_width, self.tok2id, cuda=CUDA) for k in range(batch_size)]
+        # transpose to move beam to first dim
+        tgt_input = torch.stack([b.get_current_state() for b in beams]
+            ).t().contiguous().view(-1, 1)
+        # for passing inot model
+        pre_id = pre_id.repeat(2,1)
+
+        def get_top_hyp():
+            out = []
+            for b in beams:
+                _, ks = b.sort_best()
+                hyps = torch.stack([torch.stack(b.get_hyp(k)) for k in ks])
+                out.append(hyps)
+            # move beam first. output is [beam, batch, len]
+            out = torch.stack(out).transpose(1, 0)
+            return out
+
+        for _ in range(max_len):
+            # run input through the model
+            with torch.no_grad():
+                model_outputs = self.run_decoder(
+                    pre_id, tgt_input, src_outputs, initial_hidden)
+                word_probs = model_outputs[0]
+                word_probs = torch.stack(word_probs)
+            # tranpose to preserve ordering
+            new_tok_probs = word_probs[-1, :, :].squeeze(1).view(
+                beam_width, batch_size, -1).transpose(1, 0)
+
+            for bi in range(batch_size):
+                beams[bi].advance(new_tok_probs.data[bi])
+
+            tgt_input = get_top_hyp().contiguous().view(batch_size * beam_width, -1)
+
+        return get_top_hyp()[0].detach().cpu().numpy()
+
+
+    def inference_forward_greedy(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist):
+        global CUDA
+        """ argmax decoding """
+        # Initialize target with <s> for every sentence
+
+        tgt_input = Variable(torch.LongTensor([
+                [post_start_id] for i in range(pre_id.size(0))
+        ]))
+        if CUDA:
+            tgt_input = tgt_input.cuda()
+
+        for _ in range(max_len):
+            # run input through the model
+            with torch.no_grad():
+                model_outputs = self.forward(
+                    pre_id, tgt_input, pre_mask, pre_len, tok_dist)
+                word_probs = model_outputs[0]
+                word_probs = torch.stack(word_probs)
+            # word_probs shape is time_step, batch_size, vocab_size
+            next_preds = torch.max(word_probs[-1, :, :], dim=1)[1]
+            tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
+
+        # [batch, len ] predicted indices
+        return tgt_input.detach().cpu().numpy()
