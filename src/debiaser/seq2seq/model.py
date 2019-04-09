@@ -158,13 +158,15 @@ class BilinearAttention(nn.Module):
     """
     def __init__(self, hidden, score_fn='dot'):
         global ARGS
+        
+        # sanity check that pointer_generator is active
+        if ARGS.coverage:
+            assert ARGS.pointer_generator
 
         super(BilinearAttention, self).__init__()
         self.query_in_projection = nn.Linear(hidden, hidden)
         # possibly make room for coverage values
         #   (c^t_i  in Eq. 11 of https://arxiv.org/pdf/1704.04368.pdf )
-        if ARGS.coverage:
-            assert ARGS.pointer_generator # sanity check that pointer_generator is active
         self.key_in_projection = nn.Linear(hidden + (1 if ARGS.coverage else 0), hidden)
         self.softmax = nn.Softmax(dim=1)
         self.out_projection = nn.Linear(hidden * 2, hidden)
