@@ -4,7 +4,6 @@ import copy
 
 import torch
 import torch.nn as nn
-from torch.nn.parameter import Parameter
 from torch.autograd import Variable
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import torch.nn.functional as F
@@ -14,6 +13,9 @@ from pytorch_pretrained_bert.modeling import BertModel
 import sys; sys.path.append('.')
 from shared.args import ARGS
 from shared.constants import CUDA
+
+
+
 
 def tile(x, count, dim=0):
     """
@@ -227,6 +229,7 @@ class LSTMEncoder(nn.Module):
         super(LSTMEncoder, self).__init__()
 
         self.num_directions = 2 if bidirectional else 1
+
         self.lstm = nn.LSTM(
             emb_dim,
             hidden_dim // self.num_directions,
@@ -257,10 +260,10 @@ class LSTMEncoder(nn.Module):
             return h0, c0
 
 
-    def forward(self, src_embedding, srclens):
+    def forward(self, src_embedding, srclens, srcmask):
         # retrieve batch size dynamically for decoding
         h0, c0 = self.init_state(batch_size=src_embedding.size(0))
-
+        
         if self.pack:
             inputs = pack_padded_sequence(src_embedding, srclens, batch_first=True)
         else:
@@ -272,6 +275,8 @@ class LSTMEncoder(nn.Module):
             outputs, _ = pad_packed_sequence(outputs, batch_first=True)
 
         return outputs, (h_final, c_final)
+
+
 
 class AttentionalLSTM(nn.Module):
     r"""A long short-term memory (LSTM) cell with attention."""
@@ -306,7 +311,7 @@ class AttentionalLSTM(nn.Module):
                 attn_dists.append(attn)
                 attn_ctxs.append(attn_ctx)
                 raw_hiddens.append(hy)
-            else:
+            else: 
                 hidden = hy, cy
                 output.append(hy)
 
@@ -362,12 +367,13 @@ class StackedAttentionLSTM(nn.Module):
         return input, (h_final, c_final), attns, attn_ctxs, raw_hiddens
 
 
+
 class Seq2Seq(nn.Module):
     def __init__(self, vocab_size, hidden_size, emb_dim, dropout, tok2id):
         global ARGS
         global CUDA
 
-        super(Seq2Seq, self).__init__()
+        super(Seq2Seq, self).__init__()        
 
         self.vocab_size = vocab_size
         self.hidden_dim = hidden_size
@@ -380,13 +386,14 @@ class Seq2Seq(nn.Module):
         self.encoder = LSTMEncoder(
             self.emb_dim, self.hidden_dim, layers=1, bidirectional=True, dropout=self.dropout)
 
+                                                
         self.bridge = nn.Linear(768 if ARGS.bert_encoder else self.hidden_dim, self.hidden_dim)
-
+        
         self.decoder = StackedAttentionLSTM(
             self.emb_dim, self.hidden_dim, layers=1, dropout=self.dropout)
-
+        
         self.output_projection = nn.Linear(self.hidden_dim, self.vocab_size)
-
+        
         # for decoding. TODO -- throw this out?
         self.softmax = nn.Softmax(dim=-1)
         # for training
@@ -399,10 +406,10 @@ class Seq2Seq(nn.Module):
             model = BertModel.from_pretrained(
                 'bert-base-uncased',
                 ARGS.working_dir + '/cache')
-
+                
             if ARGS.bert_word_embeddings:
                 self.embeddings = copy.deepcopy(model.embeddings.word_embeddings)
-
+                
             if ARGS.bert_full_embeddings:
                 self.embeddings = copy.deepcopy(model.embeddings)
 
@@ -427,13 +434,14 @@ class Seq2Seq(nn.Module):
         initrange = 0.1
         for param in self.parameters():
             param.data.uniform_(-initrange, initrange)
-
+    
     def run_encoder(self, pre_id, pre_len, pre_mask):
         src_emb = self.embeddings(pre_id)
         src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
-        src_outputs = self.bridge(src_outputs) #linear layer applied to all of the hidden states
-        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1) #Recal only 1 layer, so this splits up by direction
+        src_outputs = self.bridge(src_outputs)
+        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
         c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+
         return src_outputs, h_t, c_t
 
     def run_decoder(self, pre_id, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, ignore_enrich=False):
@@ -445,7 +453,7 @@ class Seq2Seq(nn.Module):
                 src_outputs.shape[0], src_outputs.shape[1], 1)
             enrichment = tok_dist.unsqueeze(2) * enrichment
             src_outputs = src_outputs + enrichment
-
+    
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_outputs, _, _, _, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
 
@@ -512,7 +520,7 @@ class Seq2Seq(nn.Module):
             # run input through the model
             with torch.no_grad():
                 _, word_probs = self.run_decoder(
-                    src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist)
+                    pre_id, src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist)
             # tranpose to preserve ordering
             new_tok_probs = word_probs[:, -1, :].squeeze(1).view(
                 beam_width, batch_size, -1).transpose(1, 0)
@@ -535,8 +543,6 @@ class Seq2Seq(nn.Module):
         if CUDA:
             tgt_input = tgt_input.cuda()
 
-        out_logits = []
-
         for i in range(max_len):
             # run input through the model
             with torch.no_grad():
@@ -554,319 +560,65 @@ class Seq2Seq(nn.Module):
     def load(self, path):
         self.load_state_dict(torch.load(path))
 
-class PointerDecoder(nn.Module):
-    '''
-    A decoder for the pointer-generator attention model with coverage
-    mechanism. Uses Bahdanau attention as described in https://arxiv.org/abs/1409.0473.
-    Observe that in this model we use teacher training for training the
-    decoder instead of sequentially feeding in the previous time-steps prediction
-    as the input for the next prediction.
-    '''
-    def __init__(self, emb_dim, encoder_hidden_dim, decoder_hidden_dim,
-                 attention_dim, vocab_size, dropout, lstm_layers=1):
-
-        '''
-        emb_dim (Int): The size of the word embeddings (768 by default)
-        encoder_hidden_dim (Int): The hidden dimension of the encoder lstm
-        decoder_hidden_dim (Int): The hidden dimension of the decoder lstm
-        attention_dim (Int): The hidden dimension of the attention layer
-        vocab_size (Int): The size of the vocab
-        dropout (Float): Probability of dropping certain parameters from model during training
-        lstm_layers (Int): Number of layers per LSTM Cell in the decoder lstm
-        '''
-        super(PointerDecoder, self).__init__()
-
-        self.decoder_lstm = nn.LSTM(
-            input_size=emb_dim,
-            hidden_size=decoder_hidden_dim,
-            num_layers=lstm_layers,
-            batch_first=True,
-            dropout=dropout)
-
-        # parameters for calculating the Bahdanau attention score
-        self.W_s = nn.Linear(decoder_hidden_dim, attention_dim, bias=False)
-        self.W_h = nn.Linear(encoder_hidden_dim, attention_dim, bias=False)
-        self.W_c = nn.Linear(1, attention_dim, bias=False)
-        self.b_attn = Parameter(torch.Tensor(attention_dim))
-        self.v = nn.Linear(attention_dim, 1, bias=False)
-        self.soft_max = nn.Softmax(dim=1)
-        self.log_softmax_layer = nn.LogSoftmax(dim=1)
-        self.tanh = nn.Tanh()
-        self.sigmoid = nn.Sigmoid()
-
-        # parameters for calculating the generation probability
-
-        self.w_x_ptr = nn.Linear(emb_dim, 1)
-        self.w_s_ptr = nn.Linear(decoder_hidden_dim, 1)
-        self.w_h_ptr = nn.Linear(encoder_hidden_dim, 1)
-        self.b_ptr = Parameter(torch.Tensor(1))
-
-
-        concat_dim = encoder_hidden_dim + decoder_hidden_dim
-        self.fc_1 = nn.Linear(concat_dim, concat_dim * 2)
-        self.fc_2 = nn.Linear(concat_dim * 2, vocab_size)
-
-        self.vocab_size = vocab_size
-        self.encoder_hidden_dim = encoder_hidden_dim
-        self.decoder_hidden_dim = decoder_hidden_dim
-        self.lstm_layers = lstm_layers
-
-    def forward(self, input_ids, decoder_inputs, encoder_hidden_states, decoder_initial_state):
-        '''
-        First passes in the decoder_inputs through an LSTM and then applies
-        Bahdanau attention in order to create a final prediction of the
-        next word from the total vocabulary.
-
-        input_ids (IntTensor): The id of the input tensor that is passed into
-            the encoder
-        decoder_inputs (FloatTensor): The input sequence passed into the decoder;
-            these inputs are the word embeddings of the input_ids
-        encoder_hidden_states (FloatTensor): The final hidden state layer of each
-            timestep from the encoder lstm
-        decoder_initial_state (FloatTensor): The final lstm cell and hidden cell
-        '''
-
-        # Checking to see if we reuse the hidden states of the
-        # encoder module lstm
-        if (self.encoder_hidden_dim == self.decoder_hidden_dim and s_0.shape[0] == self.lstm_layers):
-            s_0, c_0 = decoder_initial_state
-            s_0 = s_0.unsqueeze(0)
-            c_0 = c_0.unsqueeze(0)
-            s, _ = self.decoder_lstm(decoder_inputs, (s_0, c_0))
-        else:
-            s, _ = self.decoder_lstm(decoder_inputs)
-
-        Wh_h = self.W_h(encoder_hidden_states)
-        Ws_s = self.W_s(s)
-
-        seq_len_encoder = encoder_hidden_states.shape[1]
-        seq_len_decoder = s.shape[1]
-        batch_size = s.shape[0]
-
-        # These following lists are the values we return from the forward step
-        # of the decoder model
-
-        attention_vec_list = [] #vectors with attention distributions for all timesteps
-        coverage_vec_list = [] #vectors with coverage vectors for all timesteps
-        prob_gen_lists = [] #scalars with the probability of generation for all timesteps
-        probs_list = [] #the output logits of the model for each timestep
-        # a list of 'copying matrices' for pointer mechanism; represent the frequency of words
-        copy_matrices_list = []
-
-        # coverage vector has same size as attention vectors
-        coverage_vec = torch.zeros(encoder_hidden_states.shape[:2])
-        for t in range(seq_len_decoder):
-            Wc_c = self.W_c(coverage_vec.unsqueeze(2))
-            e_t = self.tanh(Wh_h + Ws_s[:, t, :].unsqueeze(1) + Wc_c + self.b_attn)
-            e_t = self.v(e_t)
-            a_t = self.soft_max(e_t)
-            attention_vec_list.append(a_t.squeeze(2))
-            coverage_vec_list.append(coverage_vec)
-
-            # Updating coverage vector
-            coverage_vec = coverage_vec + a_t.squeeze(2) #changed
-            context_vec_t = torch.matmul(encoder_hidden_states.permute(0, 2, 1),a_t)
-            context_vec_t = context_vec_t.squeeze(2)
-            s_t = s[:, t, :]
-
-            #calculating p_gen
-            w_x = self.w_x_ptr(decoder_inputs[:, t, :])
-            w_s = self.w_s_ptr(s_t)
-            w_h = self.w_h_ptr(context_vec_t)
-            p_gen = self.sigmoid(w_x + w_s + w_h + self.b_ptr)
-            prob_gen_lists.append(p_gen)
-
-            # need to calculate the copying matrix
-            copy_matrix = torch.zeros(batch_size, self.vocab_size)
-            for b in range(batch_size):
-                for i in range(seq_len_encoder):
-                    curr_idx = input_ids[b, i]
-                    if curr_idx == 0:
-                        # skipping if we hit padding
-                        continue
-                    copy_matrix[b, curr_idx] += a_t.squeeze(2)[b,i]
-
-            concat_output = torch.cat((s_t, context_vec_t), dim=1)
-            concat_output = self.fc_1(concat_output)
-            output_logits = self.fc_2(concat_output)
-            output_probs = self.log_softmax_layer(output_logits)
-            probs_list.append(output_probs)
-            copy_matrices_list.append(copy_matrix)
-
-        return (probs_list,
-                copy_matrices_list,
-                attention_vec_list,
-                coverage_vec_list,
-                prob_gen_lists)
 
 class PointerSeq2Seq(Seq2Seq):
     """ https://arxiv.org/pdf/1704.04368.pdf """
-    def __init__(self, vocab_size, encoder_hidden_size,
-                decoder_hidden_size, attention_hidden_size,
-                emb_dim, dropout, tok2id):
-        '''
-        A Pointer-Generator Network for generating debiased text. The structure
-        of this model follows https://arxiv.org/abs/1409.0473. In this implementation
-        we subclass the Seq2Seq model.
-        '''
+    def __init__(self, vocab_size, hidden_size, emb_dim, dropout, tok2id):
         global CUDA
         global ARGS
-
+        
         super(PointerSeq2Seq, self).__init__(
-            vocab_size,
-            encoder_hidden_size,
-            emb_dim,
-            dropout,
-            tok2id)
+            vocab_size, hidden_size, emb_dim, dropout, tok2id)
 
-        self.embeddings = nn.Embedding(self.vocab_size, self.emb_dim, self.pad_id)
-        self.encoder = LSTMEncoder(self.emb_dim, self.hidden_dim, layers=1,
-                                   bidirectional=True, dropout=self.dropout)
-        self.decoder = PointerDecoder(emb_dim,
-                                      encoder_hidden_size,
-                                      decoder_hidden_size,
-                                      attention_hidden_size,
-                                      vocab_size,
-                                      dropout)
+        # 768 = input (embedding) size
+        # TODO make this a constant, maybe in args?s
+        self.p_gen_W = nn.Linear((hidden_size * 3) + 768, 1)
+        self.p_gen_sigmoid = nn.Sigmoid()
 
-    def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None, ignore_enrich=False):
-        '''
-        Observe that pre refers to the ids of the tokens in the original version
-        of the text we are debiasing. Post_in_id refers to the ids of the tokens
-        in the debiased version of the text (includes a start token).
-        '''
-        src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len)
-        (probs_list,
-        copy_matrices_list,
-        attention_vec_list,
-        coverage_vec_list,
-        prob_gen_lists) = self.run_decoder(pre_id, post_in_id, src_outputs, (h_t, c_t))
-        return (probs_list,
-                copy_matrices_list,
-                attention_vec_list,
-                coverage_vec_list,
-                prob_gen_lists)
+    def run_decoder(self, pre_id, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, ignore_enrich=False):
+        global ARGS
 
-    def run_encoder(self, pre_id, pre_len):
-        '''
-        Pipes all of the input tokens through a bidirectional LSTM. Should
-        be the same as in the baseline Seq2Seq Model.
-        '''
-        src_emb = self.embeddings(pre_id)
-        src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len)
-        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1) #Recal only 1 layer, so this splits up by direction
-        c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
-        return src_outputs, h_t, c_t
-
-    def run_decoder(self, pre_id, tgt_in_id, encoder_hidden_states, decoder_initial_state):
-        '''
-        The encoder_hidden_states is simply the src_outputs which we calculate
-        from run_encoder;
-        The decoder_initial_state is simply the last hidden and cell layer calcualted
-        from the forward pass through the encoder
-        Observe that we are currently not including the length of the tgt_in
-        so we cannot do any sort of padding but it's all good
-        '''
+        # optionally enrich src with tok enrichment
+        if not ARGS.no_tok_enrich and not ignore_enrich:
+            enrichment = self.enricher(self.enrich_input).repeat(
+                src_outputs.shape[0], src_outputs.shape[1], 1)
+            enrichment = tok_dist.unsqueeze(2) * enrichment
+            src_outputs = src_outputs + enrichment
+    
         tgt_emb = self.embeddings(tgt_in_id)
+        tgt_output_probs = []
 
-        (probs_list,
-         copy_matrices_list,
-         attention_vec_list,
-         coverage_vec_list,
-         prob_gen_lists) = self.decoder(pre_id, tgt_emb,
-                                        encoder_hidden_states, decoder_initial_state)
-        return (probs_list,
-                 copy_matrices_list,
-                 attention_vec_list,
-                 coverage_vec_list,
-                 prob_gen_lists)
+        hidden = dec_initial_state
 
-    def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, beam_width=1):
-        '''
-        Runs forward inference through pointer seq-to-seq model.
-        '''
-        global CUDA
+        # manually crank the decoder
+        for ti in range(tgt_emb.shape[1]):
+            tgt_emb_i = tgt_emb[:, ti, :].unsqueeze(1)
 
-        beam_width=2 #NOTE: temporarily setting to this
+            output_i, (h_tilde_i, ci), attn, attn_ctx, raw_hidden = self.decoder(
+                tgt_emb_i, hidden, src_outputs, pre_mask)
 
-        if beam_width == 1:
-            return self.inference_forward_greedy(
-                pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist)
-        print("skipping greedy")
-        # encode src
-        src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len)
+            output_i = output_i.squeeze(1)
+            attn = attn.squeeze(0)
+            h_i = raw_hidden.squeeze(0)
 
-        # expand everything per beam. Order is beam x batch,
-        #  e.g. [batch, batch, batch] if beam width = 3
-        #  so to unpack we do tensor.view(beam, batch)
-        src_outputs = src_outputs.repeat(beam_width, 1, 1)
-        initial_hidden = (
-            h_t.repeat(beam_width, 1),
-            c_t.repeat(beam_width, 1))
-        pre_mask = pre_mask.repeat(beam_width, 1)
-        pre_len = pre_len.repeat(beam_width)
-        if tok_dist is not None:
-            tok_dist = tok_dist.repeat(beam_width, 1)
+            # no coverage, so just use tgt_emb instead of combining it like abi did
+            p_gen = self.p_gen_W(torch.cat([
+                attn_ctx.squeeze(0), h_i, 
+                ci.squeeze(0), tgt_emb_i.squeeze(1)
+            ], -1))
+            p_gen = self.p_gen_sigmoid(p_gen)
 
-        # build initial inputs and beams
-        batch_size = pre_id.shape[0]
-        beams = [Beam(beam_width, self.tok2id, cuda=CUDA) for k in range(batch_size)]
-        # transpose to move beam to first dim
-        tgt_input = torch.stack([b.get_current_state() for b in beams]
-            ).t().contiguous().view(-1, 1)
-        # for passing inot model
-        pre_id = pre_id.repeat(2,1)
+            gen_probs = p_gen * self.softmax(self.output_projection(output_i))
+            pointer_probs = (1 - p_gen) * attn
+            gen_probs.scatter_add_(1, pre_id, pointer_probs)
 
-        def get_top_hyp():
-            out = []
-            for b in beams:
-                _, ks = b.sort_best()
-                hyps = torch.stack([torch.stack(b.get_hyp(k)) for k in ks])
-                out.append(hyps)
-            # move beam first. output is [beam, batch, len]
-            out = torch.stack(out).transpose(1, 0)
-            return out
+            tgt_output_probs.append(gen_probs)
 
-        for _ in range(max_len):
-            # run input through the model
-            with torch.no_grad():
-                model_outputs = self.run_decoder(
-                    pre_id, tgt_input, src_outputs, initial_hidden)
-                word_probs = model_outputs[0]
-                word_probs = torch.stack(word_probs)
-            # tranpose to preserve ordering
-            new_tok_probs = word_probs[-1, :, :].squeeze(1).view(
-                beam_width, batch_size, -1).transpose(1, 0)
+            hidden = (h_tilde_i.squeeze(0), ci.squeeze(0))
 
-            for bi in range(batch_size):
-                beams[bi].advance(new_tok_probs.data[bi])
+        probs = torch.stack(tgt_output_probs)
+        probs = probs.permute(1, 0, 2)
 
-            tgt_input = get_top_hyp().contiguous().view(batch_size * beam_width, -1)
+        log_probs = torch.log(probs)
 
-        return get_top_hyp()[0].detach().cpu().numpy()
-
-
-    def inference_forward_greedy(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist):
-        global CUDA
-        """ argmax decoding """
-        # Initialize target with <s> for every sentence
-
-        tgt_input = Variable(torch.LongTensor([
-                [post_start_id] for i in range(pre_id.size(0))
-        ]))
-        if CUDA:
-            tgt_input = tgt_input.cuda()
-
-        for _ in range(max_len):
-            # run input through the model
-            with torch.no_grad():
-                model_outputs = self.forward(
-                    pre_id, tgt_input, pre_mask, pre_len, tok_dist)
-                word_probs = model_outputs[0]
-                word_probs = torch.stack(word_probs)
-            # word_probs shape is time_step, batch_size, vocab_size
-            next_preds = torch.max(word_probs[-1, :, :], dim=1)[1]
-            tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
-
-        # [batch, len ] predicted indices
-        return tgt_input.detach().cpu().numpy()
+        return log_probs, probs
