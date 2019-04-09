@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-train bert
+train bert 
 
 python tagging/train.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.test --working_dir TEST --train_batch_size 3 --test_batch_size 10  --hidden_size 32 --debug_skip
 """
@@ -45,17 +45,16 @@ with open(ARGS.working_dir + '/command.sh', 'w') as f:
 # # # # # # # # ## # # # ## # # DATA # # # # # # # # ## # # # ## # #
 
 
-print("Cuda is set to {}".format(CUDA))
-exit()
+
 print('LOADING DATA...')
 tokenizer = BertTokenizer.from_pretrained(ARGS.bert_model, cache_dir=ARGS.working_dir + '/cache')
 tok2id = tokenizer.vocab
 tok2id['<del>'] = len(tok2id)
 
 train_dataloader, num_train_examples = get_dataloader(
-    ARGS.train,
-    tok2id, ARGS.train_batch_size,
-    ARGS.working_dir + '/train_data.pkl',
+    ARGS.train, 
+    tok2id, ARGS.train_batch_size, 
+    ARGS.working_dir + '/train_data.pkl', 
     categories_path=ARGS.categories_file)
 eval_dataloader, num_eval_examples = get_dataloader(
     ARGS.test,
@@ -129,4 +128,5 @@ for epoch in range(ARGS.epochs):
     model.train()
 
     print('SAVING...')
-    torch.save(model.state_dict(), ARGS.working_dir + '/model_%d.ckpt' % epoch)
+    torch.save(model.state_dict(), ARGS.working_dir + '/model_%d.ckpt' % epoch)    
+    
