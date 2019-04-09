@@ -93,7 +93,15 @@ def build_loss_fn(vocab_size):
     return loss_fn, cross_entropy_loss
 
 
-def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich=False):
+def coverage_loss(attns, coverages):
+    loss = 0.0
+    for attn, coverage in zip(attns, coverages):
+        loss += torch.sum(torch.min(attn, coverage))
+    loss /= attns.shape[0] * attns.shape[1]
+    return loss
+
+
+def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich=False, coverage=False):
     global CUDA
     global ARGS
     
@@ -110,9 +118,15 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
             pre_tok_label_id, post_tok_label_id,
             _, _, _
         ) = batch
-        log_probs, probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, ignore_enrich=ignore_enrich)
+        log_probs, probs, attns, coverages = model(
+            pre_id, post_in_id, pre_mask, pre_len,
+            pre_tok_label_id, ignore_enrich=ignore_enrich)
         
         loss = loss_fn(log_probs, post_out_id, post_tok_label_id)
+
+        if coverage:
+            cov_loss = coverage_loss(attns, coverages)
+            loss = loss + ARGS.coverage_lambda * cov_loss
 
         loss.backward()
         norm = nn.utils.clip_grad_norm_(model.parameters(), 3.0)

@@ -222,7 +222,7 @@ for epoch in range(ARGS.epochs):
     print('TRAIN...')
     losses = joint_utils.train_for_epoch(
         joint_model, train_dataloader, joint_optimizer,
-        debias_loss_fn, tagging_loss_fn, ignore_tagger=False)
+        debias_loss_fn, tagging_loss_fn, ignore_tagger=False, coverage=ARGS.coverage)
     writer.add_scalar('train/loss', np.mean(losses), epoch + 1)
 
 

@@ -157,9 +157,13 @@ class BilinearAttention(nn.Module):
                 (where W_a = self.in_projection)
     """
     def __init__(self, hidden, score_fn='dot'):
+        global ARGS
+
         super(BilinearAttention, self).__init__()
         self.query_in_projection = nn.Linear(hidden, hidden)
-        self.key_in_projection = nn.Linear(hidden, hidden)
+        # possibly make room for coverage values
+        #   (c^t_i  in Eq. 11 of https://arxiv.org/pdf/1704.04368.pdf )
+        self.key_in_projection = nn.Linear(hidden + (1 if ARGS.coverage else 0), hidden)
         self.softmax = nn.Softmax()
         self.out_projection = nn.Linear(hidden * 2, hidden)
         self.tanh = nn.Tanh()
@@ -455,7 +459,7 @@ class Seq2Seq(nn.Module):
             src_outputs = src_outputs + enrichment
     
         tgt_emb = self.embeddings(tgt_in_id)
-        tgt_outputs, _, _, _, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
+        tgt_outputs, _, attns, _, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
 
         tgt_outputs_reshape = tgt_outputs.contiguous().view(
             tgt_outputs.size()[0] * tgt_outputs.size()[1],
@@ -469,13 +473,13 @@ class Seq2Seq(nn.Module):
         probs = self.softmax(logits)
         log_probs = self.log_softmax(logits)
 
-        return log_probs, probs
+        return log_probs, probs, attns, None
 
     def forward(self, pre_id, post_in_id, pre_mask, pre_len, tok_dist=None, ignore_enrich=False):
         src_outputs, h_t, c_t = self.run_encoder(pre_id, pre_len, pre_mask)
-        log_probs, probs = self.run_decoder(
+        log_probs, probs, attns, coverage = self.run_decoder(
             pre_id, src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist, ignore_enrich)
-        return log_probs, probs
+        return log_probs, probs, attns, coverage
 
     def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, beam_width=1):
         global CUDA
@@ -519,7 +523,7 @@ class Seq2Seq(nn.Module):
         for i in range(max_len):
             # run input through the model
             with torch.no_grad():
-                _, word_probs = self.run_decoder(
+                _, word_probs, _, _ = self.run_decoder(
                     pre_id, src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist)
             # tranpose to preserve ordering
             new_tok_probs = word_probs[:, -1, :].squeeze(1).view(
@@ -546,7 +550,7 @@ class Seq2Seq(nn.Module):
         for i in range(max_len):
             # run input through the model
             with torch.no_grad():
-                _, word_probs = self.forward(
+                _, word_probs, _, _ = self.forward(
                     pre_id, tgt_input, pre_mask, pre_len, tok_dist)
             next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
             tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
@@ -585,35 +589,54 @@ class PointerSeq2Seq(Seq2Seq):
             enrichment = tok_dist.unsqueeze(2) * enrichment
             src_outputs = src_outputs + enrichment
     
+        # initialize inputs, hidden states, counters, etc
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_output_probs = []
-
+        attns = []
         hidden = dec_initial_state
+        if ARGS.coverage:
+            coverage_vecs = []
+            coverage = torch.zeros(src_outputs.shape[:2])
 
         # manually crank the decoder
         for ti in range(tgt_emb.shape[1]):
+            # pull out decoder input for timestep i
             tgt_emb_i = tgt_emb[:, ti, :].unsqueeze(1)
 
-            output_i, (h_tilde_i, ci), attn, attn_ctx, raw_hidden = self.decoder(
-                tgt_emb_i, hidden, src_outputs, pre_mask)
+            if ARGS.coverage:
+                # add coverage values to attention inputs
+                attn_keys = torch.cat((src_outputs, coverage.unsqueeze(-1)), -1)
+            else:
+                attn_keys = src_outputs
 
+            # run decoder on this step
+            output_i, (h_tilde_i, ci), attn, attn_ctx, raw_hidden = self.decoder(
+                tgt_emb_i, hidden, attn_keys, pre_mask)
             output_i = output_i.squeeze(1)
             attn = attn.squeeze(0)
             h_i = raw_hidden.squeeze(0)
 
-            # no coverage, so just use tgt_emb instead of combining it like abi did
+            # accumulate attention scores
+            if ARGS.coverage:
+                coverage += attn
+                coverage_vecs.append(coverage.clone())
+
+            # get probability of generating vs copying
             p_gen = self.p_gen_W(torch.cat([
                 attn_ctx.squeeze(0), h_i, 
                 ci.squeeze(0), tgt_emb_i.squeeze(1)
             ], -1))
             p_gen = self.p_gen_sigmoid(p_gen)
 
+            # final output distribution is
+            #        ( p_gen * pred_dist )  +  ((1 - p_gen) * attn_dist)
             gen_probs = p_gen * self.softmax(self.output_projection(output_i))
             pointer_probs = (1 - p_gen) * attn
             gen_probs.scatter_add_(1, pre_id, pointer_probs)
 
+            # update counters and hidden state
             tgt_output_probs.append(gen_probs)
-
+            attns.append(attn)
             hidden = (h_tilde_i.squeeze(0), ci.squeeze(0))
 
         probs = torch.stack(tgt_output_probs)
@@ -621,4 +644,4 @@ class PointerSeq2Seq(Seq2Seq):
 
         log_probs = torch.log(probs)
 
-        return log_probs, probs
+        return log_probs, probs, torch.stack(attns), torch.stack(coverage_vecs)

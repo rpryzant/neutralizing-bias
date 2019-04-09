@@ -136,7 +136,7 @@ for epoch in range(ARGS.epochs):
     print('EPOCH ', epoch)
     print('TRAIN...')
     model.train()
-    losses = utils.train_for_epoch(model, train_dataloader, tok2id, optimizer, loss_fn)
+    losses = utils.train_for_epoch(model, train_dataloader, tok2id, optimizer, loss_fn, coverage=ARGS.coverage)
     writer.add_scalar('train/loss', np.mean(losses), epoch+1)
 
     print('SAVING...')

@@ -240,6 +240,16 @@ parser.add_argument(
     help='use copy mechanism in decoder',
     action='store_true'
 )
+parser.add_argument(
+    "--coverage",
+    help='use coverage mechanism in decoder (needs pointer generator to be set first)',
+    action='store_true'
+)
+parser.add_argument(
+    "--coverage_lambda",
+    help='use coverage mechanism in decoder',
+    type=float, default=1.0
+)
 
 
 # bert settings
