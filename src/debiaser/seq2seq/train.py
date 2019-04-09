@@ -76,19 +76,16 @@ eval_dataloader, num_eval_examples = get_dataloader(
 # # # # # # # # ## # # # ## # # MODELS # # # # # # # # ## # # # ## # #
 if ARGS.pointer_generator:
     model = seq2seq_model.PointerSeq2Seq(
-        vocab_size=len(tok2id),
-        encoder_hidden_size=ARGS.hidden_size,
-        decoder_hidden_size=ARGS.decoder_hidden_size,
-        attention_hidden_size=ARGS.attention_hidden_size,
-        emb_dim=768, # 768 = standard bert hidden size
-        dropout=0.2,
-        tok2id=tok2id,)
+        vocab_size=len(tok2id), 
+        hidden_size=ARGS.hidden_size,
+        emb_dim=768, # 768 = bert hidden size
+        dropout=0.2, 
+        tok2id=tok2id) 
 else:
     model = seq2seq_model.Seq2Seq(
-        vocab_size=len(tok2id),
-        hidden_size=ARGS.hidden_size,
-        emb_dim=768,
-        dropout=0.2,
+        vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
+        emb_dim=768, 
+        dropout=0.2, 
         tok2id=tok2id)
 if CUDA:
     model = model.cuda()

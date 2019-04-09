@@ -50,6 +50,7 @@ def get_bleu(hypotheses, reference):
     return 100 * bleu(stats)
 #############################################################
 
+
 def build_loss_fn(vocab_size):
     global ARGS
 
@@ -63,43 +64,11 @@ def build_loss_fn(vocab_size):
         criterion = criterion.cuda()
         per_tok_criterion = per_tok_criterion.cuda()
 
-    def cross_entropy_coverage(log_probs, copy_matrices, a_vecs, coverage_vecs, p_gens, labels):
-        '''
-        For the coverage loss we also need to define a lambda hyper-parameter
-        that weighs off between only using cross-entropy loss and minimizing
-        the coverage-attention term of the loss.
-
-        The parameters are all passed in as lists which have the length of the
-        sequence length of the decoder inputs.
-        '''
-        lambda_weight = ARGS.lambda_coverage_weight
-
-        p_gens_tensor = torch.stack(p_gens)
-        vocab_probs_tensor = torch.stack(log_probs)
-        copy_tensor = torch.stack(copy_matrices)
-
-        predictions = p_gens_tensor * vocab_probs_tensor + (1-p_gens_tensor) * copy_tensor
-        predictions = predictions.reshape(-1, vocab_size)
-        labels = labels.reshape(-1)
-
-        ce_loss = criterion(predictions, labels)
-
-        coverage_loss = 0.0
-        for a, c in zip(a_vecs, coverage_vecs):
-            min_vec = torch.min(a,c)
-            sum = torch.sum(min_vec)
-            coverage_loss += sum
-        coverage_loss *= lambda_weight
-        batch_size = log_probs[0].shape[0]
-        seq_len = len(a_vecs)
-        coverage_loss /= (batch_size * seq_len)
-
-        return ce_loss + coverage_loss
-
     def cross_entropy_loss(log_probs, labels, apply_mask=None):
         return criterion(
-            log_probs.contiguous().view(-1, vocab_size),
+            log_probs.contiguous().view(-1, vocab_size), 
             labels.contiguous().view(-1))
+
 
     def weighted_cross_entropy_loss(log_probs, labels, apply_mask=None):
         # weight apply_mask = wehere to apply weight
@@ -107,7 +76,7 @@ def build_loss_fn(vocab_size):
         weights = ((ARGS.debias_weight - 1) * weights) + 1.0
 
         per_tok_losses = per_tok_criterion(
-            log_probs.contiguous().view(-1, vocab_size),
+            log_probs.contiguous().view(-1, vocab_size), 
             labels.contiguous().view(-1))
 
         per_tok_losses = per_tok_losses * weights
@@ -118,11 +87,8 @@ def build_loss_fn(vocab_size):
 
     if ARGS.debias_weight == 1.0:
         loss_fn = cross_entropy_loss
-    elif ARGS:
+    else:
         loss_fn = weighted_cross_entropy_loss
-
-    if ARGS.pointer_generator:
-        loss_fn = cross_entropy_coverage
 
     return loss_fn, cross_entropy_loss
 
@@ -130,7 +96,7 @@ def build_loss_fn(vocab_size):
 def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich=False):
     global CUDA
     global ARGS
-
+    
     losses = []
     for step, batch in enumerate(tqdm(dataloader)):
         if ARGS.debug_skip and step > 2:
@@ -139,35 +105,14 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         (
-            pre_id, pre_mask, pre_len,
-            post_in_id, post_out_id,
+            pre_id, pre_mask, pre_len, 
+            post_in_id, post_out_id, 
             pre_tok_label_id, post_tok_label_id,
             _, _, _
         ) = batch
-
-        if ARGS.pointer_generator:
-            '''
-            if the model is a pointer generator we need to return the
-            predicted output logits as well as the coverage and attention
-            distributions so that these can be fed into the calculation
-            of the loss described in: https://arxiv.org/pdf/1704.04368.pdf.
-            '''
-            (logits_list,
-            copy_matrices_list,
-            attention_vec_list,
-            coverage_vec_list,
-            prob_gen_lists) = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, ignore_enrich=ignore_enrich)
-            # Need post_out_id for CE loss that is added to the additional
-            # coverage loss
-            loss = loss_fn(logits_list,
-                            copy_matrices_list,
-                            attention_vec_list,
-                            coverage_vec_list,
-                            prob_gen_lists,
-                            post_out_id)
-        else:
-            log_probs, probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, ignore_enrich=ignore_enrich)
-            loss = loss_fn(log_probs, post_out_id, post_tok_label_id)
+        log_probs, probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, ignore_enrich=ignore_enrich)
+        
+        loss = loss_fn(log_probs, post_out_id, post_tok_label_id)
 
         loss.backward()
         norm = nn.utils.clip_grad_norm_(model.parameters(), 3.0)
@@ -175,7 +120,6 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
         model.zero_grad()
 
         losses.append(loss.detach().cpu().numpy())
-        print(loss.item())
 
     return losses
 
@@ -248,12 +192,12 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
     for step, batch in enumerate(tqdm(dataloader)):
         if ARGS.debug_skip and step > 2:
             continue
-
+    
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         (
-            pre_id, pre_mask, pre_len,
-            post_in_id, post_out_id,
+            pre_id, pre_mask, pre_len, 
+            post_in_id, post_out_id, 
             pre_tok_label_id, _,
             _, _, _
         ) = batch
@@ -267,10 +211,10 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
                 beam_width=beam_width)
 
         new_hits, new_preds, new_golds, new_srcs = dump_outputs(
-            pre_id.detach().cpu().numpy(),
-            post_out_id.detach().cpu().numpy(),
-            predicted_toks,
-            pre_tok_label_id.detach().cpu().numpy(),
+            pre_id.detach().cpu().numpy(), 
+            post_out_id.detach().cpu().numpy(), 
+            predicted_toks, 
+            pre_tok_label_id.detach().cpu().numpy(), 
             id2tok, out_file)
         hits += new_hits
         preds += new_preds
