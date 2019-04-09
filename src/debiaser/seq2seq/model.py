@@ -581,7 +581,8 @@ class PointerSeq2Seq(Seq2Seq):
 
     def run_decoder(self, pre_id, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, ignore_enrich=False):
         global ARGS
-
+        global CUDA
+        
         # optionally enrich src with tok enrichment
         if not ARGS.no_tok_enrich and not ignore_enrich:
             enrichment = self.enricher(self.enrich_input).repeat(
@@ -597,6 +598,8 @@ class PointerSeq2Seq(Seq2Seq):
         if ARGS.coverage:
             coverage_vecs = []
             coverage = torch.zeros(src_outputs.shape[:2])
+            if CUDA:
+                coverage = coverage.cuda()
 
         # manually crank the decoder
         for ti in range(tgt_emb.shape[1]):
