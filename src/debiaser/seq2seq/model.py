@@ -163,8 +163,10 @@ class BilinearAttention(nn.Module):
         self.query_in_projection = nn.Linear(hidden, hidden)
         # possibly make room for coverage values
         #   (c^t_i  in Eq. 11 of https://arxiv.org/pdf/1704.04368.pdf )
+        if ARGS.coverage:
+            assert ARGS.pointer_generator # sanity check that pointer_generator is active
         self.key_in_projection = nn.Linear(hidden + (1 if ARGS.coverage else 0), hidden)
-        self.softmax = nn.Softmax()
+        self.softmax = nn.Softmax(dim=1)
         self.out_projection = nn.Linear(hidden * 2, hidden)
         self.tanh = nn.Tanh()
         self.score_fn = self.dot
@@ -267,7 +269,7 @@ class LSTMEncoder(nn.Module):
     def forward(self, src_embedding, srclens, srcmask):
         # retrieve batch size dynamically for decoding
         h0, c0 = self.init_state(batch_size=src_embedding.size(0))
-        
+
         if self.pack:
             inputs = pack_padded_sequence(src_embedding, srclens, batch_first=True)
         else:
@@ -315,7 +317,7 @@ class AttentionalLSTM(nn.Module):
                 attn_dists.append(attn)
                 attn_ctxs.append(attn_ctx)
                 raw_hiddens.append(hy)
-            else: 
+            else:
                 hidden = hy, cy
                 output.append(hy)
 
@@ -347,12 +349,12 @@ class StackedAttentionLSTM(nn.Module):
             layer = cell_class(emb_dim, hidden_dim)
             self.add_module('layer_%d' % i, layer)
             self.layers.append(layer)
-            input_dim = hidden_dim
 
 
     def forward(self, input, hidden, ctx, srcmask):
         h_final, c_final = [], []
         for i, layer in enumerate(self.layers):
+            #ctx are the attention keys
             output, (h_final_i, c_final_i), attns, attn_ctxs, raw_hiddens = layer(
                 input, hidden, ctx, srcmask)
 
@@ -377,7 +379,7 @@ class Seq2Seq(nn.Module):
         global ARGS
         global CUDA
 
-        super(Seq2Seq, self).__init__()        
+        super(Seq2Seq, self).__init__()
 
         self.vocab_size = vocab_size
         self.hidden_dim = hidden_size
@@ -390,14 +392,14 @@ class Seq2Seq(nn.Module):
         self.encoder = LSTMEncoder(
             self.emb_dim, self.hidden_dim, layers=1, bidirectional=True, dropout=self.dropout)
 
-                                                
+
         self.bridge = nn.Linear(768 if ARGS.bert_encoder else self.hidden_dim, self.hidden_dim)
-        
+
         self.decoder = StackedAttentionLSTM(
             self.emb_dim, self.hidden_dim, layers=1, dropout=self.dropout)
-        
+
         self.output_projection = nn.Linear(self.hidden_dim, self.vocab_size)
-        
+
         # for decoding. TODO -- throw this out?
         self.softmax = nn.Softmax(dim=-1)
         # for training
@@ -410,10 +412,10 @@ class Seq2Seq(nn.Module):
             model = BertModel.from_pretrained(
                 'bert-base-uncased',
                 ARGS.working_dir + '/cache')
-                
+
             if ARGS.bert_word_embeddings:
                 self.embeddings = copy.deepcopy(model.embeddings.word_embeddings)
-                
+
             if ARGS.bert_full_embeddings:
                 self.embeddings = copy.deepcopy(model.embeddings)
 
@@ -438,7 +440,7 @@ class Seq2Seq(nn.Module):
         initrange = 0.1
         for param in self.parameters():
             param.data.uniform_(-initrange, initrange)
-    
+
     def run_encoder(self, pre_id, pre_len, pre_mask):
         src_emb = self.embeddings(pre_id)
         src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
@@ -457,7 +459,7 @@ class Seq2Seq(nn.Module):
                 src_outputs.shape[0], src_outputs.shape[1], 1)
             enrichment = tok_dist.unsqueeze(2) * enrichment
             src_outputs = src_outputs + enrichment
-    
+
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_outputs, _, attns, _, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
 
@@ -570,7 +572,7 @@ class PointerSeq2Seq(Seq2Seq):
     def __init__(self, vocab_size, hidden_size, emb_dim, dropout, tok2id):
         global CUDA
         global ARGS
-        
+
         super(PointerSeq2Seq, self).__init__(
             vocab_size, hidden_size, emb_dim, dropout, tok2id)
 
@@ -582,14 +584,14 @@ class PointerSeq2Seq(Seq2Seq):
     def run_decoder(self, pre_id, src_outputs, dec_initial_state, tgt_in_id, pre_mask, tok_dist=None, ignore_enrich=False):
         global ARGS
         global CUDA
-        
+
         # optionally enrich src with tok enrichment
         if not ARGS.no_tok_enrich and not ignore_enrich:
             enrichment = self.enricher(self.enrich_input).repeat(
                 src_outputs.shape[0], src_outputs.shape[1], 1)
             enrichment = tok_dist.unsqueeze(2) * enrichment
             src_outputs = src_outputs + enrichment
-    
+
         # initialize inputs, hidden states, counters, etc
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_output_probs = []
@@ -626,7 +628,7 @@ class PointerSeq2Seq(Seq2Seq):
 
             # get probability of generating vs copying
             p_gen = self.p_gen_W(torch.cat([
-                attn_ctx.squeeze(0), h_i, 
+                attn_ctx.squeeze(0), h_i,
                 ci.squeeze(0), tgt_emb_i.squeeze(1)
             ], -1))
             p_gen = self.p_gen_sigmoid(p_gen)
