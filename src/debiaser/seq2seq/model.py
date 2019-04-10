@@ -485,6 +485,7 @@ class Seq2Seq(nn.Module):
             pre_id, src_outputs, (h_t, c_t), post_in_id, pre_mask, tok_dist, ignore_enrich)
         return log_probs, probs, attns, coverage
 
+
     def inference_forward(self, pre_id, post_start_id, pre_mask, pre_len, max_len, tok_dist, beam_width=1):
         global CUDA
 

@@ -7,6 +7,11 @@ crawl output tsv = sys.argv[1]
 cache_path = sys.argv[2]
 out_prefix = sys.argv[3]
 
+TO PREPARE A RAW CORPUSFILE: 
+get your corpusfile into format
+{id}  {sent} {sent}   no_deleted_chunks   no_added_chunks
+then run! 
+
 """
 import sys
 import os
@@ -340,14 +345,14 @@ def sent_generator(revisions):
         for i, j, score in find_matches(prev_sents_tok, post_sents_tok):
             ex = prev_sents_raw[i], prev_sents_tok[i], post_sents_raw[j], post_sents_tok[j], score, rev_id
             keep, is_word_edit, tok_labels = should_keep(*ex)
-            
+
             if keep:
                 rev_examples.append(list(ex) + [is_word_edit, tok_labels])
 
         # only take revisions where a single sentence was changed
-        if sum([sum(x[-1]) > 0 for x in rev_examples]) != 1:
-            CTR_INVALID_NUM_CHANGED_SENTS += len([x for x in rev_examples if sum(x[-1]) > 0])
-            continue
+        # if sum([sum(x[-1]) > 0 for x in rev_examples]) != 1:
+        #     CTR_INVALID_NUM_CHANGED_SENTS += len([x for x in rev_examples if sum(x[-1]) > 0])
+        #     continue
 
         # ignore the revision if dups got in the mix somehow
         rev_prevs = [x[0] for x  in rev_examples]
@@ -365,7 +370,6 @@ def sent_generator(revisions):
 
 # load big pickle 
 # https://stackoverflow.com/questions/31468117/python-3-can-pickle-handle-byte-objects-larger-than-4gb
-print('LOADING PICKLE...')
 
 # get mapping: {id: [ [prev blocks], [next blocks], [prev del blocks], [post add blocks]]} 
 revisions = {

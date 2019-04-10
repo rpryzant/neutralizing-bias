@@ -13,7 +13,7 @@ from shared.data import REL2ID, POS2ID
 
 class Featurizer:
 
-    def __init__(self, tok2id, pad_id=0, lexicon_feature_bits=1):
+    def __init__(self, tok2id={}, pad_id=0, lexicon_feature_bits=1):
         self.tok2id = tok2id
         self.id2tok = {x: tok for tok, x in tok2id.items()}
         self.pad_id = pad_id
@@ -39,6 +39,15 @@ class Featurizer:
         }
         self.lexicon_feature_bits = lexicon_feature_bits
 
+
+    def get_feature_names(self):
+
+        lexicon_feature_names = list(self.lexicons.keys())
+        context_feature_names = [x + '_context' for x in lexicon_feature_names]
+        pos_names = list(list(zip(*sorted(self.pos2id.items(), key=lambda x: x[1])))[0])
+        rel_names = list(list(zip(*sorted(self.rel2id.items(), key=lambda x: x[1])))[0])
+
+        return lexicon_feature_names + context_feature_names + pos_names + rel_names        
 
     def read_lexicon(self, fp):
         out = set([

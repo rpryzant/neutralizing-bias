@@ -33,7 +33,7 @@ def train_for_epoch(model, dataloader, optimizer, debias_loss_fn, tagging_loss_f
 
         loss = debias_loss_fn(post_log_probs, post_out_id, post_tok_label_id)
         
-        if tagging_loss_fn is not None:
+        if tagging_loss_fn is not None and ARGS.tag_loss_mixing_prob > 0:
             tok_loss = tagging_loss_fn(tok_logits, pre_tok_label_id, apply_mask=pre_tok_label_id)
             loss = loss + (ARGS.tag_loss_mixing_prob * tok_loss)
 
@@ -79,7 +79,8 @@ def run_eval(model, dataloader, tok2id, out_file_path, max_seq_len, beam_width=1
         with torch.no_grad():
             predicted_toks, predicted_probs = model.inference_forward(
                 pre_id, post_start_id, pre_mask, pre_len, max_len, pre_tok_label_id,
-                rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
+                rel_ids=rel_ids, pos_ids=pos_ids, categories=categories,
+                beam_width=beam_width)
 
         new_hits, new_preds, new_golds, new_srcs = seq2seq_utils.dump_outputs(
             pre_id.detach().cpu().numpy(), 
