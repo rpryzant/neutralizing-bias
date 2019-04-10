@@ -130,4 +130,3 @@ for epoch in range(ARGS.epochs):
     print('SAVING...')
     torch.save(model.state_dict(), ARGS.working_dir + '/model_%d.ckpt' % epoch)    
     
-

@@ -165,10 +165,10 @@ class JointModel(nn.Module):
             is_bias_probs, tok_logits = self.run_tagger(
                 pre_id, pre_mask, rel_ids, pos_ids, categories)
 
-        post_log_probs, post_probs = self.debias_model(
+        post_log_probs, post_probs, attns, coverage = self.debias_model(
             pre_id, post_in_id, pre_mask, pre_len, is_bias_probs)
 
-        return post_log_probs, post_probs, is_bias_probs, tok_logits
+        return post_log_probs, post_probs, is_bias_probs, tok_logits, attns, coverage
 
     def inference_forward(self,
             # Debias args.
@@ -227,7 +227,7 @@ class JointModel(nn.Module):
         for i in range(max_len):
             # Run input through the debiasing model.
             with torch.no_grad():
-                _, word_probs = self.debias_model.run_decoder(
+                _, word_probs, _, _ = self.debias_model.run_decoder(
                     pre_id, src_outputs, initial_hidden, tgt_input, pre_mask,
                     is_bias_probs)
 
@@ -261,7 +261,7 @@ class JointModel(nn.Module):
         for i in range(max_len):
             # Run input through the joint model.
             with torch.no_grad():
-                _, word_probs, is_bias_probs, _ = self.forward(
+                _, word_probs, is_bias_probs, _, _, _ = self.forward(
                     pre_id, tgt_input, pre_mask, pre_len, tok_dist,
                     rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
             next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
@@ -270,7 +270,6 @@ class JointModel(nn.Module):
         # [batch, len] predicted indices.
         return (tgt_input.detach().cpu().numpy(),
                 is_bias_probs.detach().cpu().numpy())
-
 
     def save(self, path):
         torch.save(self.state_dict(), path)
