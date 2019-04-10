@@ -599,6 +599,7 @@ class PointerSeq2Seq(Seq2Seq):
         tgt_output_probs = []
         attns = []
         hidden = dec_initial_state
+
         if ARGS.coverage:
             coverage_vecs = []
             coverage = torch.zeros(src_outputs.shape[:2])
@@ -651,4 +652,9 @@ class PointerSeq2Seq(Seq2Seq):
 
         log_probs = torch.log(probs)
 
-        return log_probs, probs, torch.stack(attns), torch.stack(coverage_vecs)
+        return (
+            log_probs, 
+            probs, 
+            torch.stack(attns), 
+            torch.stack(coverage_vecs) if ARGS.coverage else None
+        )
