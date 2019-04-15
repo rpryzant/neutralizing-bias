@@ -168,13 +168,17 @@ if CUDA:
 # train or load model
 debias_loss_fn, cross_entropy_loss = seq2seq_utils.build_loss_fn(vocab_size=len(tok2id))
 
+num_train_steps = (num_train_examples * ARGS.epochs)
+if ARGS.pretrain_data: 
+    num_train_steps += (num_pretrain_examples * ARGS.pretrain_epochs)
+
 if ARGS.debias_checkpoint is not None and os.path.exists(ARGS.debias_checkpoint):
     print('LOADING DEBIASER FROM ' + ARGS.debias_checkpoint)
     debias_model.load_state_dict(torch.load(ARGS.debias_checkpoint))
     print('...DONE')
 
 elif ARGS.pretrain_data:
-    pretrain_optim = optim.Adam(debias_model.parameters(), lr=ARGS.learning_rate)
+    pretrain_optim = seq2seq_utils.build_optimizer(debias_model, num_train_steps)
 
     print('PRETRAINING...')
     debias_model.train()
@@ -205,9 +209,11 @@ model_parameters = filter(lambda p: p.requires_grad, joint_model.parameters())
 params = sum([np.prod(p.size()) for p in model_parameters])
 print('NUM PARAMS: ', params)
 
-joint_optimizer = optim.Adam(
-    debias_model.parameters() if ARGS.freeze_tagger else joint_model.parameters(), 
-    lr=ARGS.learning_rate)
+if ARGS.freeze_tagger and ARGS.pretrain_data:
+    joint_optimizer = pretrain_optim
+else:
+    joint_optimizer = seq2seq_utils.build_optimizer(
+    debias_model if ARGS.freeze_tagger else joint_model, num_train_steps)
 
 # train model
 print('JOINT TRAINING...')

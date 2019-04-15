@@ -21,7 +21,6 @@ import math
 import functools
 
 from pytorch_pretrained_bert.modeling import BertEmbeddings
-from pytorch_pretrained_bert.optimization import BertAdam
 
 import model as seq2seq_model
 
@@ -97,25 +96,12 @@ print('NUM PARAMS: ', params)
 
 # # # # # # # # ## # # # ## # # OPTIMIZER, LOSS # # # # # # # # ## # # # ## # #
 
-if ARGS.bert_encoder:
-    param_optimizer = list(model.named_parameters())
-    no_decay = ['bias', 'gamma', 'beta']
-    optimizer_grouped_parameters = [
-        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
-        {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
-    ]
+num_train_steps = (num_train_examples * ARGS.epochs)
+if ARGS.pretrain_data: 
+    num_train_steps += (num_pretrain_examples * ARGS.pretrain_epochs)
 
-    num_train_steps = (num_train_examples * 40)
-    if ARGS.pretrain_data: 
-        num_train_steps += (num_pretrain_examples * ARGS.pretrain_epochs)
+optimizer = utils.build_optimizer(model, num_train_steps)
 
-    optimizer = BertAdam(optimizer_grouped_parameters,
-                         lr=5e-5,
-                         warmup=0.1,
-                         t_total=num_train_steps)
-
-else:
-    optimizer = optim.Adam(model.parameters(), lr=0.0003)
 
 # loss_fn: maybe cross entopy loss, maybe a weighted version of it
 loss_fn, cross_entropy_loss = utils.build_loss_fn(vocab_size=len(tok2id))
