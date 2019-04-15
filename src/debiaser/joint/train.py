@@ -180,6 +180,8 @@ if ARGS.debias_checkpoint is not None and os.path.exists(ARGS.debias_checkpoint)
 elif ARGS.pretrain_data:
     pretrain_optim = seq2seq_utils.build_optimizer(debias_model, num_train_steps)
 
+    print(pretrain_optim); quit()
+
     print('PRETRAINING...')
     debias_model.train()
     # TODO -- VERIFY THAT TAGGER IS ACTUALLY BEING IGNORED, I.E. TOK DIST IS ALL 0'S
