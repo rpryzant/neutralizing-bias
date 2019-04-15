@@ -424,13 +424,15 @@ class Seq2Seq(nn.Module):
             if ARGS.bert_word_embeddings:
                 self.embeddings = copy.deepcopy(model.embeddings.word_embeddings)
                 
+            if ARGS.bert_encoder:
+                self.encoder = copy.deepcopy(model)
+                # share bert word embeddings with decoder
+                self.embeddings = copy.deepcopy(model.embeddings.word_embeddings)
+
             if ARGS.bert_full_embeddings:
                 self.embeddings = copy.deepcopy(model.embeddings)
 
-            if ARGS.bert_encoder:
-                self.encoder = model
-                # share bert word embeddings with decoder
-                self.embeddings = model.embeddings.word_embeddings
+
 
         if ARGS.freeze_embeddings:
             for param in self.embeddings.parameters():
