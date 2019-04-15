@@ -13,7 +13,7 @@ from pytorch_pretrained_bert.modeling import BertModel
 import sys; sys.path.append('.')
 from shared.args import ARGS
 from shared.constants import CUDA
-import transformer_decoder as transformer
+import seq2seq.transformer_decoder as transformer
 
 
 def tile(x, count, dim=0):
