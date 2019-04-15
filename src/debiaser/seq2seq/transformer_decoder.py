@@ -7,6 +7,10 @@ import torch.nn as nn
 import torch
 import math
 
+import sys; sys.path.append('.')
+from shared.constants import CUDA
+
+
 
 class PositionwiseFeedForward(nn.Module):
     """ A two-layer Feed-Forward-Network with residual layer norm.
@@ -576,12 +580,15 @@ class TransformerDecoder(nn.Module):
 
     def forward(self, tgt_emb, initial_state, memory_bank, mask, step=None):#, step=None, **kwargs):
         """Decode, possibly stepwise."""
+        global CUDA
 
         output = self.decoder_bridge(tgt_emb) # [B, L, D]
         src_memory_bank = memory_bank # [B, L, D]
 
         src_pad_mask = mask.unsqueeze(1) # [B, 1, L_src]
         tgt_pad_mask = torch.zeros(output.shape[0], 1, output.shape[1], dtype=torch.uint8)
+        if CUDA:
+            tgt_pad_mask = tgt_pad_mask.cuda()
 
         for i, layer in enumerate(self.transformer_layers):
             layer_cache = self.state["cache"]["layer_{}".format(i)] \
