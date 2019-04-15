@@ -241,6 +241,18 @@ parser.add_argument(
 )
 
 
+parser.add_argument(
+    "--transformer_decoder",
+    help="use transformer decoder",
+    action='store_true'
+)
+parser.add_argument(
+    "--transformer_layers",
+    help="use transformer decoder",
+    type=int, default=1
+)
+
+
 # pointer args
 parser.add_argument(
     "--pointer_generator",

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # run minimal job:
-# python seq2seq/train.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.test --working_dir TEST --max_seq_len --train_batch_size 3 --test_batch_size 10  --hidden_size 32 --debug_skip
+# python seq2seq/train.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.test --working_dir TEST --max_seq_len 15 --train_batch_size 3 --test_batch_size 10  --hidden_size 32 --debug_skip
 
 from collections import defaultdict
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler

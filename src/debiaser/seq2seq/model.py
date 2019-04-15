@@ -13,6 +13,8 @@ from pytorch_pretrained_bert.modeling import BertModel
 import sys; sys.path.append('.')
 from shared.args import ARGS
 from shared.constants import CUDA
+import transformer_decoder as transformer
+
 
 def tile(x, count, dim=0):
     """
@@ -389,8 +391,20 @@ class Seq2Seq(nn.Module):
                                                 
         self.bridge = nn.Linear(768 if ARGS.bert_encoder else self.hidden_dim, self.hidden_dim)
         
-        self.decoder = StackedAttentionLSTM(
-            self.emb_dim, self.hidden_dim, layers=1, dropout=self.dropout)
+        if ARGS.transformer_decoder:
+            self.decoder = transformer.TransformerDecoder(
+                num_layers=ARGS.transformer_layers,
+                d_model=self.hidden_dim,
+                heads=8,
+                d_ff=self.hidden_dim,
+                copy_attn=False,
+                self_attn_type='scaled-dot',
+                dropout=self.dropout,
+                embeddings=self.embeddings,
+                max_relative_positions=0)
+        else:
+            self.decoder = StackedAttentionLSTM(
+                self.emb_dim, self.hidden_dim, layers=1, dropout=self.dropout)
         
         self.output_projection = nn.Linear(self.hidden_dim, self.vocab_size)
         
