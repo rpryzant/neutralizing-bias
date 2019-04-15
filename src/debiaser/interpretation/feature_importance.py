@@ -1,5 +1,5 @@
 """
-python interpretation/feature_importance.py --checkpoint /Users/rpryzant/Desktop/model_4.ckpt
+python interpretation/feature_importance.py --checkpoint interpretation/models/inference_model_toksm_cov_4.ckpt
 
 
 TODO DOUBLE CHECK!!
@@ -17,48 +17,53 @@ from tagging.features import Featurizer
 
 
 
-ckpt_path = ARGS.checkpoint
+
+def importance_scores(ckpt_path):
+
+	state_dict = torch.load(ckpt_path, map_location='cpu')
+
+	l = []
+	for key, matrix in state_dict.items():
+		l += list(matrix.numpy().flatten())
+
+	print('mean: ', np.mean(l))
+	print('std: ', np.std(l))
+	print()
+
+	featurizer = Featurizer()
+	feature_names = featurizer.get_feature_names()
+	num_feats = len(feature_names)
+
+	in_matrix = state_dict['tagging_model.tok_classifier.enricher.0.weight'].numpy()
+
+	out_matrix = state_dict['tagging_model.tok_classifier.out.0.weight'].numpy()
+	# only look at rows the features are multiplied by
+	out_matrix = out_matrix[:, -num_feats:].transpose()
+
+	def relu(x):
+	    return x if x >= 0 else 0
+
+	scores = defaultdict(lambda: defaultdict(int))
 
 
-state_dict = torch.load(ckpt_path, map_location='cpu')
+	for feature_i, feature in enumerate(feature_names):
+	    for hidden_j in range(90):
+	        in_weight = in_matrix[feature_i][hidden_j]
+	        
+	        for out_k in range(2):
+	            out_weight = out_matrix[hidden_j][out_k]
 
-l = []
-for key, matrix in state_dict.items():
-	l += list(matrix.numpy().flatten())
-
-print('mean: ', np.mean(l))
-print('std: ', np.std(l))
-print()
-
-featurizer = Featurizer()
-feature_names = featurizer.get_feature_names()
-num_feats = len(feature_names)
-
-in_matrix = state_dict['tagging_model.tok_classifier.enricher.0.weight'].numpy()
-
-out_matrix = state_dict['tagging_model.tok_classifier.out.0.weight'].numpy()
-# only look at rows the features are multiplied by
-out_matrix = out_matrix[:, -num_feats:].transpose()
-
-def relu(x):
-    return x if x >= 0 else 0
-
-scores = defaultdict(lambda: defaultdict(int))
+	            scores[feature][out_k] += relu(in_weight) * out_weight
 
 
-for feature_i, feature in enumerate(feature_names):
-    for hidden_j in range(90):
-        in_weight = in_matrix[feature_i][hidden_j]
-        
-        for out_k in range(2):
-            out_weight = out_matrix[hidden_j][out_k]
+	positive_scores = {feature: scores[feature][1] for feature in feature_names}
+	
+	return positive_scores
+	
 
-            scores[feature][out_k] += relu(in_weight) * out_weight
+if __name__ == '__main__':
+	scores = importance_scores(ARGS.checkpoint)
 
-
-positive_scores = {feature: scores[feature][1] for feature in feature_names}
-for feat, score in sorted(positive_scores.items(), key=lambda x: x[1], reverse=True):
-    print(feat, score)
-
-
+	for feat, score in sorted(scores.items(), key=lambda x: x[1], reverse=True):
+	    print(feat, score)
 

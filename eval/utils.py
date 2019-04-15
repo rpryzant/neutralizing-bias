@@ -71,8 +71,32 @@ if __name__ == '__main__':
 
         return ' '.join(out)
 
+
+    def printr(r):
+        print(r['src'])
+        print(r['pred'])
+        print()
+
+
     s = []
     x = parse_results_file(sys.argv[1], True)
+
+    print('BAD!!')
+    printr(x['c40e0d6a4d49d99b2d07269631c456a4'])
+    printr(x['4c8f67d3cf96e278dd6e0c4f33126684'])
+    printr(x['783d710f323bd9a36fb4a654ad6a7a44'])
+    printr(x['0475ba98f914de8cf06465e8f692b364'])
+
+
+    print('GOOD!!')
+    printr(x['82b78e33f13ef6765d963b2b7412f786'])
+    printr(x['3d853a6e4d3a5153b4dbc27508f6c726'])
+    printr(x['ce819f97db7500088ad5e3e03df5cb5e'])
+    printr(x['5a2faaa254ab51ce4c12cd345e942066'])
+    
+    
+    quit()
+
     for rec, d in x.items():
         src, pred = detokenize(d['src']), detokenize(d['pred'])
         ratio = float(len(pred)) / len(src)
