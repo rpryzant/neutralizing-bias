@@ -117,6 +117,8 @@ if ARGS.pretrain_data:
             ignore_enrich=not ARGS.use_pretrain_enrich)
         writer.add_scalar('pretrain/loss', np.mean(losses), epoch)
 
+    print('SAVING DEBIASER...')
+    torch.save(model.state_dict(), ARGS.working_dir + '/debiaser.ckpt')
 
 
 # # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
