@@ -21,6 +21,7 @@ import numpy as np
 from collections import Counter
 import math
 import functools
+import copy
 
 from pytorch_pretrained_bert.modeling import BertEmbeddings
 from pytorch_pretrained_bert.optimization import BertAdam
@@ -141,7 +142,8 @@ else:
         writer.add_scalar('tag_eval/tok_loss', np.mean(results['tok_loss']), epoch + 1)
         writer.add_scalar('tag_eval/tok_acc', np.mean(results['labeling_hits']), epoch + 1)
 
-
+    print('SAVING TAGGER...')
+    torch.save(tag_model.state_dict(), ARGS.working_dir + '/tagger.ckpt')
 
 # # # # # # # # ## # # # ## # # DEBIAS MODEL # # # # # # # # ## # # # ## # #
 # bulid model
@@ -153,9 +155,13 @@ else:
     debias_model = seq2seq_model.Seq2Seq(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
         emb_dim=768, dropout=0.2, tok2id=tok2id)
-if ARGS.bert_encoder:
-    debias_model.encoder = tag_model.bert
-    debias_model.embeddings = tag_model.bert.embeddings.word_embeddings
+if ARGS.tagger_encoder:
+    if ARGS.copy_bert_encoder:
+        debias_model.encoder = copy.deepcopy(tag_model.bert)
+        debias_model.embeddings = copy.deepcopy(tag_model.bert.embeddings.word_embeddings)
+    else:
+        debias_model.encoder = tag_model.bert
+        debias_model.embeddings = tag_model.bert.embeddings.word_embeddings
 if CUDA:
     debias_model = debias_model.cuda()
 
@@ -181,6 +187,10 @@ elif ARGS.pretrain_data:
             ignore_enrich=not ARGS.use_pretrain_enrich)
         writer.add_scalar('pretrain/loss', np.mean(losses), epoch)
 
+    print('SAVING DEBIASER...')
+    torch.save(debias_model.state_dict(), ARGS.working_dir + '/debiaser.ckpt')
+
+
 
 # # # # # # # # # # # # JOINT MODEL # # # # # # # # # # # # # #
 
@@ -201,13 +211,13 @@ joint_optimizer = optim.Adam(
 
 # train model
 print('JOINT TRAINING...')
-print('INITIAL EVAL...')
-joint_model.eval()
-hits, preds, golds, srcs = joint_utils.run_eval(
-    joint_model, eval_dataloader, tok2id, ARGS.working_dir + '/results_initial.txt',
-    ARGS.max_seq_len, ARGS.beam_width)
-writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), 0)
-writer.add_scalar('eval/true_hits', np.mean(hits), 0)
+# print('INITIAL EVAL...')
+# joint_model.eval()
+# hits, preds, golds, srcs = joint_utils.run_eval(
+#     joint_model, eval_dataloader, tok2id, ARGS.working_dir + '/results_initial.txt',
+#     ARGS.max_seq_len, ARGS.beam_width)
+# writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), 0)
+# writer.add_scalar('eval/true_hits', np.mean(hits), 0)
 
 for epoch in range(ARGS.epochs):
     print('EPOCH ', epoch)

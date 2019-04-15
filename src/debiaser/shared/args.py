@@ -89,7 +89,11 @@ parser.add_argument(
     type=str, default=None,
     help='debiaser checkpoint to load')
 
-
+parser.add_argument(
+    '--tagger_encoder',
+    action='store_true',
+    help='copy the taggers parameters into debiaser encoder'
+)
 
 
 
@@ -256,6 +260,14 @@ parser.add_argument(
     help="use bert pretrained pos embeddings",
     action='store_true'
 )
+
+parser.add_argument(
+    "--sigmoid_bridge",
+    help="pass bridge through sigmoid",
+    action='store_true'
+)
+
+
 parser.add_argument(
     "--freeze_embeddings",
     help="freeze pretrained embeddings",
@@ -264,6 +276,11 @@ parser.add_argument(
 parser.add_argument(
     "--bert_encoder",
     help="use bert as the encoder for seq2seq model",
+    action='store_true'
+)
+parser.add_argument(
+    "--copy_bert_encoder",
+    help="use a copy of bert as the encoder for seq2seq model",
     action='store_true'
 )
 

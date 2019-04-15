@@ -454,14 +454,19 @@ class Seq2Seq(nn.Module):
             src_c_t = torch.mean(src_outputs, 1)
 
             # Project hidden size to ARGS.hidden_size.
-            h_t = nn.Sigmoid()(self.h_t_projection(src_h_t))
-            c_t = nn.Sigmoid()(self.c_t_projection(src_c_t))
+            h_t = self.h_t_projection(src_h_t)
+            c_t = self.c_t_projection(src_c_t)
+
         else:
             src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len,
                 pre_mask)
             src_outputs = self.bridge(src_outputs)
             h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
             c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+
+        if ARGS.sigmoid_bridge:
+            h_t = nn.Sigmoid()(h_t)
+            c_t = nn.Sigmoid()(h_t)
 
         return src_outputs, h_t, c_t
 
@@ -474,7 +479,7 @@ class Seq2Seq(nn.Module):
                 src_outputs.shape[0], src_outputs.shape[1], 1)
             enrichment = tok_dist.unsqueeze(2) * enrichment
             src_outputs = src_outputs + enrichment
-    
+
         tgt_emb = self.embeddings(tgt_in_id)
         tgt_outputs, _, _, _, _ = self.decoder(tgt_emb, dec_initial_state, src_outputs, pre_mask)
 
