@@ -139,7 +139,7 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
         log_probs, probs = model(pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id, ignore_enrich=ignore_enrich)
         
         loss = loss_fn(log_probs, post_out_id, post_tok_label_id)
-        print(loss)
+
         loss.backward()
         norm = nn.utils.clip_grad_norm_(model.parameters(), 3.0)
         optimizer.step()

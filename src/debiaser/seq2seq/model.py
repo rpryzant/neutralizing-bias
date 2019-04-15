@@ -422,16 +422,16 @@ class Seq2Seq(nn.Module):
                 ARGS.working_dir + '/cache')
                 
             if ARGS.bert_word_embeddings:
-                self.embeddings = copy.deepcopy(model.embeddings.word_embeddings)
+                self.embeddings = model.embeddings.word_embeddings
                 
-
-            if ARGS.bert_full_embeddings:
-                self.embeddings = copy.deepcopy(model.embeddings)
 
             if ARGS.bert_encoder:
                 self.encoder = model
                 # share bert word embeddings with decoder
                 self.embeddings = model.embeddings.word_embeddings
+
+            if ARGS.bert_full_embeddings:
+                self.embeddings = model.embeddings
 
 
 
