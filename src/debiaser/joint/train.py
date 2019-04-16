@@ -168,7 +168,7 @@ if CUDA:
 # train or load model
 debias_loss_fn, cross_entropy_loss = seq2seq_utils.build_loss_fn(vocab_size=len(tok2id))
 
-num_train_steps = (num_train_examples * ARGS.epochs)
+num_train_steps = (num_train_examples * 40)
 if ARGS.pretrain_data: 
     num_train_steps += (num_pretrain_examples * ARGS.pretrain_epochs)
 
@@ -180,7 +180,6 @@ if ARGS.debias_checkpoint is not None and os.path.exists(ARGS.debias_checkpoint)
 elif ARGS.pretrain_data:
     pretrain_optim = seq2seq_utils.build_optimizer(debias_model, num_train_steps)
 
-    print(pretrain_optim); quit()
 
     print('PRETRAINING...')
     debias_model.train()

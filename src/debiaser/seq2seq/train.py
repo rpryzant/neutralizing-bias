@@ -96,7 +96,7 @@ print('NUM PARAMS: ', params)
 
 # # # # # # # # ## # # # ## # # OPTIMIZER, LOSS # # # # # # # # ## # # # ## # #
 
-num_train_steps = (num_train_examples * ARGS.epochs)
+num_train_steps = (num_train_examples * 40)
 if ARGS.pretrain_data: 
     num_train_steps += (num_pretrain_examples * ARGS.pretrain_epochs)
 
