@@ -610,7 +610,9 @@ class TransformerDecoder(nn.Module):
             attns["copy"] = attn
 
         # TODO change the way attns is returned dict => list or tuple (onnx)
-        return dec_outs.transpose(0, 1), None, None, None, None
+        outputs = dec_outs.transpose(0, 1)
+
+        return dec_outs.transpose(0, 1), (dec_outs, dec_outs), attn, dec_outs, dec_outs
 
     def _init_cache(self, memory_bank):
         self.state["cache"] = {}
