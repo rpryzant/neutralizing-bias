@@ -110,6 +110,10 @@ if CUDA:
 # train or load model
 tagging_loss_fn = tagging_utils.build_loss_fn(debias_weight=1.0)
 
+if ARGS.freeze_bert:
+    for p in tag_model.bert.parameters():
+        p.requires_grad = False
+
 if ARGS.tagger_checkpoint is not None and os.path.exists(ARGS.tagger_checkpoint):
     print('LOADING TAGGER FROM ' + ARGS.tagger_checkpoint)
     tag_model.load_state_dict(torch.load(ARGS.tagger_checkpoint))
@@ -155,6 +159,13 @@ else:
     debias_model = seq2seq_model.Seq2Seq(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
         emb_dim=768, dropout=0.2, tok2id=tok2id)
+
+if ARGS.freeze_bert and ARGS.bert_encoder:
+    for p in debias_model.encoder.parameters():
+        p.requires_grad = False
+    for p in debias_model.embeddings.parameters():
+        p.requires_grad = False
+
 if ARGS.tagger_encoder:
     if ARGS.copy_bert_encoder:
         debias_model.encoder = copy.deepcopy(tag_model.bert)

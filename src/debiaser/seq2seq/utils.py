@@ -102,6 +102,8 @@ def build_optimizer(model, num_train_steps=None):
         assert num_train_steps
 
         param_optimizer = list(model.named_parameters())
+        param_optimizer = list(filter(lambda name_param: name_param[1].requires_grad, param_optimizer))
+
         no_decay = ['bias', 'gamma', 'beta']
         optimizer_grouped_parameters = [
             {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
@@ -114,7 +116,9 @@ def build_optimizer(model, num_train_steps=None):
                              t_total=num_train_steps)
 
     else:
-        optimizer = optim.Adam(model.parameters(), lr=ARGS.learning_rate)
+        params = list(model.parameters())
+        params = list(filter(lambda p: p.requires_grad, params))
+        optimizer = optim.Adam(params, lr=ARGS.learning_rate)
 
     return optimizer
 

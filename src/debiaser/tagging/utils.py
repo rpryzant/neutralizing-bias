@@ -16,9 +16,11 @@ def build_optimizer(model, num_train_steps, learning_rate):
     if ARGS.tagger_from_debiaser:
         parameters = list(model.cls_classifier.parameters()) + list(
             model.tok_classifier.parameters())
+        parameters = list(filter(lambda p: p.requires_grad, parameters))
         return optim.Adam(parameters, lr=ARGS.learning_rate)
     else:
         param_optimizer = list(model.named_parameters())
+        param_optimizer = list(filter(lambda name_param: name_param[1].requires_grad, param_optimizer))
         no_decay = ['bias', 'gamma', 'beta']
         optimizer_grouped_parameters = [
             {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},

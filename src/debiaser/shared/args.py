@@ -95,6 +95,11 @@ parser.add_argument(
     help='copy the taggers parameters into debiaser encoder'
 )
 
+parser.add_argument(
+    '--freeze_bert',
+    action='store_true',
+    help='freeze parameters of bert submodels'
+)
 
 
 
