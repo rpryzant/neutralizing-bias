@@ -68,6 +68,17 @@ else:
         cls_num_labels=ARGS.num_categories,
         tok_num_labels=ARGS.num_tok_labels,
         cache_dir=ARGS.working_dir + '/cache')
+        
+        
+if ARGS.tagger_checkpoint:
+    print('LOADING TAGGER FROM ' + ARGS.tagger_checkpoint)
+    tagging_model.load_state_dict(torch.load(ARGS.tagger_checkpoint))
+    print('DONE.')
+if ARGS.debias_checkpoint:
+    print('LOADING DEBIASER FROM ' + ARGS.debias_checkpoint)
+    debias_model.load_state_dict(torch.load(ARGS.debias_checkpoint))
+    print('DONE.')
+
 
 joint_model = joint_model.JointModel(
     debias_model=debias_model, tagging_model=tagging_model)

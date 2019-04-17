@@ -5,6 +5,8 @@ import numpy as np
 import torch.nn as nn
 from tqdm import tqdm
 from simplediff import diff
+from pytorch_pretrained_bert.optimization import BertAdam
+import torch.optim as optim
 
 import sys; sys.path.append('.')
 from shared.args import ARGS
@@ -91,6 +93,34 @@ def build_loss_fn(vocab_size):
         loss_fn = weighted_cross_entropy_loss
 
     return loss_fn, cross_entropy_loss
+
+
+def build_optimizer(model, num_train_steps=None):
+    global ARGS
+
+    if ARGS.bert_encoder:
+        assert num_train_steps
+
+        param_optimizer = list(model.named_parameters())
+        param_optimizer = list(filter(lambda name_param: name_param[1].requires_grad, param_optimizer))
+
+        no_decay = ['bias', 'gamma', 'beta']
+        optimizer_grouped_parameters = [
+            {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
+            {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
+        ]
+
+        optimizer = BertAdam(optimizer_grouped_parameters,
+                             lr=5e-5,
+                             warmup=0.1,
+                             t_total=num_train_steps)
+
+    else:
+        params = list(model.parameters())
+        params = list(filter(lambda p: p.requires_grad, params))
+        optimizer = optim.Adam(params, lr=ARGS.learning_rate)
+
+    return optimizer
 
 
 def coverage_loss(attns, coverages):

@@ -20,6 +20,7 @@ import numpy as np
 from collections import Counter
 import math
 import functools
+import copy
 
 from pytorch_pretrained_bert.modeling import BertEmbeddings
 from pytorch_pretrained_bert.optimization import BertAdam
@@ -109,6 +110,10 @@ if CUDA:
 # train or load model
 tagging_loss_fn = tagging_utils.build_loss_fn(debias_weight=1.0)
 
+if ARGS.freeze_bert:
+    for p in tag_model.bert.parameters():
+        p.requires_grad = False
+
 if ARGS.tagger_checkpoint is not None and os.path.exists(ARGS.tagger_checkpoint):
     print('LOADING TAGGER FROM ' + ARGS.tagger_checkpoint)
     tag_model.load_state_dict(torch.load(ARGS.tagger_checkpoint))
@@ -141,7 +146,8 @@ else:
         writer.add_scalar('tag_eval/tok_loss', np.mean(results['tok_loss']), epoch + 1)
         writer.add_scalar('tag_eval/tok_acc', np.mean(results['labeling_hits']), epoch + 1)
 
-
+    print('SAVING TAGGER...')
+    torch.save(tag_model.state_dict(), ARGS.working_dir + '/tagger.ckpt')
 
 # # # # # # # # ## # # # ## # # DEBIAS MODEL # # # # # # # # ## # # # ## # #
 # bulid model
@@ -153,19 +159,38 @@ else:
     debias_model = seq2seq_model.Seq2Seq(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
         emb_dim=768, dropout=0.2, tok2id=tok2id)
+
+if ARGS.freeze_bert and ARGS.bert_encoder:
+    for p in debias_model.encoder.parameters():
+        p.requires_grad = False
+    for p in debias_model.embeddings.parameters():
+        p.requires_grad = False
+
+if ARGS.tagger_encoder:
+    if ARGS.copy_bert_encoder:
+        debias_model.encoder = copy.deepcopy(tag_model.bert)
+        debias_model.embeddings = copy.deepcopy(tag_model.bert.embeddings.word_embeddings)
+    else:
+        debias_model.encoder = tag_model.bert
+        debias_model.embeddings = tag_model.bert.embeddings.word_embeddings
 if CUDA:
     debias_model = debias_model.cuda()
 
 # train or load model
 debias_loss_fn, cross_entropy_loss = seq2seq_utils.build_loss_fn(vocab_size=len(tok2id))
 
+num_train_steps = (num_train_examples * 40)
+if ARGS.pretrain_data: 
+    num_train_steps += (num_pretrain_examples * ARGS.pretrain_epochs)
+
 if ARGS.debias_checkpoint is not None and os.path.exists(ARGS.debias_checkpoint):
     print('LOADING DEBIASER FROM ' + ARGS.debias_checkpoint)
-    tag_model.load_state_dict(torch.load(ARGS.debias_checkpoint))
+    debias_model.load_state_dict(torch.load(ARGS.debias_checkpoint))
     print('...DONE')
 
 elif ARGS.pretrain_data:
-    pretrain_optim = optim.Adam(debias_model.parameters(), lr=ARGS.learning_rate)
+    pretrain_optim = seq2seq_utils.build_optimizer(debias_model, num_train_steps)
+
 
     print('PRETRAINING...')
     debias_model.train()
@@ -177,6 +202,10 @@ elif ARGS.pretrain_data:
             debias_model, pretrain_dataloader, tok2id, pretrain_optim, cross_entropy_loss,
             ignore_enrich=not ARGS.use_pretrain_enrich)
         writer.add_scalar('pretrain/loss', np.mean(losses), epoch)
+
+    print('SAVING DEBIASER...')
+    torch.save(debias_model.state_dict(), ARGS.working_dir + '/debiaser.ckpt')
+
 
 
 # # # # # # # # # # # # JOINT MODEL # # # # # # # # # # # # # #
@@ -192,19 +221,23 @@ model_parameters = filter(lambda p: p.requires_grad, joint_model.parameters())
 params = sum([np.prod(p.size()) for p in model_parameters])
 print('NUM PARAMS: ', params)
 
-joint_optimizer = optim.Adam(
-    debias_model.parameters() if ARGS.freeze_tagger else joint_model.parameters(),
-    lr=ARGS.learning_rate)
+
+if ARGS.freeze_tagger and ARGS.pretrain_data:
+    joint_optimizer = pretrain_optim
+else:
+    joint_optimizer = seq2seq_utils.build_optimizer(
+    debias_model if ARGS.freeze_tagger else joint_model, num_train_steps)
+
 
 # train model
 print('JOINT TRAINING...')
-print('INITIAL EVAL...')
-joint_model.eval()
-hits, preds, golds, srcs = joint_utils.run_eval(
-    joint_model, eval_dataloader, tok2id, ARGS.working_dir + '/results_initial.txt',
-    ARGS.max_seq_len, ARGS.beam_width)
-writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), 0)
-writer.add_scalar('eval/true_hits', np.mean(hits), 0)
+# print('INITIAL EVAL...')
+# joint_model.eval()
+# hits, preds, golds, srcs = joint_utils.run_eval(
+#     joint_model, eval_dataloader, tok2id, ARGS.working_dir + '/results_initial.txt',
+#     ARGS.max_seq_len, ARGS.beam_width)
+# writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), 0)
+# writer.add_scalar('eval/true_hits', np.mean(hits), 0)
 
 for epoch in range(ARGS.epochs):
     print('EPOCH ', epoch)

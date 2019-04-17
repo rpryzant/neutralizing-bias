@@ -1,6 +1,7 @@
 from tqdm import tqdm
 import numpy as np
 import torch
+import torch.optim as optim
 from torch.nn import CrossEntropyLoss
 from pytorch_pretrained_bert.optimization import BertAdam
 
@@ -9,22 +10,26 @@ from shared.args import ARGS
 from shared.constants import CUDA
 
 
-
-
-
 def build_optimizer(model, num_train_steps, learning_rate):
-    param_optimizer = list(model.named_parameters())
-    no_decay = ['bias', 'gamma', 'beta']
-    optimizer_grouped_parameters = [
-        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
-        {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
-    ]
-    optimizer = BertAdam(optimizer_grouped_parameters,
-                         lr=learning_rate,
-                         warmup=0.1,
-                         t_total=num_train_steps)
-    return optimizer
+    global ARGS
 
+    if ARGS.tagger_from_debiaser:
+        parameters = list(model.cls_classifier.parameters()) + list(
+            model.tok_classifier.parameters())
+        parameters = list(filter(lambda p: p.requires_grad, parameters))
+        return optim.Adam(parameters, lr=ARGS.learning_rate)
+    else:
+        param_optimizer = list(model.named_parameters())
+        param_optimizer = list(filter(lambda name_param: name_param[1].requires_grad, param_optimizer))
+        no_decay = ['bias', 'gamma', 'beta']
+        optimizer_grouped_parameters = [
+            {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
+            {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
+        ]
+        return BertAdam(optimizer_grouped_parameters,
+                             lr=learning_rate,
+                             warmup=0.1,
+                             t_total=num_train_steps)
 
 
 def build_loss_fn(debias_weight=None):
@@ -108,8 +113,9 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
         ) = batch
 
         with torch.no_grad():
-            bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask,
-                rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
+            _, tok_logits = model(pre_id, attention_mask=1.0-pre_mask,
+                rel_ids=rel_ids, pos_ids=pos_ids, categories=categories,
+                pre_len=pre_len)
             tok_loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
         out['input_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in pre_id.cpu().numpy()]
         out['post_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in post_in_id.cpu().numpy()]
@@ -140,8 +146,9 @@ def train_for_epoch(model, train_dataloader, loss_fn, optimizer):
             tok_label_id, _,
             rel_ids, pos_ids, categories
         ) = batch
-        bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask, 
-            rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
+        _, tok_logits = model(pre_id, attention_mask=1.0-pre_mask,
+            rel_ids=rel_ids, pos_ids=pos_ids, categories=categories,
+            pre_len=pre_len)
         loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
         loss.backward()
         optimizer.step()

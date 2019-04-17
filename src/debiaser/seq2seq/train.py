@@ -2,10 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # run minimal job:
-# python seq2seq/train.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.test --working_dir TEST --train_batch_size 3 --test_batch_size 10  --hidden_size 32 --debug_skip
-# to run job including pointer generator instead of baseline seq2seq:
-# python seq2seq/train.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.test --working_dir TEST --train_batch_size 3 --test_batch_size 10  --hidden_size 32 --debug_skip --pointer_generator
-
+# python seq2seq/train.py --train ../../data/v6/corpus.wordbiased.tag.train --test ../../data/v6/corpus.wordbiased.tag.test --working_dir TEST --max_seq_len 15 --train_batch_size 3 --test_batch_size 10  --hidden_size 32 --debug_skip
 
 from collections import defaultdict
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
@@ -24,7 +21,6 @@ import math
 import functools
 
 from pytorch_pretrained_bert.modeling import BertEmbeddings
-from pytorch_pretrained_bert.optimization import BertAdam
 
 import model as seq2seq_model
 
@@ -97,25 +93,11 @@ print('NUM PARAMS: ', params)
 
 # # # # # # # # ## # # # ## # # OPTIMIZER, LOSS # # # # # # # # ## # # # ## # #
 
-if ARGS.bert_encoder:
-    param_optimizer = list(model.named_parameters())
-    no_decay = ['bias', 'gamma', 'beta']
-    optimizer_grouped_parameters = [
-        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.01},
-        {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay_rate': 0.0}
-    ]
+num_train_steps = (num_train_examples * 40)
+if ARGS.pretrain_data: 
+    num_train_steps += (num_pretrain_examples * ARGS.pretrain_epochs)
 
-    num_train_steps = (num_train_examples * 40)
-    if ARGS.pretrain_data:
-        num_train_steps += (num_pretrain_examples * ARGS.pretrain_epochs)
-
-    optimizer = BertAdam(optimizer_grouped_parameters,
-                         lr=5e-5,
-                         warmup=0.1,
-                         t_total=num_train_steps)
-
-else:
-    optimizer = optim.Adam(model.parameters(), lr=0.0003)
+optimizer = utils.build_optimizer(model, num_train_steps)
 
 loss_fn, cross_entropy_loss = utils.build_loss_fn(vocab_size=len(tok2id))
 
@@ -129,6 +111,9 @@ if ARGS.pretrain_data:
         losses = utils.train_for_epoch(model, pretrain_dataloader, tok2id, optimizer, cross_entropy_loss,
             ignore_enrich=not ARGS.use_pretrain_enrich)
         writer.add_scalar('pretrain/loss', np.mean(losses), epoch)
+
+    print('SAVING DEBIASER...')
+    torch.save(model.state_dict(), ARGS.working_dir + '/debiaser.ckpt')
 
 # # # # # # # # # # # # TRAINING # # # # # # # # # # # # # #
 

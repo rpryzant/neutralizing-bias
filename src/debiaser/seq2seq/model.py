@@ -13,7 +13,9 @@ from pytorch_pretrained_bert.modeling import BertModel
 import sys; sys.path.append('.')
 from shared.args import ARGS
 from shared.constants import CUDA
+import seq2seq.transformer_decoder as transformer
 from shared.beam import Beam
+
 
 
 
@@ -262,11 +264,26 @@ class Seq2Seq(nn.Module):
         self.encoder = LSTMEncoder(
             self.emb_dim, self.hidden_dim, layers=1, bidirectional=True, dropout=self.dropout)
 
+        self.h_t_projection = nn.Linear(ARGS.hidden_size, ARGS.hidden_size)
+        self.c_t_projection = nn.Linear(ARGS.hidden_size, ARGS.hidden_size)
 
+                                                
         self.bridge = nn.Linear(768 if ARGS.bert_encoder else self.hidden_dim, self.hidden_dim)
-
-        self.decoder = StackedAttentionLSTM(
-            self.emb_dim, self.hidden_dim, layers=1, dropout=self.dropout)
+        
+        if ARGS.transformer_decoder:
+            self.decoder = transformer.TransformerDecoder(
+                num_layers=ARGS.transformer_layers,
+                d_model=self.hidden_dim,
+                heads=8,
+                d_ff=self.hidden_dim,
+                copy_attn=False,
+                self_attn_type='scaled-dot',
+                dropout=self.dropout,
+                embeddings=self.embeddings,
+                max_relative_positions=0)
+        else:
+            self.decoder = StackedAttentionLSTM(
+                self.emb_dim, self.hidden_dim, layers=1, dropout=self.dropout)
 
         self.output_projection = nn.Linear(self.hidden_dim, self.vocab_size)
 
@@ -284,15 +301,17 @@ class Seq2Seq(nn.Module):
                 ARGS.working_dir + '/cache')
 
             if ARGS.bert_word_embeddings:
-                self.embeddings = copy.deepcopy(model.embeddings.word_embeddings)
-
-            if ARGS.bert_full_embeddings:
-                self.embeddings = copy.deepcopy(model.embeddings)
+                self.embeddings = model.embeddings.word_embeddings
 
             if ARGS.bert_encoder:
                 self.encoder = model
                 # share bert word embeddings with decoder
                 self.embeddings = model.embeddings.word_embeddings
+
+            if ARGS.bert_full_embeddings:
+                self.embeddings = model.embeddings
+
+
 
         if ARGS.freeze_embeddings:
             for param in self.embeddings.parameters():
@@ -312,11 +331,37 @@ class Seq2Seq(nn.Module):
             param.data.uniform_(-initrange, initrange)
 
     def run_encoder(self, pre_id, pre_len, pre_mask):
+        global ARGS
+        global CUDA
         src_emb = self.embeddings(pre_id)
-        src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len, pre_mask)
-        src_outputs = self.bridge(src_outputs)
-        h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
-        c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+        if ARGS.bert_encoder:
+            # final_hidden_states is [batch_size, sequence_length,
+            # hidden_size].
+            final_hidden_states, _ = self.encoder(pre_id,
+                attention_mask=1.0 - pre_mask, output_all_encoded_layers=False)
+            seq_len = final_hidden_states.size()[1]
+
+            # src_outputs is [batch_size, sequence_length, hidden_size].
+            src_outputs = self.bridge(final_hidden_states)
+
+            # Average across the sequence length dimension.
+            src_h_t = torch.mean(src_outputs, 1)
+            src_c_t = torch.mean(src_outputs, 1)
+
+            # Project hidden size to ARGS.hidden_size.
+            h_t = self.h_t_projection(src_h_t)
+            c_t = self.c_t_projection(src_c_t)
+
+        else:
+            src_outputs, (src_h_t, src_c_t) = self.encoder(src_emb, pre_len,
+                pre_mask)
+            src_outputs = self.bridge(src_outputs)
+            h_t = torch.cat((src_h_t[-1], src_h_t[-2]), 1)
+            c_t = torch.cat((src_c_t[-1], src_c_t[-2]), 1)
+
+        if ARGS.sigmoid_bridge:
+            h_t = nn.Sigmoid()(h_t)
+            c_t = nn.Sigmoid()(h_t)
 
         return src_outputs, h_t, c_t
 
@@ -398,7 +443,7 @@ class Seq2Seq(nn.Module):
             with torch.no_grad():
                 _, word_probs, _, _ = self.run_decoder(
                     pre_id, src_outputs, initial_hidden, tgt_input, pre_mask, tok_dist)
-            # tranpose to preserve ordering
+            # transpose to preserve ordering
             new_tok_probs = word_probs[:, -1, :].squeeze(1).view(
                 beam_width, batch_size, -1).transpose(1, 0)
 
