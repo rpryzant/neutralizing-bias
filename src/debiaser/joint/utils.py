@@ -12,7 +12,7 @@ import seq2seq.utils as seq2seq_utils
 
 
 
-def train_for_epoch(model, dataloader, optimizer, debias_loss_fn, tagging_loss_fn=None, ignore_tagger=False):
+def train_for_epoch(model, dataloader, optimizer, debias_loss_fn, tagging_loss_fn=None, ignore_tagger=False, coverage=False):
     model.train()
     losses = []
     for step, batch in enumerate(tqdm(dataloader)):
@@ -27,7 +27,7 @@ def train_for_epoch(model, dataloader, optimizer, debias_loss_fn, tagging_loss_f
             pre_tok_label_id, post_tok_label_id,
             rel_ids, pos_ids, categories
         ) = batch      
-        post_log_probs, post_probs, tok_probs, tok_logits = model(
+        post_log_probs, post_probs, tok_probs, tok_logits, attns, coverages = model(
             pre_id, post_in_id, pre_mask, pre_len, pre_tok_label_id,
             rel_ids=rel_ids, pos_ids=pos_ids, categories=categories, ignore_tagger=ignore_tagger)
 
@@ -36,6 +36,11 @@ def train_for_epoch(model, dataloader, optimizer, debias_loss_fn, tagging_loss_f
         if tagging_loss_fn is not None and ARGS.tag_loss_mixing_prob > 0:
             tok_loss = tagging_loss_fn(tok_logits, pre_tok_label_id, apply_mask=pre_tok_label_id)
             loss = loss + (ARGS.tag_loss_mixing_prob * tok_loss)
+
+        if coverage:
+            cov_loss = seq2seq_utils.coverage_loss(attns, coverages)
+            loss = loss + ARGS.coverage_lambda * cov_loss
+
 
         loss.backward()
         norm = nn.utils.clip_grad_norm_(model.parameters(), 3.0)

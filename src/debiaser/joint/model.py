@@ -6,113 +6,10 @@ from tqdm import tqdm
 
 from shared.args import ARGS
 from shared.constants import CUDA
+from shared.beam import Beam
 
 from seq2seq.utils import dump_outputs
 
-"""Beam search implementation in PyTorch."""
-# Takes care of beams, back pointers, and scores.
-# Borrowed from OpenNMT
-class Beam(object):
-    """Ordered beam of candidate outputs."""
-
-    def __init__(self, size, tok2id, cuda=False):
-        """Initialize params."""
-        self.size = size
-        self.done = False
-        self.pad = tok2id['[PAD]']
-        self.bos = tok2id['行']
-        self.eos = tok2id['止']
-        self.tt = torch.cuda if cuda else torch
-
-        # The score for each translation on the beam.
-        self.scores = self.tt.FloatTensor(size).zero_()
-
-        # The backpointers at each time-step.
-        self.prevKs = []
-
-        # The outputs at each time-step. [time, beam]
-        self.nextYs = [self.tt.LongTensor(size).fill_(self.pad)]
-        self.nextYs[0][0] = self.bos # TODO CHANGED THIS
-
-        # The attentions (matrix) for each time.
-        self.attn = []
-
-    # Get the outputs for the current timestep.
-    def get_current_state(self):
-        """Get state of beam."""
-        return self.nextYs[-1]
-
-    # Get the backpointers for the current timestep.
-    def get_current_origin(self):
-        """Get the backpointer to the beam at this step."""
-        return self.prevKs[-1]
-
-    #  Given prob over words for every last beam `wordLk` and attention
-    #   `attnOut`: Compute and update the beam search.
-    #
-    # Parameters:
-    #
-    #     * `wordLk`- probs of advancing from the last step (K x words)
-    #     * `attnOut`- attention at the last step
-    #
-    # Returns: True if beam search is complete.
-
-    def advance(self, workd_lk):
-        """Advance the beam."""
-        num_words = workd_lk.size(1)
-
-        # Sum the previous scores.
-        if len(self.prevKs) > 0:
-            beam_lk = workd_lk + self.scores.unsqueeze(1).expand_as(workd_lk)
-        else:
-            beam_lk = workd_lk[0]
-
-        flat_beam_lk = beam_lk.view(-1)
-
-        bestScores, bestScoresId = flat_beam_lk.topk(self.size, 0, True, True)
-        self.scores = bestScores
-
-        # bestScoresId is flattened beam x word array, so calculate which
-        # word and beam each score came from
-        prev_k = bestScoresId / num_words
-        self.prevKs.append(prev_k)
-        self.nextYs.append(bestScoresId - prev_k * num_words)
-
-        # End condition is when top-of-beam is EOS.
-        if self.nextYs[-1][0] == self.eos:
-            self.done = True
-
-        return self.done
-
-    def sort_best(self):
-        """Sort the beam."""
-        return torch.sort(self.scores, 0, True)
-
-    # Get the score of the best in the beam.
-    def get_best(self):
-        """Get the most likely candidate."""
-        scores, ids = self.sort_best()
-        return scores[1], ids[1]
-
-    # Walk back to construct the full hypothesis.
-    #
-    # Parameters.
-    #
-    #     * `k` - the position in the beam to construct.
-    #
-    # Returns.
-    #
-    #     1. The hypothesis
-    #     2. The attention at each time step.
-    def get_hyp(self, k):
-        """Get hypotheses."""
-        hyp = []
-        # -2 to include start tok
-        for j in range(len(self.prevKs) - 1, -2, -1):
-            hyp.append(self.nextYs[j + 1][k])
-            k = self.prevKs[j][k]
-
-        return hyp[::-1]
 
 
 class JointModel(nn.Module):
@@ -165,10 +62,10 @@ class JointModel(nn.Module):
             is_bias_probs, tok_logits = self.run_tagger(
                 pre_id, pre_mask, rel_ids, pos_ids, categories)
 
-        post_log_probs, post_probs = self.debias_model(
+        post_log_probs, post_probs, attns, coverage = self.debias_model(
             pre_id, post_in_id, pre_mask, pre_len, is_bias_probs)
 
-        return post_log_probs, post_probs, is_bias_probs, tok_logits
+        return post_log_probs, post_probs, is_bias_probs, tok_logits, attns, coverage
 
     def inference_forward(self,
             # Debias args.
@@ -227,7 +124,7 @@ class JointModel(nn.Module):
         for i in range(max_len):
             # Run input through the debiasing model.
             with torch.no_grad():
-                _, word_probs = self.debias_model.run_decoder(
+                _, word_probs, _, _ = self.debias_model.run_decoder(
                     pre_id, src_outputs, initial_hidden, tgt_input, pre_mask,
                     is_bias_probs)
 
@@ -261,7 +158,7 @@ class JointModel(nn.Module):
         for i in range(max_len):
             # Run input through the joint model.
             with torch.no_grad():
-                _, word_probs, is_bias_probs, _ = self.forward(
+                _, word_probs, is_bias_probs, _, _, _ = self.forward(
                     pre_id, tgt_input, pre_mask, pre_len, tok_dist,
                     rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
             next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
@@ -270,7 +167,6 @@ class JointModel(nn.Module):
         # [batch, len] predicted indices.
         return (tgt_input.detach().cpu().numpy(),
                 is_bias_probs.detach().cpu().numpy())
-
 
     def save(self, path):
         torch.save(self.state_dict(), path)

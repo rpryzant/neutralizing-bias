@@ -3,8 +3,7 @@ finetune both models jointly
 
 
 python joint/train.py     --train ../../data/v6/corpus.wordbiased.tag.train     --test ../../data/v6/corpus.wordbiased.tag.test.categories     --extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 1     --pretrain_epochs 4     --learning_rate 0.0003 --epochs 2 --hidden_size 10 --train_batch_size 4 --test_batch_size 4     --bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax --sequence_softmax     --working_dir TEST     --debug_skip
-    
-    """
+"""
 
 from collections import defaultdict
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
@@ -46,26 +45,27 @@ import utils as joint_utils
 working_dir = ARGS.working_dir
 if not os.path.exists(working_dir):
     os.makedirs(working_dir)
-    
+
 with open(working_dir + '/command.sh', 'w') as f:
     f.write('python' + ' '.join(sys.argv) + '\n')
 
 writer = SummaryWriter(ARGS.working_dir)
-                                                            
+
 
 
 # # # # # # # # ## # # # ## # # DATA # # # # # # # # ## # # # ## # #
 tokenizer = BertTokenizer.from_pretrained(
     ARGS.bert_model, cache_dir=ARGS.working_dir + '/cache')
 tok2id = tokenizer.vocab
+
 tok2id['<del>'] = len(tok2id)
+print("The len of our vocabulary is {}".format(len(tok2id)))
 
-
-if ARGS.pretrain_data: 
+if ARGS.pretrain_data:
     pretrain_dataloader, num_pretrain_examples = get_dataloader(
-        ARGS.pretrain_data, 
-        tok2id, 
-        ARGS.train_batch_size, 
+        ARGS.pretrain_data,
+        tok2id,
+        ARGS.train_batch_size,
         ARGS.working_dir + '/pretrain_data.pkl',
         noise=True)
 
@@ -77,7 +77,7 @@ train_dataloader, num_train_examples = get_dataloader(
 eval_dataloader, num_eval_examples = get_dataloader(
     ARGS.test,
     tok2id, ARGS.test_batch_size, ARGS.working_dir + '/test_data.pkl',
-    categories_path=ARGS.categories_file, 
+    categories_path=ARGS.categories_file,
     test=True, add_del_tok=ARGS.add_del_tok)
 
 
@@ -121,7 +121,7 @@ if ARGS.tagger_checkpoint is not None and os.path.exists(ARGS.tagger_checkpoint)
 else:
     print('TRAINING TAGGER...')
     tagging_optim = tagging_utils.build_optimizer(
-        tag_model, 
+        tag_model,
         int((num_train_examples * ARGS.tagging_pretrain_epochs) / ARGS.train_batch_size),
         ARGS.tagging_pretrain_lr)
 
@@ -199,7 +199,7 @@ elif ARGS.pretrain_data:
         print('EPOCH ', epoch)
         print('TRAIN...')
         losses = seq2seq_utils.train_for_epoch(
-            debias_model, pretrain_dataloader, tok2id, pretrain_optim, cross_entropy_loss, 
+            debias_model, pretrain_dataloader, tok2id, pretrain_optim, cross_entropy_loss,
             ignore_enrich=not ARGS.use_pretrain_enrich)
         writer.add_scalar('pretrain/loss', np.mean(losses), epoch)
 
@@ -221,11 +221,13 @@ model_parameters = filter(lambda p: p.requires_grad, joint_model.parameters())
 params = sum([np.prod(p.size()) for p in model_parameters])
 print('NUM PARAMS: ', params)
 
+
 if ARGS.freeze_tagger and ARGS.pretrain_data:
     joint_optimizer = pretrain_optim
 else:
     joint_optimizer = seq2seq_utils.build_optimizer(
     debias_model if ARGS.freeze_tagger else joint_model, num_train_steps)
+
 
 # train model
 print('JOINT TRAINING...')
@@ -242,10 +244,10 @@ for epoch in range(ARGS.epochs):
     print('TRAIN...')
     losses = joint_utils.train_for_epoch(
         joint_model, train_dataloader, joint_optimizer,
-        debias_loss_fn, tagging_loss_fn, ignore_tagger=False)
+        debias_loss_fn, tagging_loss_fn, ignore_tagger=False, coverage=ARGS.coverage)
     writer.add_scalar('train/loss', np.mean(losses), epoch + 1)
-        
-    
+
+
     print('SAVING...')
     joint_model.save(ARGS.working_dir + '/model_%d.ckpt' % (epoch + 1))
 
@@ -256,7 +258,3 @@ for epoch in range(ARGS.epochs):
         ARGS.max_seq_len, ARGS.beam_width)
     writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), epoch+1)
     writer.add_scalar('eval/true_hits', np.mean(hits), epoch+1)
-
-
-
-

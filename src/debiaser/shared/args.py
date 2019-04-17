@@ -189,7 +189,7 @@ parser.add_argument(
     action='store_true'
 )
 parser.add_argument("--share_combiners", 
-	help="share parameters if multiple combiners", action='store_true')
+    help="share parameters if multiple combiners", action='store_true')
 
 parser.add_argument("--combine1", help="combine location 1", action='store_true')
 parser.add_argument("--combine2", help="combine location 2", action='store_true')
@@ -263,6 +263,16 @@ parser.add_argument(
     "--pointer_generator",
     help='use copy mechanism in decoder',
     action='store_true'
+)
+parser.add_argument(
+    "--coverage",
+    help='use coverage mechanism in decoder (needs pointer generator to be set first)',
+    action='store_true'
+)
+parser.add_argument(
+    "--coverage_lambda",
+    help='use coverage mechanism in decoder',
+    type=float, default=1.0
 )
 
 
