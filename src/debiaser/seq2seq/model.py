@@ -35,9 +35,10 @@ class BilinearAttention(nn.Module):
 
         super(BilinearAttention, self).__init__()
         self.query_in_projection = nn.Linear(hidden, hidden)
+        self.key_in_projection = nn.Linear(hidden, hidden)
         # possibly make room for coverage values
         #   (c^t_i  in Eq. 11 of https://arxiv.org/pdf/1704.04368.pdf )
-        self.key_in_projection = nn.Linear(hidden + (1 if ARGS.coverage else 0), hidden)
+        self.cov_projection = nn.Linear(1, hidden)
         self.softmax = nn.Softmax(dim=1)
         self.out_projection = nn.Linear(hidden * 2, hidden)
         self.tanh = nn.Tanh()
@@ -52,13 +53,23 @@ class BilinearAttention(nn.Module):
         """
             query: [batch, hidden]
             keys: [batch, len, hidden]
+                ((keys, coverage = [B, L, 1] )  tuple if coverage is set)
             values: [batch, len, hidden] (optional, if none will = keys)
             mask: [batch, len] mask key-scores
 
             compare query to keys, use the scores to do weighted sum of values
             if no value is specified, then values = keys
         """
-        att_keys = self.key_in_projection(keys)
+        global ARGS
+        
+        
+        if ARGS.coverage:
+            keys_in, cov = keys
+            att_keys = self.key_in_projection(keys_in) + self.cov_projection(cov)
+            
+        else:
+            att_keys = self.key_in_projection(keys)
+
 
         if values is None:
             values = att_keys
@@ -311,18 +322,16 @@ class Seq2Seq(nn.Module):
             if ARGS.bert_full_embeddings:
                 self.embeddings = model.embeddings
 
-
-
         if ARGS.freeze_embeddings:
             for param in self.embeddings.parameters():
                 param.requires_grad = False
 
-        if not ARGS.no_tok_enrich:
-            self.enrich_input = torch.ones(hidden_size)
-            if CUDA:
-                self.enrich_input = self.enrich_input.cuda()
-            self.enricher = nn.Linear(hidden_size, hidden_size)
-
+        # make this even if ARGS.no_tok_enrich so that you can load from
+        #   a no-enrichment model (and visa versa)
+        self.enrich_input = torch.ones(hidden_size)
+        if CUDA:
+            self.enrich_input = self.enrich_input.cuda()
+        self.enricher = nn.Linear(hidden_size, hidden_size)
 
     def init_weights(self):
         """Initialize weights."""
@@ -527,7 +536,7 @@ class PointerSeq2Seq(Seq2Seq):
 
             if ARGS.coverage:
                 # add coverage values to attention inputs
-                attn_keys = torch.cat((src_outputs, coverage.unsqueeze(-1)), -1)
+                attn_keys = (src_outputs, coverage.unsqueeze(-1).clone())
             else:
                 attn_keys = src_outputs
 

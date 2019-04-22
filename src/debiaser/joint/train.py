@@ -254,7 +254,7 @@ for epoch in range(ARGS.epochs):
     print('EVAL...')
     joint_model.eval()
     hits, preds, golds, srcs = joint_utils.run_eval(
-        joint_model, eval_dataloader, tok2id, ARGS.working_dir + '/results_%d.txt' % epoch,
+        joint_model, eval_dataloader, tok2id, ARGS.working_dir + '/results_%d.txt' % epoch + 1,
         ARGS.max_seq_len, ARGS.beam_width)
     writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), epoch+1)
     writer.add_scalar('eval/true_hits', np.mean(hits), epoch+1)
