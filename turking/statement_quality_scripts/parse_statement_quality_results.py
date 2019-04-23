@@ -40,10 +40,10 @@ with open(sys.argv[1]) as f:
             bias *= -1
             fluency *= -1
 
-        if fluency < 0:
+        if bias < 0:
             print('PRE:\t\t', pre)
             print('PREDICTED:\t', pred)
-            print('FLUENCY:\t', fluency)
+            print('bias:\t', bias)
             print()
 
 

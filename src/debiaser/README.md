@@ -24,12 +24,24 @@ This command runs the three steps from below as a single pipeline. Always run co
 python joint/train.py \
 	--train /home/rpryzant/persuasion/data/v6/corpus.wordbiased.tag.train \
 	--test /home/rpryzant/persuasion/data/v6/corpus.wordbiased.tag.test \
-	--pretrain_data /home/rpryzant/persuasion/data/v6/corpus.unbiased.shuf \
 	--categories_file /home/rpryzant/persuasion/data/v6/corpus.wordbiased.tag.topics \
+	--pretrain_data /home/rpryzant/persuasion/data/v6/corpus.unbiased.shuf \
 	--extra_features_top --pre_enrich --activation_hidden --category_input --tagging_pretrain_epochs 3 \
-	--pretrain_epochs 4 --learning_rate 0.0003 --epochs 20 --hidden_size 512 --train_batch_size 32 \
+	--pretrain_epochs 4 --learning_rate 0.0003 --epochs 20 --hidden_size 512 --train_batch_size 24 \
 	--test_batch_size 16 --bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax \
-	--sequence_softmax --ptr_generator --working_dir full/
+ 	--working_dir inference_model/toksm --pointer_generator
+
+```
+then inference with that model `model_4.ckpt`:
+```
+python joint/inference.py \
+	--test ../../data/v6/corpus.wordbiased.tag.test \
+	--extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 3 \
+	--pretrain_epochs 4 --learning_rate 0.0003 --epochs 20 --hidden_size 512 --train_batch_size 2 \
+	--test_batch_size 16 --bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax \
+	--pointer_generator \
+	--checkpoint ~/Desktop/model_4.ckpt \
+ 	--working_dir TEST --inference_output small_test
 ```
 
 

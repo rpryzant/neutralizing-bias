@@ -7,12 +7,11 @@ parser.add_argument(
 parser.add_argument(
     "--test",
     help="test prefix",
-    required=True
 )
 parser.add_argument(
     "--working_dir",
     help="train continuously on one batch of data",
-    type=str, required=True
+    type=str
 )
 parser.add_argument(
     "--checkpoint",
@@ -20,7 +19,7 @@ parser.add_argument(
     type=str, default=''
 )
 parser.add_argument(
-    "--inference_file",
+    "--inference_output",
     help="output path for inference outputs",
     type=str, default=''
 )
@@ -75,7 +74,7 @@ parser.add_argument(
     help='how many epochs to train tagger if no checkpoint provided')
 parser.add_argument(
     "--tagging_pretrain_lr",
-    type=float, default=3e-5,
+    type=float, default=3e-4,
     help='learning rate for tagger pretrain')
 parser.add_argument(
     "--freeze_tagger",
@@ -210,7 +209,7 @@ parser.add_argument(
 parser.add_argument(
     "--epochs",
     help="training epochs",
-    type=int, default=40
+    type=int, default=500
 )
 parser.add_argument(
     "--max_seq_len",

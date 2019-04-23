@@ -9,9 +9,6 @@ from shared.args import ARGS
 from shared.constants import CUDA
 
 
-
-
-
 def build_optimizer(model, num_train_steps, learning_rate):
     param_optimizer = list(model.named_parameters())
     no_decay = ['bias', 'gamma', 'beta']
@@ -26,13 +23,12 @@ def build_optimizer(model, num_train_steps, learning_rate):
     return optimizer
 
 
-
 def build_loss_fn(debias_weight=None):
     global ARGS
-    
+
     if debias_weight is None:
         debias_weight = ARGS.debias_weight
-    
+
     weight_mask = torch.ones(ARGS.num_tok_labels)
     weight_mask[-1] = 0
 
@@ -47,7 +43,7 @@ def build_loss_fn(debias_weight=None):
 
     def cross_entropy_loss(logits, labels, apply_mask=None):
         return criterion(
-            logits.contiguous().view(-1, ARGS.num_tok_labels), 
+            logits.contiguous().view(-1, ARGS.num_tok_labels),
             labels.contiguous().view(-1).type('torch.cuda.LongTensor' if CUDA else 'torch.LongTensor'))
 
     def weighted_cross_entropy_loss(logits, labels, apply_mask=None):
@@ -56,7 +52,7 @@ def build_loss_fn(debias_weight=None):
         weights = ((debias_weight - 1) * weights) + 1.0
 
         per_tok_losses = per_tok_criterion(
-            logits.contiguous().view(-1, ARGS.num_tok_labels), 
+            logits.contiguous().view(-1, ARGS.num_tok_labels),
             labels.contiguous().view(-1).type('torch.cuda.LongTensor' if CUDA else 'torch.LongTensor'))
         per_tok_losses = per_tok_losses * weights
 
@@ -90,7 +86,8 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
         'tok_probs': [],
         'tok_labels': [],
 
-        'labeling_hits': []
+        'labeling_hits': [],
+        'attention_dist': []
     }
 
     for step, batch in enumerate(tqdm(eval_dataloader)):
@@ -100,17 +97,19 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
 
-        ( 
-            pre_id, pre_mask, pre_len, 
-            post_in_id, post_out_id, 
+        (
+            pre_id, pre_mask, pre_len,
+            post_in_id, post_out_id,
             tok_label_id, _,
             rel_ids, pos_ids, categories
         ) = batch
 
         with torch.no_grad():
-            bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask,
-                rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
+            bias_logits, tok_logits, attention_dist = model(pre_id, attention_mask=1.0-pre_mask,
+                rel_ids=rel_ids, pos_ids=pos_ids, categories=categories, return_attention=True)
             tok_loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
+
+
         out['input_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in pre_id.cpu().numpy()]
         out['post_toks'] += [tokenizer.convert_ids_to_tokens(seq) for seq in post_in_id.cpu().numpy()]
         out['tok_loss'].append(float(tok_loss.cpu().numpy()))
@@ -120,30 +119,33 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
         out['tok_labels'] += labels.tolist()
         out['tok_probs'] += to_probs(logits, pre_len)
         out['labeling_hits'] += tag_hits(logits, labels)
+        out['attention_dist'].extend(attention_dist.squeeze(1).detach().cpu().numpy().tolist())
 
     return out
 
 def train_for_epoch(model, train_dataloader, loss_fn, optimizer):
     global ARGS
-    
+
     losses = []
-    
+
     for step, batch in enumerate(tqdm(train_dataloader)):
         if ARGS.debug_skip and step > 2:
             continue
-    
+
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
-        ( 
-            pre_id, pre_mask, pre_len, 
-            post_in_id, post_out_id, 
+        (
+            pre_id, pre_mask, pre_len,
+            post_in_id, post_out_id,
             tok_label_id, _,
             rel_ids, pos_ids, categories
         ) = batch
-        bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask, 
+
+        bias_logits, tok_logits = model(pre_id, attention_mask=1.0-pre_mask,
             rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
         loss = loss_fn(tok_logits, tok_label_id, apply_mask=tok_label_id)
         loss.backward()
+        print(loss.item())
         optimizer.step()
         model.zero_grad()
 
@@ -154,7 +156,7 @@ def train_for_epoch(model, train_dataloader, loss_fn, optimizer):
 def to_probs(logits, lens):
     per_tok_probs = softmax(np.array(logits)[:, :, :2], axis=2)
     pos_scores = per_tok_probs[:, :, -1]
-    
+
     out = []
     for score_seq, l in zip(pos_scores, lens):
         out.append(score_seq[:l].tolist())
@@ -162,7 +164,7 @@ def to_probs(logits, lens):
 
 def is_ranking_hit(probs, labels, top=1):
     global ARGS
-    
+
     # get rid of padding idx
     [probs, labels] = list(zip(*[(p, l)  for p, l in zip(probs, labels) if l != ARGS.num_tok_labels - 1 ]))
     probs_indices = list(zip(np.array(probs)[:, 1], range(len(labels))))
@@ -174,11 +176,11 @@ def is_ranking_hit(probs, labels, top=1):
 
 def tag_hits(logits, tok_labels, top=1):
     global ARGS
-    
+
     probs = softmax(np.array(logits)[:, :, : ARGS.num_tok_labels - 1], axis=2)
 
     hits = [
-        is_ranking_hit(prob_dist, tok_label, top=top) 
+        is_ranking_hit(prob_dist, tok_label, top=top)
         for prob_dist, tok_label in zip(probs, tok_labels)
     ]
     return hits

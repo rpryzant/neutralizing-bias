@@ -1,4 +1,4 @@
-from pytorch_pretrained_bert.modeling import PreTrainedBertModel, BertModel, BertSelfAttention
+from pytorch_pretrained_bert.modeling import PreTrainedBertModel, BertSelfAttention, BertSelfOutput, BertModel
 import pytorch_pretrained_bert.modeling as modeling
 import torch
 import torch.nn as nn
@@ -11,7 +11,9 @@ import features
 from shared.args import ARGS
 from shared.constants import CUDA
 
+# Custom installations from copied BERT Model
 
+from bias_model import LastAttentionLayer
 
 def gelu(x):
     """Implementation of the gelu activation function.
@@ -26,35 +28,47 @@ def identity(x):
 class BertForMultitask(PreTrainedBertModel):
 
     def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None):
+        config.hidden_dropout_prob = 0
+        config.attention_probs_dropout_prob = 0
         super(BertForMultitask, self).__init__(config)
         self.bert = BertModel(config)
 
         self.cls_dropout = nn.Dropout(config.hidden_dropout_prob)
         self.cls_classifier = nn.Linear(config.hidden_size, cls_num_labels)
-        
+
         self.tok_dropout = nn.Dropout(config.hidden_dropout_prob)
         self.tok_classifier = nn.Linear(config.hidden_size, tok_num_labels)
-        
+
+        # in the final model run through a very simple attention mechanism
+        self.attention_layer = LastAttentionLayer(config)
+        self.attention_output = BertSelfOutput(config)
+
         self.apply(self.init_bert_weights)
 
-
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, 
-        labels=None, rel_ids=None, pos_ids=None, categories=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None,
+        labels=None, rel_ids=None, pos_ids=None, categories=None, return_attention=False):
         global ARGS
         sequence_output, pooled_output = self.bert(
             input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
 
+        # Pipe output through a final attention layer for visualization
+        # Dimension of last_attention_probs: (Batch x 1 x Seq Len x Seq Len)
+        # final dimension contains the corresponding probabilities.
+
+        last_attention_probs, last_context_layer = self.attention_layer(sequence_output, attention_mask)
+        # Self attention output applies a ResNet over the output
+        final_output = self.attention_output(last_context_layer, sequence_output)
+
         cls_logits = self.cls_classifier(pooled_output)
         cls_logits = self.cls_dropout(cls_logits)
 
-        # NOTE -- dropout is after proj, which is non-standard
-        tok_logits = self.tok_classifier(sequence_output)
+        tok_logits = self.tok_classifier(final_output)
         tok_logits = self.tok_dropout(tok_logits)
 
+        if return_attention:
+            return cls_logits, tok_logits, last_attention_probs
+
         return cls_logits, tok_logits
-
-
-
 
 class ConcatCombine(nn.Module):
     def __init__(self, hidden_size, feature_size, out_size, layers,
@@ -99,12 +113,12 @@ class ConcatCombine(nn.Module):
                 self.enricher = nn.Linear(feature_size, feature_size)
         else:
             self.enricher = None
-        # manually set cuda because module doesn't see these combiners for bottom 
+        # manually set cuda because module doesn't see these combiners for bottom
         if CUDA:
             self.out = self.out.cuda()
-            if self.enricher: 
+            if self.enricher:
                 self.enricher = self.enricher.cuda()
-                
+
     def forward(self, hidden, features, categories=None):
         if self.include_categories:
             categories = categories.unsqueeze(1)
@@ -141,18 +155,18 @@ class AddCombine(nn.Module):
                 nn.Dropout(dropout_prob),
                 nn.Linear(waist_size, hidden_dim),
                 nn.Dropout(dropout_prob))
-        
+
         if out_dim > 0:
             self.out = nn.Linear(hidden_dim, out_dim)
         else:
             self.out = None
 
         if pre_enrich:
-            self.enricher = nn.Linear(feature_size, feature_size)        
+            self.enricher = nn.Linear(feature_size, feature_size)
         else:
             self.enricher = None
 
-        # manually set cuda because module doesn't see these combiners for bottom         
+        # manually set cuda because module doesn't see these combiners for bottom
         if CUDA:
             self.expand = self.expand.cuda()
             if out_dim > 0:
@@ -171,9 +185,9 @@ class AddCombine(nn.Module):
 
         if self.enricher is not None:
             feat = self.enricher(feat)
-    
+
         combined = self.expand(feat) + hidden
-    
+
         if self.out is not None:
             return self.out(combined)
 
@@ -185,17 +199,17 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
     def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None):
         super(BertForMultitaskWithFeaturesOnTop, self).__init__(config)
         global ARGS
-        
+
         self.bert = BertModel(config)
-        
+
         self.featurizer = features.Featurizer(
-            tok2id, lexicon_feature_bits=ARGS.lexicon_feature_bits) 
+            tok2id, lexicon_feature_bits=ARGS.lexicon_feature_bits)
         # TODO -- don't hardcode this...
         nfeats = 90 if ARGS.lexicon_feature_bits == 1 else 118
 
         if ARGS.extra_features_method == 'concat':
             self.tok_classifier = ConcatCombine(
-                config.hidden_size, nfeats, tok_num_labels, 
+                config.hidden_size, nfeats, tok_num_labels,
                 ARGS.combiner_layers, config.hidden_dropout_prob,
                 ARGS.small_waist, pre_enrich=ARGS.pre_enrich,
                 activation=ARGS.activation_hidden,
@@ -221,15 +235,15 @@ class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
         self.apply(self.init_bert_weights)
 
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, 
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None,
         labels=None, rel_ids=None, pos_ids=None, categories=None):
         global ARGS
         global CUDA
 
         features = self.featurizer.featurize_batch(
-            input_ids.detach().cpu().numpy(), 
-            rel_ids.detach().cpu().numpy(), 
-            pos_ids.detach().cpu().numpy(), 
+            input_ids.detach().cpu().numpy(),
+            rel_ids.detach().cpu().numpy(),
+            pos_ids.detach().cpu().numpy(),
             padded_len=input_ids.shape[1])
         features = torch.tensor(features, dtype=torch.float)
         if CUDA:
@@ -256,9 +270,9 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
     def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None, args=None):
         super(BertForMultitaskWithFeaturesOnBottom, self).__init__(config)
         global ARGS
-        
+
         self.featurizer = features.Featurizer(
-            tok2id, lexicon_feature_bits=ARGS.lexicon_feature_bits) 
+            tok2id, lexicon_feature_bits=ARGS.lexicon_feature_bits)
         # TODO -- don't hardcode this...
         nfeats = 90 if ARGS.lexicon_feature_bits == 1 else 118
 
@@ -266,7 +280,7 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
             if ARGS.share_combiners:
                 self.combiners = {
                     i: ConcatCombine(
-                        config.hidden_size, nfeats, config.hidden_size, 
+                        config.hidden_size, nfeats, config.hidden_size,
                         ARGS.combiner_layers, config.hidden_dropout_prob,
                         ARGS.small_waist, pre_enrich=ARGS.pre_enrich,
                         activation=ARGS.activation_hidden)
@@ -274,7 +288,7 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
                 }
             else:
                 combiner = ConcatCombine(
-                    config.hidden_size, nfeats, config.hidden_size, 
+                    config.hidden_size, nfeats, config.hidden_size,
                     ARGS.combiner_layers, config.hidden_dropout_prob,
                     ARGS.small_waist, pre_enrich=ARGS.pre_enrich,
                     activation=ARGS.activation_hidden)
@@ -284,7 +298,7 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
                 self.combiners = {
                     i: AddCombine(
                 nfeats, config.hidden_size, ARGS.combiner_layers,
-                config.hidden_dropout_prob, ARGS.small_waist, 
+                config.hidden_dropout_prob, ARGS.small_waist,
                 pre_enrich=ARGS.pre_enrich)
                     for i in range(1, 7)
                 }
@@ -305,7 +319,7 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
         self.apply(self.init_bert_weights)
 
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, 
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None,
         labels=None, rel_ids=None, pos_ids=None, categories=None):
 
         features = self.featurizer.featurize_batch(
@@ -316,7 +330,7 @@ class BertForMultitaskWithFeaturesOnBottom(PreTrainedBertModel):
         features = torch.tensor(features, dtype=torch.float)
         if CUDA:
             features = features.cuda()
-        
+
         sequence_output, pooled_output = self.bert(
             input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False,
             features=features)
@@ -383,7 +397,7 @@ class BertSelfOutputF(nn.Module):
 
     def forward(self, hidden_states, input_tensor, features=None):
         global ARGS
-        
+
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
 
@@ -404,7 +418,7 @@ class BertAttentionF(nn.Module):
 
     def forward(self, input_tensor, attention_mask, features=None):
         global ARGS
-        
+
         self_output, attn_probs = self.self(input_tensor, attention_mask)
 
         ### COMBINE2
@@ -446,18 +460,18 @@ class BertLayerF(nn.Module):
 
     def forward(self, hidden_states, attention_mask, features=None):
         global ARGS
-        ### COMBINE4        
+        ### COMBINE4
         if features is not None and ARGS.combine4:
             hidden_states = self.combiners[4](hidden_states, features)
 
         attention_output, attn_probs = self.attention(hidden_states, attention_mask, features=features)
-        
+
         ### COMBINE5
         if features is not None and ARGS.combine5:
             hidden_states = self.combiners[5](hidden_states, features)
 
         intermediate_output = self.intermediate(attention_output)
-        
+
         ### COMBINE6
         if features is not None and ARGS.combine4:
             hidden_states = self.combiners[6](hidden_states, features)
@@ -470,7 +484,7 @@ class BertEncoderF(nn.Module):
     def __init__(self, config, combiners):
         super(BertEncoderF, self).__init__()
         layer = BertLayerF(config, combiners)
-        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])    
+        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(config.num_hidden_layers)])
 
     def forward(self, hidden_states, attention_mask, output_all_encoded_layers=True, features=None):
         all_encoder_layers = []
@@ -487,7 +501,3 @@ class BertEncoderF(nn.Module):
         if not output_all_encoded_layers:
             all_encoder_layers.append(hidden_states)
         return all_encoder_layers, all_layer_attns
-
-
-
-

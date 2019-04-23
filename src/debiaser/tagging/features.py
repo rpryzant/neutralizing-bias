@@ -1,8 +1,6 @@
 import nltk
 import numpy as np
 
-
-
 import nltk
 import numpy as np
 
@@ -13,7 +11,7 @@ from shared.data import REL2ID, POS2ID
 
 class Featurizer:
 
-    def __init__(self, tok2id, pad_id=0, lexicon_feature_bits=1):
+    def __init__(self, tok2id={}, pad_id=0, lexicon_feature_bits=1):
         self.tok2id = tok2id
         self.id2tok = {x: tok for tok, x in tok2id.items()}
         self.pad_id = pad_id
@@ -24,9 +22,9 @@ class Featurizer:
         self.lexicons = {
             'assertives': self.read_lexicon('lexicons/assertives_hooper1975.txt'),
             'entailed_arg': self.read_lexicon('lexicons/entailed_arg_berant2012.txt'),
-            'entailed': self.read_lexicon('lexicons/entailed_berant2012.txt'), 
-            'entailing_arg': self.read_lexicon('lexicons/entailing_arg_berant2012.txt'), 
-            'entailing': self.read_lexicon('lexicons/entailing_berant2012.txt'), 
+            'entailed': self.read_lexicon('lexicons/entailed_berant2012.txt'),
+            'entailing_arg': self.read_lexicon('lexicons/entailing_arg_berant2012.txt'),
+            'entailing': self.read_lexicon('lexicons/entailing_berant2012.txt'),
             'factives': self.read_lexicon('lexicons/factives_hooper1975.txt'),
             'hedges': self.read_lexicon('lexicons/hedges_hyland2005.txt'),
             'implicatives': self.read_lexicon('lexicons/implicatives_karttunen1971.txt'),
@@ -40,9 +38,18 @@ class Featurizer:
         self.lexicon_feature_bits = lexicon_feature_bits
 
 
+    def get_feature_names(self):
+
+        lexicon_feature_names = list(self.lexicons.keys())
+        context_feature_names = [x + '_context' for x in lexicon_feature_names]
+        pos_names = list(list(zip(*sorted(self.pos2id.items(), key=lambda x: x[1])))[0])
+        rel_names = list(list(zip(*sorted(self.rel2id.items(), key=lambda x: x[1])))[0])
+
+        return lexicon_feature_names + context_feature_names + pos_names + rel_names
+
     def read_lexicon(self, fp):
         out = set([
-            l.strip() for l in open(fp, errors='ignore') 
+            l.strip() for l in open(fp, errors='ignore')
             if not l.startswith('#') and not l.startswith(';')
             and len(l.strip().split()) == 1
         ])
@@ -57,11 +64,11 @@ class Featurizer:
         else:
             true = [1, 0]
             false = [0, 1]
-    
+
         out = []
         for word in words:
             out.append([
-                true if word in lexicon else false 
+                true if word in lexicon else false
                 for _, lexicon in self.lexicons.items()
             ])
         out = np.array(out)
@@ -116,7 +123,7 @@ class Featurizer:
         expert_feats = np.concatenate((lex_feats, context_feats), axis=1)
         # break word-features into tokens
         feats = np.concatenate([
-            np.repeat(np.expand_dims(word_vec, axis=0), len(indices), axis=0) 
+            np.repeat(np.expand_dims(word_vec, axis=0), len(indices), axis=0)
             for (word_vec, indices) in zip(expert_feats, word_indices)
         ], axis=0)
 
@@ -125,10 +132,10 @@ class Featurizer:
         pos_feats[range(len(pos_ids)), pos_ids] = 1
         rel_feats = np.zeros((len(rel_ids), len(REL2ID)))
         rel_feats[range(len(rel_ids)), rel_ids] = 1
-        
+
         feats = np.concatenate((feats, pos_feats, rel_feats), axis=1)
 
-        # add pad back in                
+        # add pad back in
         feats = np.concatenate((feats, np.zeros((pad_len, feats.shape[1]))))
 
         return feats
@@ -138,9 +145,7 @@ class Featurizer:
         """ takes [batch, len] returns [batch, len, features] """
 
         batch_feats = [
-            self.features(list(id_seq), list(rel_ids), list(pos_ids)) 
+            self.features(list(id_seq), list(rel_ids), list(pos_ids))
             for id_seq, rel_ids, pos_ids in zip(batch_ids, rel_ids, pos_ids)]
         batch_feats = np.array(batch_feats)
         return batch_feats
-
-

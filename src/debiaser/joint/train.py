@@ -12,8 +12,7 @@ python joint/train.py \
     --bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax --sequence_softmax \
     --working_dir TEST \
     --debug_skip
-
-    """
+"""
 
 from collections import defaultdict
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
@@ -155,7 +154,6 @@ else:
 
 # # # # # # # # ## # # # ## # # DEBIAS MODEL # # # # # # # # ## # # # ## # #
 # bulid model
-# if ARGS.no_tok_enrich:
 if ARGS.pointer_generator:
     debias_model = seq2seq_model.PointerSeq2Seq(
         vocab_size=len(tok2id), hidden_size=ARGS.hidden_size,
