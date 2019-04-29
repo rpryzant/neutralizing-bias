@@ -28,20 +28,20 @@ parser.add_argument(
     help="prefix for writing outputs",
     type=str, default=''
 )
-parser.add_argument("--bert_model",
-    default='bert-base-uncased',
+parser.add_argument("--bert_model", 
+    default='bert-base-uncased', 
     help="dont touch")
-parser.add_argument("--train_batch_size",
-    default=32, type=int,
+parser.add_argument("--train_batch_size", 
+    default=32, type=int, 
     help="batch size")
-parser.add_argument("--test_batch_size",
-    default=16, type=int,
+parser.add_argument("--test_batch_size", 
+    default=16, type=int, 
     help="batch size")
-parser.add_argument("--learning_rate",
-    default=0.0003, type=float,
+parser.add_argument("--learning_rate", 
+    default=0.0003, type=float, 
     help="learning rate (set for seq2seq. for BERT tagger do more like ~ 3e-5")
 
-parser.add_argument("--debug_skip",
+parser.add_argument("--debug_skip", 
     help="cut out of training/testing after 2 iterations (for testing)",
     action="store_true")
 
@@ -74,7 +74,7 @@ parser.add_argument(
     help='how many epochs to train tagger if no checkpoint provided')
 parser.add_argument(
     "--tagging_pretrain_lr",
-    type=float, default=3e-4,
+    type=float, default=3e-5,
     help='learning rate for tagger pretrain')
 parser.add_argument(
     "--freeze_tagger",
@@ -89,15 +89,36 @@ parser.add_argument(
     type=str, default=None,
     help='debiaser checkpoint to load')
 
+parser.add_argument(
+    '--tagger_encoder',
+    action='store_true',
+    help='copy the taggers parameters into debiaser encoder'
+)
+
+parser.add_argument(
+    '--freeze_bert',
+    action='store_true',
+    help='freeze parameters of bert submodels'
+)
+
+
+
 ##################################################################################
 ##################################################################################
 #                      TAGGER ARGS
 ##################################################################################
 ##################################################################################
 
-parser.add_argument("--num_tok_labels",
-    default=3, type=int,
+
+
+
+parser.add_argument("--num_tok_labels", 
+    default=3, type=int, 
     help="dont touch")
+
+
+
+
 
 #### Category stuff
 parser.add_argument(
@@ -121,8 +142,8 @@ parser.add_argument(
     action='store_true',
     help='prepend special category input emb to seq')
 parser.add_argument(
-    "--num_categories",
-    default=43, type=int,
+    "--num_categories", 
+    default=43, type=int, 
     help="number of categories (don't change!)")
 
 
@@ -167,8 +188,8 @@ parser.add_argument(
     help="add extra features by concating on bottom",
     action='store_true'
 )
-parser.add_argument("--share_combiners",
-	help="share parameters if multiple combiners", action='store_true')
+parser.add_argument("--share_combiners", 
+    help="share parameters if multiple combiners", action='store_true')
 
 parser.add_argument("--combine1", help="combine location 1", action='store_true')
 parser.add_argument("--combine2", help="combine location 2", action='store_true')
@@ -177,7 +198,10 @@ parser.add_argument("--combine4", help="combine location 4", action='store_true'
 parser.add_argument("--combine5", help="combine location 5", action='store_true')
 parser.add_argument("--combine6", help="combine location 6", action='store_true')
 
-
+parser.add_argument('--tagger_from_debiaser',
+    help=('Use the encoder from a debiasing model checkpoint with a 2 layers '
+          'on top to predict the bias logits and token logits.'),
+    action='store_true')
 
 
 
@@ -209,7 +233,7 @@ parser.add_argument(
 parser.add_argument(
     "--epochs",
     help="training epochs",
-    type=int, default=500
+    type=int, default=40
 )
 parser.add_argument(
     "--max_seq_len",
@@ -217,21 +241,22 @@ parser.add_argument(
 )
 parser.add_argument(
     "--hidden_size",
-    help="hidden size of encoder",
+    help="hidden size of encoder/decoder",
     type=int, default=256
 )
 
-parser.add_argument(
-    "--decoder_hidden_size",
-    help="hidden size of decoder; by default same size as encoder",
-    type=int, default=256
-)
 
 parser.add_argument(
-    "--attention_hidden_size",
-    help="hidden size of attention layers in pointer-generator model",
-    type=int, default=256
+    "--transformer_decoder",
+    help="use transformer decoder",
+    action='store_true'
 )
+parser.add_argument(
+    "--transformer_layers",
+    help="use transformer decoder",
+    type=int, default=1
+)
+
 
 # pointer args
 parser.add_argument(
@@ -239,21 +264,17 @@ parser.add_argument(
     help='use copy mechanism in decoder',
     action='store_true'
 )
-
 parser.add_argument(
-    "--lambda_coverage_weight",
-    help="Trade-off weight for coverage loss and CE loss for pointer network ",
-    type=float, default=0.5
+    "--coverage",
+    help='use coverage mechanism in decoder (needs pointer generator to be set first)',
+    action='store_true'
+)
+parser.add_argument(
+    "--coverage_lambda",
+    help='use coverage mechanism in decoder',
+    type=float, default=1.0
 )
 
-
-# word-embedding size
-
-parser.add_argument(
-    "--word_embedding_size",
-    help="For clarity adding specification for word_embedding size",
-    type=int, default=768
-)
 
 # bert settings
 parser.add_argument(
@@ -266,6 +287,14 @@ parser.add_argument(
     help="use bert pretrained pos embeddings",
     action='store_true'
 )
+
+parser.add_argument(
+    "--sigmoid_bridge",
+    help="pass bridge through sigmoid",
+    action='store_true'
+)
+
+
 parser.add_argument(
     "--freeze_embeddings",
     help="freeze pretrained embeddings",
@@ -273,7 +302,12 @@ parser.add_argument(
 )
 parser.add_argument(
     "--bert_encoder",
-    help="freeze pretrained embeddings",
+    help="use bert as the encoder for seq2seq model",
+    action='store_true'
+)
+parser.add_argument(
+    "--copy_bert_encoder",
+    help="use a copy of bert as the encoder for seq2seq model",
     action='store_true'
 )
 
