@@ -89,6 +89,7 @@ def run_inference(model, eval_dataloader, loss_fn, tokenizer):
     out = {
         'input_toks': [],
         'post_toks': [],
+        'categories': [],
 
         'tok_loss': [],
         'tok_logits': [],
