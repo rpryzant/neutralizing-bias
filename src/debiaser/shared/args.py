@@ -88,17 +88,21 @@ parser.add_argument(
     "--debias_checkpoint",
     type=str, default=None,
     help='debiaser checkpoint to load')
-
 parser.add_argument(
     '--tagger_encoder',
     action='store_true',
     help='copy the taggers parameters into debiaser encoder'
 )
-
 parser.add_argument(
     '--freeze_bert',
     action='store_true',
     help='freeze parameters of bert submodels'
+)
+parser.add_argument(
+    '--force_tagger_output',
+    action='store_true',
+    help=('Force tagger output to equal the distribution passed in as the'
+          'first input')
 )
 
 

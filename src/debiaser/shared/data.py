@@ -200,6 +200,9 @@ def get_examples(data_path, tok2id, max_seq_len,
             post_tok_label_ids = pad(post_tok_labels, EDIT_TYPE2ID['mask'])
             rel_ids = pad([REL2ID.get(x, REL2ID['<UNK>']) for x in rels], 0)
             pos_ids = pad([POS2ID.get(x, POS2ID['<UNK>']) for x in pos], 0)
+
+            if ARGS.force_tagger_output:
+                pre_tok_label_ids = revid
         except KeyError:
             # TODO FUCK THIS ENCODING BUG!!!
             skipped += 1
