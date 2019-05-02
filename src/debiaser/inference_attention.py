@@ -183,7 +183,10 @@ for step, batch in enumerate(eval_dataloader):
         rel_ids, pos_ids, categories
     ) = batch
 
+
+
     sentences = [tokenizer.convert_ids_to_tokens(seq) for seq in pre_id.cpu().numpy()]
+
     bias_label_indx = [labels.index(1) for labels in tok_label_id.tolist()]
 
     output = None # keeps track of model output

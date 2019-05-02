@@ -15,20 +15,20 @@ from shared.args import ARGS
 
 # from https://spacy.io/api/annotation#section-dependency-parsing
 RELATIONS = [
-    'det', 'amod', 'nsubj', 'prep', 'pobj', 'ROOT', 
-    'attr', 'punct', 'advmod', 'compound', 'acl', 'agent', 
-    'aux', 'ccomp', 'dobj', 'cc', 'conj', 'appos', 'nsubjpass', 
-    'auxpass', 'poss', 'nummod', 'nmod', 'relcl', 'mark', 
-    'advcl', 'pcomp', 'npadvmod', 'preconj', 'neg', 'xcomp', 
+    'det', 'amod', 'nsubj', 'prep', 'pobj', 'ROOT',
+    'attr', 'punct', 'advmod', 'compound', 'acl', 'agent',
+    'aux', 'ccomp', 'dobj', 'cc', 'conj', 'appos', 'nsubjpass',
+    'auxpass', 'poss', 'nummod', 'nmod', 'relcl', 'mark',
+    'advcl', 'pcomp', 'npadvmod', 'preconj', 'neg', 'xcomp',
     'csubj', 'prt', 'parataxis', 'expl', 'case', 'acomp', 'predet',
-    'quantmod', 'dep', 'oprd', 'intj', 'dative', 'meta', 'csubjpass', 
+    'quantmod', 'dep', 'oprd', 'intj', 'dative', 'meta', 'csubjpass',
     '<UNK>'
 ]
 REL2ID = {x: i for i, x in enumerate(RELATIONS)}
 
 # from https://spacy.io/api/annotation#section-pos-tagging
 POS_TAGS = [
-    'DET', 'ADJ', 'NOUN', 'ADP', 'NUM', 'VERB', 'PUNCT', 'ADV', 
+    'DET', 'ADJ', 'NOUN', 'ADP', 'NUM', 'VERB', 'PUNCT', 'ADV',
     'PART', 'CCONJ', 'PRON', 'X', 'INTJ', 'PROPN', 'SYM',
     '<UNK>'
 ]
@@ -65,7 +65,7 @@ def noise_seq(seq, drop_prob=0.25, shuf_dist=3, drop_set=None, keep_bigrams=Fals
     # from https://arxiv.org/pdf/1711.00043.pdf
     def perm(i):
         return i[0] + (shuf_dist + 1) * np.random.random()
-    
+
     if drop_set == None:
         dropped_seq = [x for x in seq if np.random.random() > drop_prob]
     else:
@@ -95,11 +95,11 @@ def noise_seq(seq, drop_prob=0.25, shuf_dist=3, drop_set=None, keep_bigrams=Fals
 
     if keep_bigrams:
         dropped_seq = [z for y in dropped_seq for z in y]
-    
+
     return dropped_seq
 
 
-def get_examples(data_path, tok2id, max_seq_len, 
+def get_examples(data_path, tok2id, max_seq_len,
                  noise=False, add_del_tok=False,
                  categories_path=None):
     global REL2ID
@@ -115,7 +115,7 @@ def get_examples(data_path, tok2id, max_seq_len,
     def pad(id_arr, pad_idx):
         return id_arr + ([pad_idx] * (max_seq_len - len(id_arr)))
 
-    skipped = 0 
+    skipped = 0
     out = defaultdict(list)
     if categories_path is not None:
         category_fp = open(categories_path)
@@ -124,6 +124,7 @@ def get_examples(data_path, tok2id, max_seq_len,
             l.strip().split(',')[0]: [float(x) for x in l.strip().split(',')[1:]]
             for l in category_fp
         }
+
     for i, (line) in enumerate(tqdm(open(data_path))):
         parts = line.strip().split('\t')
 
@@ -149,8 +150,8 @@ def get_examples(data_path, tok2id, max_seq_len,
         # get diff + binary diff masks
         tok_diff = diff(tokens, post_tokens)
         pre_tok_labels, post_tok_labels = get_tok_labels(tok_diff)
-                   
-        # make sure everything lines up    
+
+        # make sure everything lines up
         if len(tokens) != len(pre_tok_labels) \
             or len(tokens) != len(rels) \
             or len(tokens) != len(pos) \
@@ -179,14 +180,14 @@ def get_examples(data_path, tok2id, max_seq_len,
 
         # add start + end symbols to post in/out
         post_input_tokens = ['行'] + post_tokens
-        post_output_tokens = post_tokens + ['止'] 
+        post_output_tokens = post_tokens + ['止']
 
         # shuffle + convert to ids + pad
         try:
             if noise:
                 pre_toks = noise_seq(
-                    tokens[:], 
-                    drop_prob=ARGS.noise_prob, 
+                    tokens[:],
+                    drop_prob=ARGS.noise_prob,
                     shuf_dist=ARGS.shuf_dist,
                     drop_set=drop_set,
                     keep_bigrams=ARGS.keep_bigrams)
@@ -218,14 +219,15 @@ def get_examples(data_path, tok2id, max_seq_len,
         out['rel_ids'].append(rel_ids)
         out['pos_ids'].append(pos_ids)
         out['categories'].append(categories)
+        out['index'].append(i)
 
     print('SKIPPED ', skipped)
     return out
 
 
 
-def get_dataloader(data_path, tok2id, batch_size, 
-                   pickle_path=None, test=False, noise=False, add_del_tok=False, 
+def get_dataloader(data_path, tok2id, batch_size,
+                   pickle_path=None, test=False, noise=False, add_del_tok=False,
                    categories_path=None, sort_batch=True):
     global ARGS
 
@@ -235,35 +237,38 @@ def get_dataloader(data_path, tok2id, batch_size,
             data.sort(key=lambda x: x[2], reverse=True)
         # group by datatype
         [
-            src_id, src_mask, src_len, 
-            post_in_id, post_out_id, 
+            src_id, src_mask, src_len,
+            post_in_id, post_out_id,
             pre_tok_label, post_tok_label,
-            rel_ids, pos_ids, categories
+            rel_ids, pos_ids, categories, indices
         ] = [torch.stack(x) for x in zip(*data)]
 
         # cut off at max len of this batch for unpacking/repadding
         max_len = max(src_len)
         data = [
-            src_id[:, :max_len], src_mask[:, :max_len], src_len, 
+            src_id[:, :max_len], src_mask[:, :max_len], src_len,
             post_in_id[:, :max_len+10], post_out_id[:, :max_len+10],    # +10 for wiggle room
             pre_tok_label[:, :max_len], post_tok_label[:, :max_len+10], # +10 for post_toks_labels too (it's just gonna be matched up with post ids)
-            rel_ids[:, :max_len], pos_ids[:, :max_len], categories
+            rel_ids[:, :max_len], pos_ids[:, :max_len], categories, indices
         ]
 
         return data
 
-    if pickle_path is not None and os.path.exists(pickle_path):
-        examples = pickle.load(open(pickle_path, 'rb'))
+    '''
+    if pickle_path is not None and os.path.exists(pickle_path) and False:
+        # examples = pickle.load(open(pickle_path, 'rb'))
+        pass
     else:
-        examples = get_examples(
-            data_path=data_path, 
-            tok2id=tok2id,
-            max_seq_len=ARGS.max_seq_len,
-            noise=noise,
-            add_del_tok=add_del_tok,
-            categories_path=categories_path)
+    '''
+    examples = get_examples(
+        data_path=data_path,
+        tok2id=tok2id,
+        max_seq_len=ARGS.max_seq_len,
+        noise=noise,
+        add_del_tok=add_del_tok,
+        categories_path=categories_path)
 
-        pickle.dump(examples, open(pickle_path, 'wb'))
+    pickle.dump(examples, open(pickle_path, 'wb'))
 
     data = TensorDataset(
         torch.tensor(examples['pre_ids'], dtype=torch.long),
@@ -275,7 +280,8 @@ def get_dataloader(data_path, tok2id, batch_size,
         torch.tensor(examples['post_tok_label_ids'], dtype=torch.float),  # for loss multiplying
         torch.tensor(examples['rel_ids'], dtype=torch.long),
         torch.tensor(examples['pos_ids'], dtype=torch.long),
-        torch.tensor(examples['categories'], dtype=torch.float))
+        torch.tensor(examples['categories'], dtype=torch.float),
+        torch.tensor(examples['index'], dtype=torch.float))
 
     dataloader = DataLoader(
         data,
@@ -284,5 +290,3 @@ def get_dataloader(data_path, tok2id, batch_size,
         batch_size=batch_size)
 
     return dataloader, len(examples['pre_ids'])
-
-
