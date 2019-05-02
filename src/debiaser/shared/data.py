@@ -254,12 +254,6 @@ def get_dataloader(data_path, tok2id, batch_size,
 
         return data
 
-    '''
-    if pickle_path is not None and os.path.exists(pickle_path) and False:
-        # examples = pickle.load(open(pickle_path, 'rb'))
-        pass
-    else:
-    '''
     examples = get_examples(
         data_path=data_path,
         tok2id=tok2id,
@@ -281,7 +275,7 @@ def get_dataloader(data_path, tok2id, batch_size,
         torch.tensor(examples['rel_ids'], dtype=torch.long),
         torch.tensor(examples['pos_ids'], dtype=torch.long),
         torch.tensor(examples['categories'], dtype=torch.float),
-        torch.tensor(examples['index'], dtype=torch.uint8))
+        torch.tensor(examples['index'], dtype=torch.int16))
 
     dataloader = DataLoader(
         data,
