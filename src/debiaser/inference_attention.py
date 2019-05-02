@@ -98,7 +98,19 @@ def transpose_for_scores(x):
     x = x.view(*new_x_shape)
     return x.permute(0, 2, 1, 3)
 
-def run_attention_extractor():
+def run_attention_extractor(indices):
+    '''
+    Args:
+        Indices (pytorch tensor): contains the current indices of the sentences
+            in the batch
+
+    Appends the attention layer output to the results list.
+
+    The result list is a list that contains dictionaries which contain the
+    following information:
+        *
+
+    '''
     global results
     for name, module in joint_model.named_children():
         for child_name, child_module in module.named_children():
@@ -116,11 +128,8 @@ def run_attention_extractor():
 
                         '''
                         Here we begin to access individual transformer
-                        layers. We define some basic variables first.
+                        layers.
                         '''
-
-                        #num_attention_heads = config.num_attention_heads
-                        #attention_head_size = int(config.hidden_size / config.num_attention_heads)
 
                         for bert_encoder_layer_name, bert_encoder_module in encoder_list.named_children():
                             # NOTE:
@@ -163,6 +172,9 @@ def run_attention_extractor():
                                             new_entry['full_attention_dist'] = attention_dist[0]
                                             new_entry['probs'] = is_bias_probs[i, :].tolist()
                                             new_entry['labels'] = tok_label_id[i, :].tolist()
+                                            new_entry['index'] = indices[i].item()
+                                            print('index in dataset:')
+                                            print(new_entry['index'])
                                             results.append(new_entry)
                                         return
                             output = bert_encoder_module(output, extended_attention_mask)
@@ -180,10 +192,8 @@ for step, batch in enumerate(eval_dataloader):
         pre_id, pre_mask, pre_len,
         post_in_id, post_out_id,
         tok_label_id, _,
-        rel_ids, pos_ids, categories
+        rel_ids, pos_ids, categories, indices
     ) = batch
-
-
 
     sentences = [tokenizer.convert_ids_to_tokens(seq) for seq in pre_id.cpu().numpy()]
 
@@ -193,15 +203,14 @@ for step, batch in enumerate(eval_dataloader):
     with torch.no_grad():
 
         '''
-        First finding the probabilities that are returned from the tagger
+        First finding the probabilities that are returned from the tagger.
         '''
 
         is_bias_probs, _ = joint_model.run_tagger(
             pre_id, pre_mask, rel_ids=rel_ids, pos_ids=pos_ids,
             categories=categories)
 
-        run_attention_extractor()
-        print(len(results))
+        run_attention_extractor(indices)
         continue
 
 pickle.dump(results, open("attention_results.pkl", "wb+"))

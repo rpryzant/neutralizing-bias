@@ -281,7 +281,7 @@ def get_dataloader(data_path, tok2id, batch_size,
         torch.tensor(examples['rel_ids'], dtype=torch.long),
         torch.tensor(examples['pos_ids'], dtype=torch.long),
         torch.tensor(examples['categories'], dtype=torch.float),
-        torch.tensor(examples['index'], dtype=torch.float))
+        torch.tensor(examples['index'], dtype=torch.uint8))
 
     dataloader = DataLoader(
         data,
