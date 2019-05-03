@@ -160,7 +160,8 @@ class JointModel(nn.Module):
             with torch.no_grad():
                 _, word_probs, is_bias_probs, _, _, _ = self.forward(
                     pre_id, tgt_input, pre_mask, pre_len, tok_dist,
-                    rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
+                    rel_ids=rel_ids, pos_ids=pos_ids, categories=categories,
+                    ignore_tagger=ARGS.force_tagger_output)
             next_preds = torch.max(word_probs[:, -1, :], dim=1)[1]
             tgt_input = torch.cat((tgt_input, next_preds.unsqueeze(1)), dim=1)
 
