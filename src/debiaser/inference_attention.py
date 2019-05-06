@@ -108,7 +108,11 @@ def run_attention_extractor(indices):
 
     The result list is a list that contains dictionaries which contain the
     following information:
-        *
+        * input_toks
+        * full_attention_dist
+        * probs
+        * labels
+        * index
 
     '''
     global results
@@ -130,11 +134,11 @@ def run_attention_extractor(indices):
                         Here we begin to access individual transformer
                         layers.
                         '''
-
+                        sum_attention_scores = None
                         for bert_encoder_layer_name, bert_encoder_module in encoder_list.named_children():
                             # NOTE:
                             # extracting the attention scores of second to last layer
-                            if bert_encoder_layer_name == '10':
+                            if bert_encoder_layer_name in valid_layers:
                                 for bert_sublayer_name, bert_sublayer_module in bert_encoder_module.named_children():
                                     if bert_sublayer_name == 'attention':
                                         self_attention_module = list(bert_sublayer_module.children())[0]
@@ -160,21 +164,62 @@ def run_attention_extractor(indices):
                                         attention_probs = torch.nn.Softmax(dim=-1)(attention_scores)
                                         for i, bias_indx in enumerate(bias_label_indx):
                                             new_entry = {}
-                                            #print("index: {}".format(bias_indx))
-                                            #print(sentences[i])
-                                            try:
-                                                index_pad = sentences[i].index('[PAD]') - 1
-                                            except:
-                                                index_pad = len(sentences[i]) - 1
-                                            new_entry['input_toks'] = sentences[i][:index_pad]
-                                            attention_dist = attention_probs[i, :, bias_indx, :].tolist()
-                                            new_entry['attention_dist'] = attention_dist[0][:index_pad]
-                                            new_entry['full_attention_dist'] = attention_dist[0]
+                                            if sum_attention_scores is None:
+                                                sum_attention_scores = attention_probs[i, :, bias_indx, :]
+                                            else:
+                                                sum_attention_scores += attention_probs[i, :, bias_indx, :]
+
+
+                            elif bert_encoder_layer_name == '11': #for last layer special case
+                                for bert_sublayer_name, bert_sublayer_module in bert_encoder_module.named_children():
+                                    if bert_sublayer_name == 'attention':
+                                        self_attention_module = list(bert_sublayer_module.children())[0]
+                                        self_attention_submodule_list = list(self_attention_module.children())
+                                        query, key, value, _ = self_attention_submodule_list
+
+                                        mixed_query_layer = query(output)
+                                        mixed_key_layer = key(output)
+                                        mixed_value_layer = value(output)
+
+                                        query_layer = transpose_for_scores(mixed_query_layer)
+                                        key_layer = transpose_for_scores(mixed_key_layer)
+                                        value_layer = transpose_for_scores(mixed_value_layer)
+
+                                        # Take the dot product between "query" and "key" to get the raw attention scores.
+                                        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+                                        attention_scores = attention_scores / math.sqrt(768) #768 = attention_head_size
+                                        # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
+
+                                        attention_scores = attention_scores + extended_attention_mask
+
+                                        # Normalize the attention scores to probabilities.
+                                        attention_probs = torch.nn.Softmax(dim=-1)(attention_scores)
+                                        for i, bias_indx in enumerate(bias_label_indx):
+                                            new_entry = {}
+
+                                            new_entry['input_toks'] = sentences[i]
+                                            final_sum_attention = sum_attention_scores + attention_probs[i, :, bias_indx, :]
+                                            attention_dist = final_sum_attention.tolist()
+                                            new_entry['full_attention_dist'] = attention_dist[0][:-1]
                                             new_entry['probs'] = is_bias_probs[i, :].tolist()
                                             new_entry['labels'] = tok_label_id[i, :].tolist()
                                             new_entry['index'] = indices[i].item()
-                                            print('index in dataset:')
-                                            print(new_entry['index'])
+
+                                            '''
+                                            Removing entries in which the bias is too close
+                                            to either the start or end, disrupting the surrounding
+                                            attention distribution.
+                                            '''
+
+                                            len_entry = len(new_entry['full_attention_dist'])
+                                            bias_index = new_entry['labels'].index(1)
+                                            if(bias_index-bias_window_size < 0):
+                                                continue
+                                            elif(bias_index+bias_window_size+1 > len_entry):
+                                                continue
+
+                                            new_entry['attention_dist'] = new_entry['full_attention_dist'][bias_index-bias_window_size:bias_index+bias_window_size+1]
+
                                             results.append(new_entry)
                                         return
                             output = bert_encoder_module(output, extended_attention_mask)
@@ -183,6 +228,8 @@ def run_attention_extractor(indices):
 
 
 results = []
+bias_window_size = 5
+valid_layers = ['8', '9', '10']
 
 for step, batch in enumerate(eval_dataloader):
 
