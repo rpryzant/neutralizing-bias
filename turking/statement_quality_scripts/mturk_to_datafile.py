@@ -45,13 +45,18 @@ data_fp = sys.argv[2]
 
 
 
-
 #data = {l.strip().split('\t')[3]: l.strip() for l in open(data_fp)}
 data = [l.strip().split('\t')[3] for l in open(data_fp)]
 lines =  [l.strip() for l in open(data_fp)]
 searcher = CorpusSearcher(data, data, TfidfVectorizer())
 
+
+z = open('out.csv', 'w')
+writer = csv.writer(z)
+
 with open(mturk_fp) as f:
+
+
     reader = csv.reader(f)
     for row in reader:
         yup = row[1]
@@ -60,7 +65,13 @@ with open(mturk_fp) as f:
 
         #print(match)
         #print(data[i])
-        print(lines[i])
+# JUST DO THIS IF YOU WANT THE DATAFILE
+#        print(lines[i]) 
+        revid = lines[i].split('\t')[0]
+        
+        writer.writerow([revid] + row[1:])
+
+
  #       print(data[match])
 
     

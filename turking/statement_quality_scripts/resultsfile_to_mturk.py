@@ -28,7 +28,7 @@ def detokenize(s):
 
     return ' '.join(out)
 
-results = utils.parse_results_file(in_path, ignore_unchanged=True)
+results = utils.parse_results_file(in_path, ignore_unchanged=False)
 
 with open(out_path, 'w') as f:
     writer = csv.writer(f)
