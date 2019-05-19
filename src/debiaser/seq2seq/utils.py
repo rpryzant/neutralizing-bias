@@ -169,7 +169,7 @@ def train_for_epoch(model, dataloader, tok2id, optimizer, loss_fn, ignore_enrich
 
 
 def dump_outputs(src_ids, gold_ids, predicted_ids, gold_tok_dist, id2tok, out_file,
-        pred_dists=None):
+        pred_dists=None, ignore_start=True):
     out_hits = []
     preds_for_bleu = []
     golds_for_bleu = []
@@ -182,7 +182,7 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_tok_dist, id2tok, out_fi
 
         src_seq = [id2tok[x] for x in src_seq]
         gold_seq = [id2tok[x] for x in gold_seq]
-        pred_seq = [id2tok[x] for x in pred_seq[1:]]   # ignore start token
+        pred_seq = [id2tok[x] for x in (pred_seq[1:] if ignore_start else pred_seq)]
         if '止' in gold_seq:
             gold_seq = gold_seq[:gold_seq.index('止')]
         if '止' in pred_seq:

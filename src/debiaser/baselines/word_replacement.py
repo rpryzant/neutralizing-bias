@@ -132,12 +132,12 @@ for epoch in range(ARGS.epochs):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         ( 
-            pre_id, pre_mask, pre_len, 
-            post_in_id, post_out_id, 
+            pre_id, pre_mask, pre_len,
+            post_in_id, post_out_id,
             tok_label_id, _,
             rel_ids, pos_ids, categories
         ) = batch
-        
+
         tok_logits, _ = model(pre_id, pre_mask,
             rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
 
@@ -162,8 +162,6 @@ for epoch in range(ARGS.epochs):
 
         losses.append(loss.detach().cpu().numpy())
 
-    print(losses)
-
     writer.add_scalar('train/loss', np.mean(losses), epoch + 1)
 
     print('EVAL...')
@@ -178,8 +176,8 @@ for epoch in range(ARGS.epochs):
         if CUDA:
             batch = tuple(x.cuda() for x in batch)
         (
-            pre_id, pre_mask, pre_len, 
-            post_in_id, post_out_id, 
+            pre_id, pre_mask, pre_len,
+            post_in_id, post_out_id,
             pre_tok_label_id, _,
             rel_ids, pos_ids, categories
         ) = batch
@@ -190,11 +188,11 @@ for epoch in range(ARGS.epochs):
                 categories=categories)
 
         new_hits, new_preds, new_golds, new_srcs = seq2seq_utils.dump_outputs(
-            pre_id.detach().cpu().numpy(), 
-            post_out_id.detach().cpu().numpy(), 
-            predicted_toks.detach().cpu().numpy(), 
-            pre_tok_label_id.detach().cpu().numpy(), 
-            id2tok, out_file)
+            pre_id.detach().cpu().numpy(),
+            post_out_id.detach().cpu().numpy(),
+            predicted_toks.detach().cpu().numpy(),
+            pre_tok_label_id.detach().cpu().numpy(),
+            id2tok, out_file, ignore_start=False)
         hits += new_hits
         preds += new_preds
         golds += new_golds
