@@ -31,6 +31,7 @@ class BertForWordReplacement(nn.Module):
 
         self.joint_model = joint_model
 
+        # TODO: change this?
         components = [
             nn.Linear(768, 1024),
             nn.ReLU(),
