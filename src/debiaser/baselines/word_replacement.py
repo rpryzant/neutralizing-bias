@@ -151,7 +151,6 @@ for epoch in range(ARGS.epochs):
                     break
 
             # If there were no changes, then there was a deletion.
-            # TODO: is this always true?
             if labels[i].sum() == 0:
                 labels[i][-1] = 1
 
