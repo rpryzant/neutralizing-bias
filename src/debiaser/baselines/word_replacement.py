@@ -30,7 +30,9 @@ import tagging.model as tagging_model
 class BertForWordReplacement(nn.Module):
     def __init__(self, config, joint_model, tok2id):
         super(BertForWordReplacement, self).__init__()
-        self.bert = BertModel.from_pretrained(config)
+        global ARGS
+
+        self.bert = BertModel.from_pretrained(config, cache_dir=ARGS.working_dir + '/bert_cache/')
 
         self.joint_model = joint_model
 
