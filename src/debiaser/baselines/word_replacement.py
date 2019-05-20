@@ -2,6 +2,9 @@
 1. Get biased word from tagger
 2. Pick a replacement word from vocab
 3. Compare to ground truth (words where post_tok_labels is 1)
+
+TEST RUN
+python baselines/word_replacement.py --train ../../data/final/biased.word.train --test ../../data/final/biased.word.test --working_dir TEST --extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 3 --pretrain_epochs 4 --learning_rate 0.0003 --epochs 20 --hidden_size 4 --train_batch_size 2 --test_batch_size 2 --bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax --sequence_softmax --pointer_generator --coverage --debug_skip --max_seq_len 15
 """
 import numpy as np
 import torch
@@ -42,23 +45,25 @@ class BertForWordReplacement(nn.Module):
         
     def forward(self, pre_id, pre_mask, rel_ids=None, pos_ids=None,
                 categories=None):
-
         is_bias_probs, _ = self.joint_model.run_tagger(
             pre_id, pre_mask, rel_ids=rel_ids, pos_ids=pos_ids,
             categories=categories)
 
         _, bias_pos = is_bias_probs.max(1)
-        bias_pos = bias_pos.unsqueeze(1)
-        bias_ids = torch.gather(pre_id, 1, bias_pos)
+        # bias_pos = bias_pos.unsqueeze(-1).unsqueeze(-1)
 
-        # TODO: handle multiple tokens when a part of a word is selected
-        word_embeddings = self.bert.embeddings(bias_ids).squeeze()
+        bert_embs, _ = self.bert(
+            pre_id, attention_mask=1.0 - pre_mask, output_all_encoded_layers=False)
 
-        tok_logits = self.tok_classifier(word_embeddings)
+        batch_size = bias_pos.shape[0]
+        idxs = torch.arange(batch_size)
+        selected_embs = bert_embs[idxs, bias_pos, :]
+
+        tok_logits = self.tok_classifier(selected_embs)
         new_toks = tok_logits.argmax(1).unsqueeze(1)
-        new_ids = pre_id.scatter(1, bias_pos, new_toks)
-
+        new_ids = pre_id.scatter(1, bias_pos.unsqueeze(-1), new_toks)
         return tok_logits, new_ids
+
 
 tokenizer = BertTokenizer.from_pretrained(
     ARGS.bert_model, cache_dir=ARGS.working_dir + '/cache')
@@ -101,15 +106,16 @@ joint_model = joint_model.JointModel(
 if CUDA:
     joint_model = joint_model.cuda()
 
-print('LOADING FROM ' + ARGS.checkpoint)
-# TODO(rpryzant): is there a way to do this more elegantly? 
-# https://pytorch.org/tutorials/beginner/saving_loading_models.html#saving-loading-model-across-devices
-if CUDA:
-    joint_model.load_state_dict(torch.load(ARGS.checkpoint))
-    joint_model = joint_model.cuda()
-else:
-    joint_model.load_state_dict(torch.load(ARGS.checkpoint, map_location='cpu'))
-print('...DONE')
+if ARGS.checkpoint:
+    print('LOADING FROM ' + ARGS.checkpoint)
+    # TODO(rpryzant): is there a way to do this more elegantly? 
+    # https://pytorch.org/tutorials/beginner/saving_loading_models.html#saving-loading-model-across-devices
+    if CUDA:
+        joint_model.load_state_dict(torch.load(ARGS.checkpoint))
+        joint_model = joint_model.cuda()
+    else:
+        joint_model.load_state_dict(torch.load(ARGS.checkpoint, map_location='cpu'))
+    print('...DONE')
 
 model = BertForWordReplacement(
     ARGS.bert_model, joint_model, tok2id)
@@ -135,27 +141,28 @@ for epoch in range(ARGS.epochs):
         ( 
             pre_id, pre_mask, pre_len,
             post_in_id, post_out_id,
-            tok_label_id, _,
+            pre_tok_label_id, post_tok_label_id,
             rel_ids, pos_ids, categories
         ) = batch
 
         tok_logits, _ = model(pre_id, pre_mask,
             rel_ids=rel_ids, pos_ids=pos_ids, categories=categories)
-
+        
         labels = torch.zeros((ARGS.train_batch_size, len(tok2id)))
-        for i in range(len(tok_label_id)):
-            for j in range(len(tok_label_id[i])):
-                if tok_label_id[i][j].item() == 1:
-                    labels[i][post_out_id[i][j].item()] = 1
-                elif tok_label_id[i][j].item() == 2:
+        for batch_i in range(len(pre_tok_label_id)):
+            # nothing was added to the post so there was a deletion
+            if 1 not in post_tok_label_id[batch_i]:
+                labels[batch_i][tok2id['<del>']] = 1
+                continue
+        
+            for j in range(len(pre_tok_label_id[batch_i])):
+                if pre_tok_label_id[batch_i][j].item() == 1:
+                    labels[batch_i][post_out_id[batch_i][j].item()] = 1
+                elif pre_tok_label_id[batch_i][j].item() == 2:
                     break
 
-            # If there were no changes, then there was a deletion.
-            if labels[i].sum() == 0:
-                labels[i][-1] = 1
-
         loss_fn = nn.BCEWithLogitsLoss()
-        loss = loss_fn(tok_logits, labels.cuda())
+        loss = loss_fn(tok_logits, labels.cuda() if CUDA else labels)
         loss.backward()
         optimizer.step()
         model.zero_grad()

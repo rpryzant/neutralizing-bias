@@ -182,7 +182,8 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_tok_dist, id2tok, out_fi
 
         src_seq = [id2tok[x] for x in src_seq]
         gold_seq = [id2tok[x] for x in gold_seq]
-        pred_seq = [id2tok[x] for x in (pred_seq[1:] if ignore_start else pred_seq)]
+        pred_seq = [id2tok[x] for x in (pred_seq[1:] if ignore_start else pred_seq) 
+                    if id2tok[x] is not '<del>']   # ignore deletions
         if '止' in gold_seq:
             gold_seq = gold_seq[:gold_seq.index('止')]
         if '止' in pred_seq:

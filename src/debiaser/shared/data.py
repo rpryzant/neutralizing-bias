@@ -149,7 +149,7 @@ def get_examples(data_path, tok2id, max_seq_len,
         # get diff + binary diff masks
         tok_diff = diff(tokens, post_tokens)
         pre_tok_labels, post_tok_labels = get_tok_labels(tok_diff)
-                   
+
         # make sure everything lines up    
         if len(tokens) != len(pre_tok_labels) \
             or len(tokens) != len(rels) \
@@ -206,7 +206,7 @@ def get_examples(data_path, tok2id, max_seq_len,
             continue
 
         if ARGS.force_tagger_output:
-            pre_tok_label_ids = list(map(float, revid.split(',')))
+            pre_tok_label_ids = pad(list(map(float, revid.split(','))), EDIT_TYPE2ID['mask'])
 
         input_mask = pad([0] * len(tokens), 1)
         pre_len = len(tokens)
