@@ -27,6 +27,7 @@ from collections import Counter
 import math
 from tqdm import tqdm
 import string
+import enchant
 
 from nltk import sent_tokenize, word_tokenize
 
@@ -63,7 +64,7 @@ CTR_FAILED_TAGGING = 0
 BERT_MODEL = "bert-base-uncased"
 TOKENIZER = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=cache_path)
 
-
+ENCHANT_DICT = enchant.Dict("en_US")
 
 
 def rm_refs(x):
@@ -264,6 +265,14 @@ def should_keep(prev_raw, prev_tok, post_raw, post_tok, bleu, rev_id):
     if ' molecules' in prev_raw or ' ions' in prev_raw or ' ionic' in prev_raw or ' atoms' in prev_raw:
         CTR_CHEMISTRY += 1
         return False, None, None
+
+
+    # make sure example has enough normal words
+    prev_words = prev_words.translate(str.maketrans('', '', string.punctuation)).split()
+    n_words = sum(1 if d.check(w) else 0 for w in pre_words)
+    if len(prev_words) == 0 or (float(n_words) / len(prev_words)) < 0.5:
+        return False, None, None
+
 
     # see if this is a "single word" edit, where a single word was replaced with 0+ words
     def is_single_word_edit(d):
