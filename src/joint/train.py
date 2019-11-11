@@ -180,8 +180,6 @@ if CUDA:
 debias_loss_fn, cross_entropy_loss = seq2seq_utils.build_loss_fn(vocab_size=len(tok2id))
 
 num_train_steps = (num_train_examples * 40)
-if ARGS.pretrain_data: 
-    num_train_steps += (num_pretrain_examples * ARGS.pretrain_epochs)
 
 if ARGS.debias_checkpoint is not None and os.path.exists(ARGS.debias_checkpoint):
     print('LOADING DEBIASER FROM ' + ARGS.debias_checkpoint)
@@ -189,12 +187,11 @@ if ARGS.debias_checkpoint is not None and os.path.exists(ARGS.debias_checkpoint)
     print('...DONE')
 
 elif ARGS.pretrain_data:
+    num_train_steps += (num_pretrain_examples * ARGS.pretrain_epochs)
     pretrain_optim = seq2seq_utils.build_optimizer(debias_model, num_train_steps)
-
 
     print('PRETRAINING...')
     debias_model.train()
-    # TODO -- VERIFY THAT TAGGER IS ACTUALLY BEING IGNORED, I.E. TOK DIST IS ALL 0'S
     for epoch in range(ARGS.pretrain_epochs):
         print('EPOCH ', epoch)
         print('TRAIN...')
@@ -254,7 +251,7 @@ for epoch in range(ARGS.epochs):
     print('EVAL...')
     joint_model.eval()
     hits, preds, golds, srcs = joint_utils.run_eval(
-        joint_model, eval_dataloader, tok2id, ARGS.working_dir + '/results_%d.txt' % epoch + 1,
+        joint_model, eval_dataloader, tok2id, ARGS.working_dir + '/results_%d.txt' % (epoch + 1),
         ARGS.max_seq_len, ARGS.beam_width)
     writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), epoch+1)
     writer.add_scalar('eval/true_hits', np.mean(hits), epoch+1)

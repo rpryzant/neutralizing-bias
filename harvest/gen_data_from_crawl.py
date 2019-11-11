@@ -412,6 +412,17 @@ for example in sent_generator(revisions):
         ])
     })
 
+# Dedup
+seen_examples = set()
+tmp = []
+for ex in out:
+    if ex['out_row'] in seen_examples:
+        continue
+    else:
+        tmp += [ex]
+        seen_examples.add(ex['out_row'])
+out = tmp
+
 # ratio thresholding
 ratios = [x['length_ratio'] for x in out if x['is_word_edit'] is not None]
 N = len(ratios) * 1.0 
