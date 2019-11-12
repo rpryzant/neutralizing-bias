@@ -1,4 +1,4 @@
-from pytorch_pretrained_bert.modeling import PreTrainedBertModel, BertModel, BertSelfAttention
+from pytorch_pretrained_bert.modeling import BertPreTrainedModel, BertModel, BertSelfAttention
 import pytorch_pretrained_bert.modeling as modeling
 import torch
 import torch.nn as nn
@@ -23,7 +23,7 @@ def gelu(x):
 def identity(x):
     return x
 
-class BertForMultitask(PreTrainedBertModel):
+class BertForMultitask(BertPreTrainedModel):
 
     def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None):
         super(BertForMultitask, self).__init__(config)
@@ -180,7 +180,7 @@ class AddCombine(nn.Module):
         return combined
 
 
-class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
+class BertForMultitaskWithFeaturesOnTop(BertPreTrainedModel):
     """ stick the features on top of the model """
     def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None):
         super(BertForMultitaskWithFeaturesOnTop, self).__init__(config)
