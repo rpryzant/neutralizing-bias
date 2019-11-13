@@ -4,16 +4,6 @@ We provide code and documentation to accompany our work "Automatically Neutraliz
 
 ![Repo List](firstpage.png)
 
-## Requirements 
-
-```
-pip install torch torchvision
-pip install pytorch-pretrained-bert
-pip install tensorboardX
-pip install simplediff
-pip install nltk
-pip install sklearn
-```
 
 ## Installation
 
