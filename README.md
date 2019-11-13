@@ -2,7 +2,7 @@
 
 We provide code and documentation to accompany our work "Automatically Neutralizing Biased Text", to be presented at AAAI-20. This library provides discriminative models to detect biased language in Wikipedia articles, and generative models to generate 'de-biased' versions of biased sentences.
 
-[!Repo_List](firstpage.png)
+![Repo List](firstpage.png)
 
 ## Requirements 
 
