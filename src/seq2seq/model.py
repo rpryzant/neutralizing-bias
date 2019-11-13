@@ -309,7 +309,7 @@ class Seq2Seq(nn.Module):
         if ARGS.bert_word_embeddings or ARGS.bert_full_embeddings or ARGS.bert_encoder:
             model = BertModel.from_pretrained(
                 'bert-base-uncased',
-                ARGS.working_dir + '/cache')
+                cache_dir=ARGS.working_dir + '/cache')
 
             if ARGS.bert_word_embeddings:
                 self.embeddings = model.embeddings.word_embeddings

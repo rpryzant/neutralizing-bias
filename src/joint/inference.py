@@ -49,14 +49,14 @@ else:
 
 
 if ARGS.extra_features_top:
-    tagging_model= tagging_model.BertForMultitaskWithFeaturesOnTop.from_pretrained(
+    tagging_model = tagging_model.BertForMultitaskWithFeaturesOnTop.from_pretrained(
             ARGS.bert_model,
             cls_num_labels=ARGS.num_categories,
             tok_num_labels=ARGS.num_tok_labels,
             cache_dir=ARGS.working_dir + '/cache',
             tok2id=tok2id)
 elif ARGS.extra_features_bottom:
-    tagging_model= tagging_model.BertForMultitaskWithFeaturesOnBottom.from_pretrained(
+    tagging_model = tagging_model.BertForMultitaskWithFeaturesOnBottom.from_pretrained(
             ARGS.bert_model,
             cls_num_labels=ARGS.num_categories,
             tok_num_labels=ARGS.num_tok_labels,

@@ -59,9 +59,10 @@ tokenizer = BertTokenizer.from_pretrained(
 tok2id = tokenizer.vocab
 
 tok2id['<del>'] = len(tok2id)
-print("The len of our vocabulary is {}".format(len(tok2id)))
+print("Vocab size: {}".format(len(tok2id)))
 
 if ARGS.pretrain_data:
+    print("Loading pretrain data...")
     pretrain_dataloader, num_pretrain_examples = get_dataloader(
         ARGS.pretrain_data,
         tok2id,
@@ -69,11 +70,13 @@ if ARGS.pretrain_data:
         ARGS.working_dir + '/pretrain_data.pkl',
         noise=True)
 
+print("Loading train data...")
 train_dataloader, num_train_examples = get_dataloader(
     ARGS.train,
     tok2id, ARGS.train_batch_size, ARGS.working_dir + '/train_data.pkl',
     categories_path=ARGS.categories_file,
     add_del_tok=ARGS.add_del_tok)
+print("Loading eval data...")
 eval_dataloader, num_eval_examples = get_dataloader(
     ARGS.test,
     tok2id, ARGS.test_batch_size, ARGS.working_dir + '/test_data.pkl',
@@ -125,12 +128,12 @@ else:
         int((num_train_examples * ARGS.tagging_pretrain_epochs) / ARGS.train_batch_size),
         ARGS.tagging_pretrain_lr)
 
-    # print('INITIAL EVAL...')
-    # tag_model.eval()
-    # results = tagging_utils.run_inference(
-    #     tag_model, eval_dataloader, tagging_loss_fn, tokenizer)
-    # writer.add_scalar('tag_eval/tok_loss', np.mean(results['tok_loss']), 0)
-    # writer.add_scalar('tag_eval/tok_acc', np.mean(results['labeling_hits']), 0)
+    print('INITIAL EVAL...')
+    tag_model.eval()
+    results = tagging_utils.run_inference(
+        tag_model, eval_dataloader, tagging_loss_fn, tokenizer)
+    writer.add_scalar('tag_eval/tok_loss', np.mean(results['tok_loss']), 0)
+    writer.add_scalar('tag_eval/tok_acc', np.mean(results['labeling_hits']), 0)
 
     print('TRAINING...')
     for epoch in range(ARGS.tagging_pretrain_epochs):
@@ -146,7 +149,7 @@ else:
         writer.add_scalar('tag_eval/tok_loss', np.mean(results['tok_loss']), epoch + 1)
         writer.add_scalar('tag_eval/tok_acc', np.mean(results['labeling_hits']), epoch + 1)
 
-    print('SAVING TAGGER...')
+    print('SAVING TAGGER: ' + ARGS.working_dir + '/tagger.ckpt')
     torch.save(tag_model.state_dict(), ARGS.working_dir + '/tagger.ckpt')
 
 # # # # # # # # ## # # # ## # # DEBIAS MODEL # # # # # # # # ## # # # ## # #
@@ -228,13 +231,13 @@ else:
 
 # train model
 print('JOINT TRAINING...')
-# print('INITIAL EVAL...')
-# joint_model.eval()
-# hits, preds, golds, srcs = joint_utils.run_eval(
-#     joint_model, eval_dataloader, tok2id, ARGS.working_dir + '/results_initial.txt',
-#     ARGS.max_seq_len, ARGS.beam_width)
-# writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), 0)
-# writer.add_scalar('eval/true_hits', np.mean(hits), 0)
+print('INITIAL EVAL...')
+joint_model.eval()
+hits, preds, golds, srcs = joint_utils.run_eval(
+    joint_model, eval_dataloader, tok2id, ARGS.working_dir + '/results_initial.txt',
+    ARGS.max_seq_len, ARGS.beam_width)
+writer.add_scalar('eval/bleu', seq2seq_utils.get_bleu(preds, golds), 0)
+writer.add_scalar('eval/true_hits', np.mean(hits), 0)
 
 for epoch in range(ARGS.epochs):
     print('EPOCH ', epoch)

@@ -78,7 +78,7 @@ parser.add_argument(
     help='learning rate for tagger pretrain')
 parser.add_argument(
     "--freeze_tagger",
-    action='store_true',
+    type=bool, default=True,
     help='dont train the tagger')
 parser.add_argument(
     "--tag_loss_mixing_prob",
@@ -233,7 +233,7 @@ parser.add_argument(
 parser.add_argument(
     "--epochs",
     help="training epochs",
-    type=int, default=40
+    type=int, default=20
 )
 parser.add_argument(
     "--max_seq_len",
@@ -242,7 +242,7 @@ parser.add_argument(
 parser.add_argument(
     "--hidden_size",
     help="hidden size of encoder/decoder",
-    type=int, default=256
+    type=int, default=512
 )
 
 
