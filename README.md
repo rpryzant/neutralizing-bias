@@ -36,8 +36,8 @@ and expands to 500MB.
     + `src/seq2seq/`: Functionality for generating debiased versions of a given biased sentence. As in the tagging directory, the model.py directory establishes the model architectures we use 
     in order to generate a debiased version for a given biased sentence. The models we establish are variants of basic Seq-2-Seq networks, with varying attention implementations. We provide an additional architecture of a generative debiasing model under transformer_decoder.py that uses a transformer-based architecture as a decoding module. The training procedure can again be found under train.py. To spawn a basic training and evaluation run, you can call the following from the root directory: 
 
-    ```python
-    python seq2seq/train.py --train \<training dataset\> --test \<test dataset\> --working_dir \<dir\> --max_seq_len \<seq_size\> --train_batch_size \<batch_size\>  --test_batch_size \<batch_size\>   --hidden_size  \<hidden_size\> --debug_skip
+    ```bash
+    python seq2seq/train.py --train <training dataset> --test <test dataset> --working_dir <dir> --max_seq_len <seq_size> --train_batch_size <batch_size>  --test_batch_size <batch_size>   --hidden_size  <hidden_size> --debug_skip
     ```
 
     + `src/joint/`: Combines together the bias detection and debiasing modules into one end-to-end model that can be trained, and evaluated jointly. As in the other modules, the joint model architecture is stored under model.py and the primary training loop can be found under train.py. To spawn a basic training and evaluation run of our joint end-to-end framework, you can call the following from the root directory: 
