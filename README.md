@@ -35,6 +35,7 @@ and expands to 500MB.
     python seq2seq/train.py --train \<training dataset\> --test \<test dataset\> --working_dir \<dir\> --max_seq_len \<seq_size\> --train_batch_size \<batch_size\>  --test_batch_size \<batch_size\>   --hidden_size  \<hidden_size\> --debug_skip
 
     + `src/joint/`: Combines together the bias detection and debiasing modules into one end-to-end model that can be trained, and evaluated jointly. As in the other modules, the joint model architecture is stored under model.py and the primary training loop can be found under train.py. To spawn a basic training and evaluation run of our joint end-to-end framework, you can call the following from the root directory: 
+    
     python joint/train.py --train  \<training dataset\> --test \<test dataset\>  --extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 1 --pretrain_epochs 4     --learning_rate 0.0003 --epochs 2 --hidden_size 10 --train_batch_size 4 --test_batch_size 4     --bert_full_embeddings --debias_weight 1.3 --freeze_tagger --token_softmax --sequence_softmax  --working_dir <\dir\>  --debug_skip
 
     + `src/lexicons/`: Lexicons of words and their associated linguistic properties, such as impliocations, hedges, and factives. We require these lexicons to derive the features used by Recasens. et al to detect bias. 
