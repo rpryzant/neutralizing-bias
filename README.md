@@ -1,9 +1,13 @@
 # Neutralizing Biased Text
 
-We provide code and documentation to accompany our work "Automatically Neutralizing Biased Text", to be presented at AAAI-20. This library provides discriminative models to detect biased language in Wikipedia articles, and generative models to generate 'de-biased' versions of biased sentences.
+This repo contains code for the paper, "[Automatically Neutralizing Biased Text](TODO)".
+
+Concretely this means algorithms for
+* Identifying biased words in sentences.
+* Neutralizing bias in sentences.
 
 ![Repo List](firstpage.png)
-
+TODO REPLACE WITH NEW IMG
 
 ## Installation
 
@@ -11,7 +15,26 @@ We provide code and documentation to accompany our work "Automatically Neutraliz
 pip install -r requirements.txt
 ```
 
-## Overview 
+## Data
+
+Click [this link to download](https://stanford.io/2Q8G3bX) (100MB, expands to 500MB). 
+
+
+## Overview
+
+`harvest/`: Code for making the dataset. It works by crawling and filtering Wikipedia for bias-driven edits.
+
+`src/`: Code for training models and using trained models to run inference. The models implemented here are referred to as MODULAR and CONCURRENT in the paper.
+
+## Usage
+
+Please see `src/README.md`. 
+
+<!--
+
+
+
+
 Our code-based is structured in the following format: 
 
 * `harvest/`: Provides utilities for crawling Wikipedia articles and for generating a parallel dataset of biased-debiased sentences. Our data generation approach mirrors that proposed by Recasens et al. (https://nlp.stanford.edu/pubs/neutrality.pdf). A final version of our crawled dataset can be found at https://stanford.io/2Q8G3bX. The zip file containing the data is 100MB
@@ -41,3 +64,7 @@ and expands to 500MB.
     + `src/lexicons/`: Lexicons of words and their associated linguistic properties, such as impliocations, hedges, and factives. We require these lexicons to derive the features used by Recasens. et al to detect bias. 
 
     + `src/shared/`: A set of utilities that are shared by both the bias detection and debias generation modules, such as an implementation of beam search. We also store, constants and arguments that are shared globally. Args.py stores the entire set of arguments that can be passed into any one of the modules, along with a default specification. 
+    
+    
+-->
+
