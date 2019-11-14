@@ -1,18 +1,113 @@
 
 # Overview
 
-This directory has the following submodules:
+This directory has the following subdirectories:
 * `lexicons/`: text files with expert features from the literature (basically word lists).
-* `tagging/`: The tagging model 
-* `seq2seq/`: The seq2seq debiasing model 
-* `joint/`: The joint model, which has a tagger and seq2seq inside of it
-* `shared/`: Code that is shared between all submodules: data iterators, CLI arguments, constants
+* `tagging/`: The tagging model (it tags biased words in a sentence)
+* `seq2seq/`: The CONCURRENT model (it converts biased sentences into neutral form)
+* `joint/`: The MODULAR model (it has both tagger and CONCURRENT models inside of it) 
+* `shared/`: Code that is common to all components: data iterators, command line arguments, constants, and beam search
 
 Each model directory (`tagging`, `seq2seq`, `joint`) has the following files:
 * `model.py`: modeling code (whether that be the tagger, seq2seq, or joint model)
 * `utils.py`: code for (1) training and (2) evaluation 
-* `train.py`: main driver code that builds and trains a model, evaluating after each epoch
+* `train.py`: main driver code that builds and trains a model, evaluating after each epoch. All files take the same command line arguments (see `shared/args.py` for a list of arguments).  TODO LINK
 
+To run any of the commands given below, you must first do the following:
+
+(1) Download and unpack [the data](TODO).
+
+(2) `$ export DATA=/path/to/bias_corpus_wnc`
+
+
+# Run Tests
+
+`$ sh integration_test.sh`
+
+# Tagger
+
+### Train
+
+```
+python tagging/train.py \
+	--train $DATA/WNC/biased.word.train \
+	--test $DATA/WNC/biased.word.test \
+	--categories_file $DATA/WNC/revision_topics.csv \
+	--extra_features_top --pre_enrich --activation_hidden --category_input \
+	--learning_rate 0.0003 --epochs 20 --hidden_size 512 --train_batch_size 32 \
+	--test_batch_size 16 --debias_weight 1.3 --working_dir OUT_tagging/
+```
+
+
+# Concurrent
+
+### Train
+
+```
+python seq2seq/train.py \
+       --train $DATA/biased.word.train \
+       --test $DATA/biased.word.test \
+       --pretrain_data $DATA/unbiased \
+       --bert_full_embeddings --bert_encoder --debias_weight 1.3 \
+       --pointer_generator --coverage --no_tok_enrich \
+       --working_dir train_concurrent/
+```
+
+Checkpoints, tensorboard summaries, and per-epoch evaluations and decodings will go in your working directory.
+
+
+### Inference
+
+```
+python joint/inference.py \
+       --test $DATA/biased.word.test \
+       --bert_full_embeddings --bert_encoder --debias_weight 1.3 \
+       --pointer_generator --coverage --no_tok_enrich \  # no_tok_enrich makes it run as a seq2seq
+       --working_dir inference_concurrent/ \
+       --debias_checkpoint train_concurrent/model_X.ckpt
+```
+
+Evaluations and decodings will go in your working directory. 
+
+
+
+# Modular
+
+### Train
+
+```
+python joint/train.py \
+       --train $DATA/biased.word.train \
+       --test $DATA/biased.word.test \
+       --pretrain_data $DATA/unbiased \
+       --categories_file $DATA/revision_topics.csv --category_input \
+       --extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 3 \
+       --bert_full_embeddings --debias_weight 1.3 --token_softmax \
+       --pointer_generator --coverage \
+       --working_dir train_modular/
+```
+
+Checkpoints, tensorboard summaries, and per-epoch evaluations and decodings will go in your working directory.
+
+
+### Inference
+
+```
+python joint/inference.py \
+       --test $DATA/biased.word.test \
+       --categories_file $DATA/revision_topics.csv --category_input \
+       --extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 3 \
+       --bert_full_embeddings --debias_weight 1.3 --token_softmax \
+       --pointer_generator --coverage \
+       --working_dir inference_modular/ \
+       --debias_checkpoint train_modular/model_X.ckpt
+```
+
+
+### Training in stages
+
+
+<!--
 
 
 
@@ -43,6 +138,9 @@ python joint/inference.py \
 	--checkpoint ~/Desktop/model_4.ckpt \
  	--working_dir TEST --inference_output small_test
 ```
+
+
+inference turn off tok enrich for seq2seq
 
 
 # Running in parts
@@ -93,3 +191,4 @@ python joint/train.py \
 ```
 
 
+-->
