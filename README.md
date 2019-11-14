@@ -24,7 +24,7 @@ Click [this link to download](https://stanford.io/2Q8G3bX) (100MB, expands to 50
 
 `harvest/`: Code for making the dataset. It works by crawling and filtering Wikipedia for bias-driven edits.
 
-`src/`: Code for training models and using trained models to run inference. The models implemented here are referred to as MODULAR and CONCURRENT in the paper.
+`src/`: Code for training models and using trained models to run inference. The models implemented here are referred to as `MODULAR` and `CONCURRENT` in the paper.
 
 ## Usage
 
