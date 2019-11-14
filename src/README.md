@@ -63,7 +63,8 @@ python joint/inference.py \
        --test $DATA/biased.word.test \
        --bert_full_embeddings --bert_encoder --debias_weight 1.3 \
        --pointer_generator --coverage --no_tok_enrich \  # no_tok_enrich makes it run as a seq2seq
-       --working_dir inference_concurrent/ \
+       --working_dir inference_concurrent/ \ 
+       --inference_output inference_concurrent/output.txt \
        --debias_checkpoint train_concurrent/model_X.ckpt
 ```
 
@@ -100,6 +101,7 @@ python joint/inference.py \
        --bert_full_embeddings --debias_weight 1.3 --token_softmax \
        --pointer_generator --coverage \
        --working_dir inference_modular/ \
+       --inference_output inference_modular/inference_output.txt \
        --debias_checkpoint train_modular/model_X.ckpt
 ```
 
