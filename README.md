@@ -28,7 +28,11 @@ Click [this link to download](https://stanford.io/2Q8G3bX) (100MB, expands to 50
 
 ## Usage
 
-Please see `src/README.md`. 
+Please see `src/README.md` and `harvest/README.md`.
+
+TODO MAKE THESE HYPERLINKS
+
+
 
 <!--
 
