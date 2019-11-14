@@ -5,3 +5,6 @@ tensorboardX
 simplediff
 nltk
 sklearn
+mwparserfromhell
+python-Levenshtein
+autocorrect
