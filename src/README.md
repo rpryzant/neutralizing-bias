@@ -37,7 +37,7 @@ python tagging/train.py \
 	--learning_rate 0.0003 --epochs 20 --hidden_size 512 --train_batch_size 32 \
 	--test_batch_size 16 --debias_weight 1.3 --working_dir train_tagging/
 ```
-
+Takes ~40 minutes on a TITAN X gpu.
 
 ## Run Concurrent Model
 
@@ -53,7 +53,7 @@ python seq2seq/train.py \
        --working_dir train_concurrent/
 ```
 
-Checkpoints, tensorboard summaries, and per-epoch evaluations and decodings will go in your working directory.
+Checkpoints, tensorboard summaries, and per-epoch evaluations and decodings will go in your working directory. Takes ~25 hours on a TITAN X gpu.
 
 
 ### Inference
@@ -87,7 +87,7 @@ python joint/train.py \
        --working_dir train_modular/
 ```
 
-Checkpoints, tensorboard summaries, and per-epoch evaluations and decodings will go in your working directory.
+Checkpoints, tensorboard summaries, and per-epoch evaluations and decodings will go in your working directory. Takes ~15 hours on a TITAN X gpu. 
 
 
 ### Inference
