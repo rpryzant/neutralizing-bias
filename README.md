@@ -11,8 +11,10 @@ TODO REPLACE WITH NEW IMG
 
 ## Installation
 
-```bash
-pip install -r requirements.txt
+```
+$ pip install -r requirements.txt
+$ python
+>> import nltk; nltk.download("punkt")
 ```
 
 ## Data
