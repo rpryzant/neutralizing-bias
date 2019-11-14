@@ -35,7 +35,7 @@ python tagging/train.py \
 	--categories_file $DATA/WNC/revision_topics.csv \
 	--extra_features_top --pre_enrich --activation_hidden --category_input \
 	--learning_rate 0.0003 --epochs 20 --hidden_size 512 --train_batch_size 32 \
-	--test_batch_size 16 --debias_weight 1.3 --working_dir OUT_tagging/
+	--test_batch_size 16 --debias_weight 1.3 --working_dir train_tagging/
 ```
 
 
@@ -105,6 +105,47 @@ python joint/inference.py \
 
 
 ### Training in stages
+
+Training many modular models from scratch is slow. First you have to train a tagger, then a seq2seq, then fine-tune together. To speed things up, you can first pre-train your tagger and language model seperately (see sections **Tagger** and **Concurrent**, then give both as arguments to your Modular training command: 
+
+```
+
+python tagging/train.py \
+       --train $DATA/biased.word.train \
+       --test $DATA/biased.word.test \
+       --pretrain_data $DATA/unbiased \
+       --categories_file $DATA/revision_topics.csv --category_input \
+       --extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 3 \
+       --bert_full_embeddings --debias_weight 1.3 --token_softmax \
+       --pointer_generator --coverage \
+       --working_dir tagger/
+       
+       
+python seq2seq/train.py \
+       --train $DATA/biased.word.train \
+       --test $DATA/biased.word.test \
+       --pretrain_data $DATA/unbiased \
+       --categories_file $DATA/revision_topics.csv --category_input \
+       --extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 3 \
+       --bert_full_embeddings --debias_weight 1.3 --token_softmax \
+       --pointer_generator --coverage \
+       --working_dir seq2seq/
+       
+       
+python joint/train.py \
+       --train $DATA/biased.word.train \
+       --test $DATA/biased.word.test \
+       --pretrain_data $DATA/unbiased \
+       --categories_file $DATA/revision_topics.csv --category_input \
+       --extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 3 \
+       --bert_full_embeddings --debias_weight 1.3 --token_softmax \
+       --pointer_generator --coverage \
+       --tagger_checkpoint tagger/model_3.ckpt \
+       --debias_checkpoint seq2seq/debiaser.ckpt \
+       --working_dir joint/
+```
+
+Note that all 3 train scripts take the same arguments. Hurray for `args.py` being in the `shared/` directory!
 
 
 <!--
