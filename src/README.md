@@ -102,7 +102,7 @@ python joint/inference.py \
        --pointer_generator --coverage \
        --working_dir inference_modular/ \
        --inference_output inference_modular/inference_output.txt \
-       --debias_checkpoint train_modular/model_X.ckpt
+       --checkpoint train_modular/model_X.ckpt
 ```
 
 
