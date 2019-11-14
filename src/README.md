@@ -1,5 +1,5 @@
 
-# Overview
+## Overview
 
 This directory has the following subdirectories:
 * `lexicons/`: text files with expert features from the literature (basically word lists).
@@ -20,11 +20,11 @@ To run any of the commands given below, you must first do the following:
 (2) `$ export DATA=/path/to/bias_corpus_wnc`
 
 
-# Run Tests
+## Run Tests
 
 `$ sh integration_test.sh`
 
-# Tagger
+## Run Tagger Model
 
 ### Train
 
@@ -39,7 +39,7 @@ python tagging/train.py \
 ```
 
 
-# Concurrent
+## Run Concurrent Model
 
 ### Train
 
@@ -71,7 +71,7 @@ Evaluations and decodings will go in your working directory.
 
 
 
-# Modular
+## Run Modular Model
 
 ### Train
 
