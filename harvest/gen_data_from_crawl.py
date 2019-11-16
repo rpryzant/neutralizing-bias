@@ -27,13 +27,13 @@ from collections import Counter
 import math
 from tqdm import tqdm
 import string
-import enchant
+# import enchant
 
 from nltk import sent_tokenize, word_tokenize
 
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from simplediff import diff
-from spellchecker import SpellChecker
+# from spellchecker import SpellChecker
 from autocorrect import spell
 
 
@@ -64,7 +64,7 @@ CTR_FAILED_TAGGING = 0
 BERT_MODEL = "bert-base-uncased"
 TOKENIZER = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=cache_path)
 
-ENCHANT_DICT = enchant.Dict("en_US")
+# ENCHANT_DICT = enchant.Dict("en_US")
 
 
 def rm_refs(x):
@@ -266,12 +266,11 @@ def should_keep(prev_raw, prev_tok, post_raw, post_tok, bleu, rev_id):
         CTR_CHEMISTRY += 1
         return False, None, None
 
-
-    # make sure example has enough normal words
-    prev_words = prev_words.translate(str.maketrans('', '', string.punctuation)).split()
-    n_words = sum(1 if d.check(w) else 0 for w in pre_words)
-    if len(prev_words) == 0 or (float(n_words) / len(prev_words)) < 0.5:
-        return False, None, None
+    # # use enchant to make sure example has enough normal words
+    # prev_words = prev_words.translate(str.maketrans('', '', string.punctuation)).split()
+    # n_words = sum(1 if d.check(w) else 0 for w in pre_words)
+    # if len(prev_words) == 0 or (float(n_words) / len(prev_words)) < 0.5:
+    #     return False, None, None
 
 
     # see if this is a "single word" edit, where a single word was replaced with 0+ words
@@ -387,6 +386,8 @@ revisions = {
         for x in l.split('\t')[1:]
     ] for l in open(crawl_path) if len(l.split('\t')) == 5
 }
+
+print(open(crawl_path).readlines())
 
 print('EXTRACTING EXAMPLES...')
 
