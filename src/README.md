@@ -17,7 +17,7 @@ To run any of the commands given below, you must first do the following:
 
 (1) Download and unpack [the data](TODO).
 
-(2) `$ export DATA=/path/to/bias_corpus_wnc`
+(2) `$ export DATA=/path/to/bias_data/WNC/`
 
 
 ## Run Tests
@@ -30,9 +30,9 @@ To run any of the commands given below, you must first do the following:
 
 ```
 python tagging/train.py \
-	--train $DATA/WNC/biased.word.train \
-	--test $DATA/WNC/biased.word.test \
-	--categories_file $DATA/WNC/revision_topics.csv \
+	--train $DATA/biased.word.train \
+	--test $DATA/biased.word.test \
+	--categories_file $DATA/revision_topics.csv \
 	--extra_features_top --pre_enrich --activation_hidden --category_input \
 	--learning_rate 0.0003 --epochs 20 --hidden_size 512 --train_batch_size 32 \
 	--test_batch_size 16 --debias_weight 1.3 --working_dir train_tagging/
