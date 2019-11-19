@@ -19,7 +19,7 @@ $ python
 
 ## Data
 
-Click [this link to download](https://stanford.io/2Q8G3bX) (100MB, expands to 500MB). 
+Click [this link to download](http://bit.ly/bias-corpus) (100MB, expands to 500MB). 
 
 
 ## Overview
