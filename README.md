@@ -6,8 +6,8 @@ Concretely this means algorithms for
 * Identifying biased words in sentences.
 * Neutralizing bias in sentences.
 
-![Repo List](firstpage.png)
-TODO REPLACE WITH NEW IMG
+<img src="firstpage.png" alt="firstpage" width="650"/>
+
 
 ## Installation
 
@@ -30,9 +30,10 @@ Click [this link to download](http://bit.ly/bias-corpus) (100MB, expands to 500M
 
 ## Usage
 
-Please see `src/README.md` and `harvest/README.md`.
+Please see `src/README.md` for bias neutralization directions.
 
-TODO MAKE THESE HYPERLINKS
+See `harvest/README.md` for making a new dataset (as opposed to downloading the one available above). 
+
 
 
 
