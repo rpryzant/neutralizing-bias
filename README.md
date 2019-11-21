@@ -1,6 +1,6 @@
 # Neutralizing Biased Text
 
-This repo contains code for the paper, "[Automatically Neutralizing Biased Text](TODO)".
+This repo contains code for the paper, "[Automatically Neutralizing Subjective Bias in Text](TODO)".
 
 Concretely this means algorithms for
 * Identifying biased words in sentences.
