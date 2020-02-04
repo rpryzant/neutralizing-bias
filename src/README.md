@@ -15,7 +15,7 @@ Each model directory (`tagging`, `seq2seq`, `joint`) has the following files:
 
 To run any of the commands given below, you must first do the following:
 
-(1) Download and unpack [the data](TODO).
+(1) Download and unpack [the data](http://bit.ly/bias-corpus).
 
 (2) `$ export DATA=/path/to/bias_data/WNC/`
 
