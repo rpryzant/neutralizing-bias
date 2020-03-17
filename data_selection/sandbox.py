@@ -38,8 +38,8 @@ def read_data(path):
 	return out
 
 train_data = read_data(train)
-dev_data = read_data(train)
-test_data = read_data(train)
+dev_data = read_data(dev)
+test_data = read_data(test)
 
 pickle.dump(train_data, open('out.pkl', 'wb'))
 pickle.dump(dev_data, open('out.pkl', 'wb'))
