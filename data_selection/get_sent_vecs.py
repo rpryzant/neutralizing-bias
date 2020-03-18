@@ -19,7 +19,7 @@ def read_data(path):
 	out = defaultdict(list)
 
 	for i, l in tqdm(enumerate(open(path)), total=wc_l(path)):
-		if i > 10: continue
+		# if i > 10: continue
 		parts = l.strip().split('\t')
 		revID = parts[0]
 		src_raw = parts[3]
