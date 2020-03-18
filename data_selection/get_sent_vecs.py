@@ -58,7 +58,7 @@ def read_data(path):
 		out['tgt_unique'].append(tgt_unique)
 		out['tgt_unique_emb'].append(tgt_unique_emb)
 
-		print(tgt_unique)
+		# print(tgt_unique)
 		# print(tgt_unique_emb)
 
 		src_unique = ' '.join(src_unique)
