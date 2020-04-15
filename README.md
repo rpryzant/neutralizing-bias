@@ -22,6 +22,10 @@ $ python
 Click [this link to download](http://bit.ly/bias-corpus) (100MB, expands to 500MB). 
 
 
+## Pretrained model
+Click [this link](https://bit.ly/bias-model) to download a model checkpoint. We used [this command](https://nlp.stanford.edu/projects/bias/train.sh) to train it. 
+
+
 ## Overview
 
 `harvest/`: Code for making the dataset. It works by crawling and filtering Wikipedia for bias-driven edits.
