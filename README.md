@@ -9,12 +9,16 @@ Concretely this means algorithms for
 <img src="firstpage.png" alt="firstpage" width="650"/>
 
 
-## Installation
+## Quickstart
 
+This repo was tested with python 3.7.7.
 ```
+$ python3 -m venv venv
+$ source venv/bin/activate
 $ pip install -r requirements.txt
 $ python
 >> import nltk; nltk.download("punkt")
+$ sh download_data_ckpt_and_run_inference.sh
 ```
 
 ## Data

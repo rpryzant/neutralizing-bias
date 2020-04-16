@@ -195,17 +195,17 @@ def dump_outputs(src_ids, gold_ids, predicted_ids, gold_tok_dist, id2tok, out_fi
         gold_seq = ' '.join(gold_seq).replace('[PAD]', '').strip()
         pred_seq = ' '.join(pred_seq).replace('[PAD]', '').strip()
 
-        try:
-            print('#' * 80, file=out_file)
-            print('IN SEQ: \t', src_seq.encode('utf-8'), file=out_file)
-            print('GOLD SEQ: \t', gold_seq.encode('utf-8'), file=out_file)
-            print('PRED SEQ:\t', pred_seq.encode('utf-8'), file=out_file)
-            print('GOLD DIST: \t', list(gold_dist), file=out_file)
-            print('PRED DIST: \t', list(pred_dist), file=out_file)
-            print('GOLD TOK: \t', list(gold_replace), file=out_file)
-            print('PRED TOK: \t', list(pred_replace), file=out_file)
-        except UnicodeEncodeError:
-            pass
+        # try:
+        print('#' * 80, file=out_file)
+        print('IN SEQ: \t', src_seq.encode('utf-8'), file=out_file)
+        print('GOLD SEQ: \t', gold_seq.encode('utf-8'), file=out_file)
+        print('PRED SEQ:\t', pred_seq.encode('utf-8'), file=out_file)
+        print('GOLD DIST: \t', list(gold_dist), file=out_file)
+        print('PRED DIST: \t', list(pred_dist), file=out_file)
+        print('GOLD TOK: \t', list(gold_replace), file=out_file)
+        print('PRED TOK: \t', list(pred_replace), file=out_file)
+        # except UnicodeEncodeError:
+        #     pass
 
         if gold_seq == pred_seq:
             out_hits.append(1)
