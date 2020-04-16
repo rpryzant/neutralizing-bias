@@ -13,6 +13,7 @@ Concretely this means algorithms for
 
 This repo was tested with python 3.7.7.
 ```
+$ cd src/
 $ python3 -m venv venv
 $ source venv/bin/activate
 $ pip install -r requirements.txt
@@ -20,6 +21,8 @@ $ python
 >> import nltk; nltk.download("punkt")
 $ sh download_data_ckpt_and_run_inference.sh
 ```
+
+You can also run `sh integration_test.sh` to further verify that everything is installed correctly and working as it should be. 
 
 ## Data
 
