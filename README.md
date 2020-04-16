@@ -11,6 +11,8 @@ Concretely this means algorithms for
 
 ## Installation
 
+This repository was written in python 2.7.
+
 ```
 $ pip install -r requirements.txt
 $ python
