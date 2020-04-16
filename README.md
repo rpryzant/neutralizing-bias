@@ -8,10 +8,11 @@ Concretely this means algorithms for
 
 <img src="firstpage.png" alt="firstpage" width="650"/>
 
+This repo was tested with python 3.7.7. 
 
 ## Quickstart
 
-This repo was tested with python 3.7.7.
+These commands will download data and a pretrained model before running inference.
 ```
 $ cd src/
 $ python3 -m venv venv
