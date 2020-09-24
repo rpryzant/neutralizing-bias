@@ -1,6 +1,8 @@
 
 ## Overview
 
+See [shared/args.py](https://github.com/rpryzant/neutralizing-bias/blob/master/src/shared/args.py) for a complete list of CLI args.
+
 This directory has the following subdirectories:
 * `lexicons/`: text files with expert features from the literature (basically word lists).
 * `tagging/`: The tagging model (it tags biased words in a sentence)
