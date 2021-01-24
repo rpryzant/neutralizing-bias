@@ -27,10 +27,12 @@ import mwparserfromhell
 from bs4 import BeautifulSoup
 import urllib
 from urllib.request import urlopen
+import codecs
 
 
 
 in_file = sys.argv[1]
+out_file = sys.argv[2]
 
 # special characters
 separator = 0
@@ -99,17 +101,31 @@ def html2diff(html):
         elif not node_prev.div:
             next_match = re.match(div_p, node_next.div.prettify(formatter=None))
             if next_match:
-                next_added.append(next_match.group(1).strip())
+                a = next_match.group(1).strip()
+                b = a.encode('utf8').decode('utf8')
+                next_added.append(b)
         elif not node_next.div:
             prev_match = re.match(div_p, node_prev.div.prettify(formatter=None))
             if prev_match:
-                prev_deleted.append(prev_match.group(1).strip())
+                a = prev_match.group(1).strip()
+                b = a.encode('utf8').decode('utf8')
+                prev_deleted.append(b)
         else:
             prev_match = re.match(div_p, node_prev.div.prettify(formatter=None))
             next_match = re.match(div_p, node_next.div.prettify(formatter=None))
             if prev_match and next_match:
-                prev_changed.append(prev_match.group(1).strip())
-                next_changed.append(next_match.group(1).strip())
+                a = prev_match.group(1).strip()
+                b = a.encode('utf8').decode('utf8')
+                prev_changed.append(b)
+
+                a = next_match.group(1).strip()
+                b = a.encode('utf8').decode('utf8')
+
+                file = codecs.open("lol", "w", "utf-8")
+                file.write(b)
+                file.close()
+
+                next_changed.append(b)
 
     return prev_changed, next_changed, prev_deleted, next_added
 
@@ -125,7 +141,6 @@ def url2diff(url):
 
 
 def wiki_text_clean(text):
-    text = ''.join([x for x in text if x in string.printable])
     text = text.replace('\n', ' ').replace('\t', ' ')
     return text
 
@@ -137,7 +152,7 @@ def gen_revisions(rev_ids):
     for rev_id in tqdm(rev_ids):
         print('processing revision id = ' + str(rev_id), file=sys.stderr)
 
-        url = 'https://en.wikipedia.org/wiki/?diff=' + str(rev_id)
+        url = 'https://fr.wikipedia.org/wiki/?diff=' + str(rev_id) # changed from https://en.wikipedia.org/wiki/?diff=
         prevs_, nexts_, prev_deleted, next_added = url2diff(url)
 
         if len(prevs_) != len(nexts_):
@@ -152,7 +167,6 @@ def gen_revisions(rev_ids):
         prevs_deleted = [wiki_text_clean(pre) for pre in (prev_deleted or ['no_deleted_chunks'])]
         nexts_added = [wiki_text_clean(nxt) for nxt in (next_added or ['no_added_chunks'])]
 
-
         if len(prevs) > 0 and len(nexts) > 0:
             print('...success!', file=sys.stderr)
             success += 1
@@ -163,19 +177,23 @@ def gen_revisions(rev_ids):
     return out
 
 
-def go(filename):
-    with open(filename, 'r') as f:
+def go(in_file, out_file):
+    print(in_file)
+    print(out_file)
+    with codecs.open(in_file, 'r') as f:
         rev_ids = [l.split('\t')[0] for l in f]
 
+    f = codecs.open(out_file, "w", "utf-8")
     for rev_id, prevs, nexts, prev_deleted, next_added in gen_revisions(rev_ids):
-        print('\t'.join([
-            rev_id, 
-            '<EDIT-DELIM>'.join(prevs),
-            '<EDIT-DELIM>'.join(nexts),
-            '<EDIT-DELIM>'.join(prev_deleted),
-            '<EDIT-DELIM>'.join(next_added)
-        ]))
+        prevs_new = ('<EDIT-DELIM>'.join(prevs)).encode('utf8').decode('utf8')
+        nexts_new = ('<EDIT-DELIM>'.join(nexts)).encode('utf8').decode('utf8')
+        prev_d_new = ('<EDIT-DELIM>'.join(prev_deleted)).encode('utf8').decode('utf8')
+        next_a_new = ('<EDIT-DELIM>'.join(next_added)).encode('utf8').decode('utf8')
+        output = '\t'.join([rev_id, prevs_new, nexts_new, prev_d_new, next_a_new]) + "\n"
+        f.write(output)
+    
+    f.close()
 
 
 if __name__ == '__main__':
-    go(in_file)
+    go(in_file, out_file)

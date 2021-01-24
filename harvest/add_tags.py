@@ -5,6 +5,7 @@ add tags to a corpusfile (output of gen_data_from_crawl.py)
 import sys
 import spacy
 from tqdm import tqdm
+import codecs
 
 NLP = spacy.load('en_core_web_sm')
 
@@ -38,8 +39,9 @@ def get_pos_dep(toks):
     return ' '.join(out_pos), ' '.join(out_dep)
     
 
-def main(in_file):
-    for line in tqdm(open(in_file), total=sum(1 for _ in open(in_file))):
+def main(in_file, out_file):
+    out = codecs.open(out_file, 'w', 'utf=8')
+    for line in tqdm(codecs.open(in_file, 'r', "utf-8"), total=sum(1 for _ in codecs.open(in_file, 'r', "utf-8"))):
     	parts = line.strip().split('\t')
     	if len(parts) != 5:
     		continue
@@ -47,8 +49,9 @@ def main(in_file):
     	pre_pos, pre_dep = get_pos_dep(parts[1].split())
     	
     	if pre_pos is not None and pre_dep is not None:
-    		print('\t'.join(parts + [pre_pos, pre_dep]))
+    		out.write('\t'.join(parts + [pre_pos, pre_dep]))
 
 if __name__ == '__main__':
     in_file = sys.argv[1]
-    main(in_file)
+    out_file = sys.argv[2]
+    main(in_file, out_file)

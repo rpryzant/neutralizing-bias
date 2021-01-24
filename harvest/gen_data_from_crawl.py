@@ -28,13 +28,14 @@ import math
 from tqdm import tqdm
 import string
 # import enchant
+import codecs
 
 from nltk import sent_tokenize, word_tokenize
 
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from simplediff import diff
-# from spellchecker import SpellChecker
-from autocorrect import spell
+from spellchecker import SpellChecker
+# from autocorrect import Speller
 
 
 
@@ -67,7 +68,7 @@ TOKENIZER = BertTokenizer.from_pretrained(BERT_MODEL, cache_dir=cache_path)
 # ENCHANT_DICT = enchant.Dict("en_US")
 
 
-def rm_refs(x):
+def rm_refs(x): # potentially change all references to "ref" to a hindi version
     REF_RE = '<ref([-\w=" <>]+)?>.*?<([ ]+)?\/([ ]+)?ref>'
     x = re.sub(REF_RE, ' ', x)
     # leading </ref>
@@ -199,7 +200,8 @@ def is_spelling_diff(d):
     for i, (tag, words) in enumerate(d):
         if tag == '-' and i+1 < len(d) - 1 and len(words) == 1 and d[i+1][0] == '+':
             # is one-word spelling replacement (post correction)
-            correction = spell(words[0])
+            sp = SpellChecker(language='fr')
+            correction = sp.correction(words[0])
             if not correction == words[0] and correction in ' '.join(d[i+1][1]):
                 return True
 
@@ -384,10 +386,10 @@ revisions = {
     l.split('\t')[0]: [
         x.strip().split('<EDIT-DELIM>') 
         for x in l.split('\t')[1:]
-    ] for l in open(crawl_path) if len(l.split('\t')) == 5
+    ] for l in codecs.open(crawl_path, "r", "utf-8") if len(l.split('\t')) == 5
 }
 
-print(open(crawl_path).readlines())
+# print(codecs.open(crawl_path, "r", "utf-8").readlines())
 
 print('EXTRACTING EXAMPLES...')
 
@@ -432,9 +434,9 @@ sd = np.std(ratios)
 
 print('WRITING...')
 # write unbiased
-f_unbiased = open(out_prefix + '.unbiased', 'w')
-f_biased = open(out_prefix + '.biased', 'w')
-f_word = open(out_prefix + '.wordbiased', 'w')
+f_unbiased = codecs.open(out_prefix + '.unbiased', 'w', "utf-8")
+f_biased = codecs.open(out_prefix + '.biased', 'w', "utf-8")
+f_word = codecs.open(out_prefix + '.wordbiased', 'w', "utf-8")
 
 for ex in out:
     if ex['is_word_edit'] is None:

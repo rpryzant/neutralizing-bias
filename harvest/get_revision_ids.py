@@ -1,14 +1,17 @@
-# FROM HINOKI!
-# python get_revision_ids.py /data/rpryzant/wiki/enwiki-20181120-stub-meta-history.xml
 import sys
 import xml.etree.cElementTree as ET
 from tqdm import tqdm
 import re
+import pickle
+import codecs
 
 wiki_xml_path = sys.argv[1]
+output_path = sys.argv[2]
 
 revisions = []
-
+ids = []
+open(wiki_xml_path)
+f = codecs.open(output_path, "w", "cp1252")
 
 class Revision():
     def __init__(self):
@@ -20,7 +23,7 @@ class Revision():
         # NPOV detector. Essentially looks for common pov-related words
         #     pov, depov, npov, yespov, attributepov, rmpov, wpov, vpov, neutral
         # with certain leading punctuation allowed
-        self.NPOV_RE = '([- wnv\/\\\:\{\(\[\"\+\'\.\|\_\)\#\=\;\~](rm)?(attribute)?(yes)?(de)?n?pov)|([- n\/\\\:\{\(\[\"\+\'\.\|\_\)\#\;\~]neutral)'
+        self.NPOV_RE = '([- wnv\/\\\:\{\(\[\"\+\'\.\|\_\)\#\=\;\~](rm)?(attribute)?(yes)?(de)?n?pov)|([- n\/\\\:\{\(\[\"\+\'\.\|\_\)\#\;\~]neutr)|([- b\/\\\:\{\(\[\"\+\'\.\|\_\)\#\;\~]biais)|([- n\/\\\:\{\(\[\"\+\'\.\|\_\)\#\;\~]neutral)'
 
     def incomplete(self):
         return not self.revid or not self.comment or not self.timestamp
@@ -38,13 +41,21 @@ class Revision():
         return False
 
     def print_out(self):
-        print('\t'.join([self.revid, self.comment, self.timestamp]))
+        a = self.revid
+        b = self.comment.encode('cp1252', errors='replace').decode('cp1252')
+        c = self.timestamp.encode('cp1252', errors='replace').decode('cp1252')
+        ids.append(a)
+        output = '\t'.join([a, b, c])
+        f.write(output+"\n")
 
 SPECIAL_TITLE_RE = "<title>.*?(talk|user|wikipedia)\:"
 
 cur_rev = Revision()
 page_skip = False
-for line in tqdm(open(wiki_xml_path), total=11325433847):
+c = 0
+for line in open(wiki_xml_path, encoding="mbcs"):
+    if c % 50000000 == 0:
+        print("Made it through ", c, " lines")
     line = line.strip()
     line_lower = line.lower()
     if line == '<page>':
@@ -65,7 +76,8 @@ for line in tqdm(open(wiki_xml_path), total=11325433847):
         cur_rev.comment = re.sub('</?[\w]+>', '', line).replace('\n', ' ').replace('\t', ' ').replace('\r', ' ')
     elif '<timestamp>' in line:
         cur_rev.timestamp = re.sub('</?[\w]+>', '', line)
+    
+    c += 1
 
 
-
-
+f.close()
