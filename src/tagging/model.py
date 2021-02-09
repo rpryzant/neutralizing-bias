@@ -1,4 +1,4 @@
-from pytorch_pretrained_bert.modeling import PreTrainedBertModel, BertModel, BertSelfAttention
+from pytorch_pretrained_bert.modeling import BertPreTrainedModel, BertModel, BertSelfAttention
 import pytorch_pretrained_bert.modeling as modeling
 import torch
 import torch.nn as nn
