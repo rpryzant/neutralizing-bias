@@ -23,7 +23,7 @@ def gelu(x):
 def identity(x):
     return x
 
-class BertForMultitask(PreTrainedBertModel):
+class BertForMultitask(BertPreTrainedModel):
 
     def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None):
         super(BertForMultitask, self).__init__(config)
@@ -180,7 +180,7 @@ class AddCombine(nn.Module):
         return combined
 
 
-class BertForMultitaskWithFeaturesOnTop(PreTrainedBertModel):
+class BertForMultitaskWithFeaturesOnTop(BertPreTrainedModel):
     """ stick the features on top of the model """
     def __init__(self, config, cls_num_labels=2, tok_num_labels=2, tok2id=None):
         super(BertForMultitaskWithFeaturesOnTop, self).__init__(config)
