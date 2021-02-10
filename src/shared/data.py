@@ -277,6 +277,7 @@ def get_dataloader(data_path, tok2id, batch_size,
         torch.tensor(examples['pos_ids'], dtype=torch.long),
         torch.tensor(examples['categories'], dtype=torch.float))
 
+    print(data)
     dataloader = DataLoader(
         data,
         sampler=(SequentialSampler(data) if test else RandomSampler(data)),
