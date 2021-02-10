@@ -125,7 +125,11 @@ def get_examples(data_path, tok2id, max_seq_len,
             l.strip().split(',')[0]: [float(x) for x in l.strip().split(',')[1:]]
             for l in category_fp
         }
+    first_time = True
     for i, (line) in enumerate(codecs.open(data_path, 'r', 'utf-8')):
+        if first_time:
+            print("I'm in the loop!")
+            first_time - False
         parts = line.strip().split('\t')
 
         # if there pos/rel info
