@@ -71,6 +71,7 @@ if ARGS.pretrain_data:
         noise=True)
 
 print("Loading train data...")
+print(ARGS.train)
 train_dataloader, num_train_examples = get_dataloader(
     ARGS.train,
     tok2id, ARGS.train_batch_size, ARGS.working_dir + '/train_data.pkl',
