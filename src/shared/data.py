@@ -265,6 +265,8 @@ def get_dataloader(data_path, tok2id, batch_size,
 
         pickle.dump(examples, open(pickle_path, 'wb'))
 
+    print(len(examples))
+
     data = TensorDataset(
         torch.tensor(examples['pre_ids'], dtype=torch.long),
         torch.tensor(examples['pre_masks'], dtype=torch.uint8), # byte for masked_fill()
