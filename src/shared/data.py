@@ -129,7 +129,7 @@ def get_examples(data_path, tok2id, max_seq_len,
     for i, (line) in enumerate(codecs.open(data_path, 'r', 'utf-8')):
         if first_time:
             print("I'm in the loop!")
-            first_time - False
+            first_time = False
         parts = line.strip().split('\t')
 
         # if there pos/rel info
