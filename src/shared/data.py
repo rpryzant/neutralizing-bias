@@ -257,7 +257,7 @@ def get_dataloader(data_path, tok2id, batch_size,
 
         return data
 
-    if pickle_path is not None and os.path.exists(pickle_path):
+    if 0==1 and pickle_path is not None and os.path.exists(pickle_path):
         examples = pickle.load(open(pickle_path, 'rb'))
     else:
         examples = get_examples(
@@ -268,7 +268,7 @@ def get_dataloader(data_path, tok2id, batch_size,
             add_del_tok=add_del_tok,
             categories_path=categories_path)
 
-        pickle.dump(examples, open(pickle_path, 'wb'))
+        #pickle.dump(examples, open(pickle_path, 'wb'))
 
     print(len(examples))
 
