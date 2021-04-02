@@ -1,0 +1,55 @@
+============================================================================
+
+---- INTRO ----
+
+This is the Wikipedia Neutrality Corpus accompanying AAAI-20 submission:
+     "Automatically Neutralizing Subjective Bias in Text"
+
+It consists of Pre- and post- sentences from Wikipedia revisions that
+enforced Wikipedia's NPOV policy
+(see: https://en.wikipedia.org/wiki/Wikipedia:Neutral_point_of_view). 
+
+
+---- CONTENTS ----
+
+Files are 
+
+WNC: the Wikipedia edits.
+    * biased.all     -- all edits.
+    * biased.word.*  -- word-level edits.
+    * unbiased       -- neighbors of edited sentences.
+
+real_world_samples: real world instances of bias.
+    * ibc_*          -- political literature 
+      		     	(see: https://www.aclweb.org/anthology/P14-1105/).
+    * speeches       -- Samples from campaign speeches of President Donald 
+      		     	Trump. Obtained from www.kaggle.com/binksbiz/mrtrump.
+    * news_*         -- Headlines of news articles identifed as biased 
+      		     	according to mediabiasfactcheck.com.
+
+bert.vocab: WordPiece vocabulary used for tokenization.
+
+revision_topics.csv: A CSV containing a distribution over topics for the 
+		     parent page of each revision. These distributions are
+		     predicted by the Wikimedia foundation's categorization 
+		     models. For more information see
+		     https://dl.acm.org/citation.cfm?id=3274290.
+
+                     
+---- FORMAT ----
+
+All data files are TSVs with the following columns:
+    id    src_tok	tgt_tok	src_raw	tgt_raw	src_POS_tags	tgt_parse_tags
+
+For wiki-derived files, "id" is the diff id of the associated revision,
+so the id's are not nessicarily unique for each example.
+
+For example, an id of 532355971 would map to 
+   https://en.wikipedia.org/w/index.php?diff=532355971
+
+
+---- CONTACT ----
+
+rpryzant@stanford.edu
+
+============================================================================
