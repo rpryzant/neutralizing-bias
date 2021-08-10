@@ -29,6 +29,8 @@ You can also run `sh integration_test.sh` to further verify that everything is i
 
 Click [this link to download](http://bit.ly/bias-corpus) (100MB, expands to 500MB). 
 
+If that link is broken, try this mirror: [download link](https://www.dropbox.com/s/qol3rmn0rq0dfhn/bias_data.zip?dl=0)
+
 
 ## Pretrained model
 Click [this link](https://bit.ly/bias-model) to download a model checkpoint. We used [this command](https://nlp.stanford.edu/projects/bias/train.sh) to train it. 
