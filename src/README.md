@@ -106,7 +106,10 @@ python joint/inference.py \
        --inference_output inference_modular/inference_output.txt \
        --checkpoint train_modular/model_X.ckpt
 ```
-
+or
+```
+python joint/inference.py --test $DATA/biased.word.test --bert_full_embeddings --bert_encoder --debias_weight 1.3 --pointer_generator --coverage --no_tok_enrich --working_dir inference_concurrent/  --inference_output inference_concurrent/output.txt --debias_checkpoint train_concurrent/model_X.ckpt
+```
 
 ### Training in stages
 
