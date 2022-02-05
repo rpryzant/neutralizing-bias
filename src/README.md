@@ -21,6 +21,7 @@ To run any of the commands given below, you must first do the following:
 
 (2) `$ export DATA=/path/to/bias_data/WNC/`
 
+Note: Incase you notice all of your sentences are not being read from the files the reason could be that they contain characters which are not in tok2id which is present in ```train.py``` as it is used in lots of places for getting ids
 
 ## Run Tests
 
