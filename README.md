@@ -33,7 +33,7 @@ If that link is broken, try this mirror: [download link](https://www.dropbox.com
 
 
 ## Pretrained model
-Click [this link](https://bit.ly/bias-model) to download a model checkpoint. We used [this command](https://nlp.stanford.edu/projects/bias/train.sh) to train it. 
+Click [this link](https://bit.ly/bias-model) to download a (Modular) model checkpoint. We used [this command](https://nlp.stanford.edu/projects/bias/train.sh) to train it. 
 
 
 ## Overview
