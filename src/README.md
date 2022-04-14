@@ -21,6 +21,7 @@ To run any of the commands given below, you must first do the following:
 
 (2) `$ export DATA=/path/to/bias_data/WNC/`
 
+Note: Incase you notice all of your sentences are not being read from the files the reason could be that they contain characters which are not in tok2id which is present in ```train.py``` as it is used in lots of places for getting ids
 
 ## Run Tests
 
@@ -69,7 +70,10 @@ python joint/inference.py \
        --inference_output inference_concurrent/output.txt \
        --debias_checkpoint train_concurrent/model_X.ckpt
 ```
-
+or
+```
+python joint/inference.py --test $DATA/biased.word.test --bert_full_embeddings --bert_encoder --debias_weight 1.3 --pointer_generator --coverage --no_tok_enrich --working_dir inference_concurrent/  --inference_output inference_concurrent/output.txt --debias_checkpoint train_concurrent/model_X.ckpt
+```
 Evaluations and decodings will go in your working directory. 
 
 
@@ -106,7 +110,10 @@ python joint/inference.py \
        --inference_output inference_modular/inference_output.txt \
        --checkpoint train_modular/model_X.ckpt
 ```
-
+or
+```
+python joint/inference.py --test $DATA/biased.word.test --categories_file $DATA/revision_topics.csv --category_input --extra_features_top --pre_enrich --activation_hidden --tagging_pretrain_epochs 3 --bert_full_embeddings --debias_weight 1.3 --token_softmax --pointer_generator --coverage --working_dir inference_modular/ --inference_output inference_modular/inference_output.txt --checkpoint train_modular/model_X.ckpt
+```
 
 ### Training in stages
 
