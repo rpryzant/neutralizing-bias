@@ -49,6 +49,12 @@ Please see `src/README.md` for bias neutralization directions.
 See `harvest/README.md` for making a new dataset (as opposed to downloading the one available above). 
 
 
+## How do I run on my own dataset?
+
+1. Get your data into the same format as the bias dataset. You can do this by making a tsv file with columns [id, src tokenized, tgt tokenized, src raw, tgt raw] and then adding POS tags, etc with [this script](https://github.com/rpryzant/neutralizing-bias/blob/master/harvest/add_tags.py).
+2. Training the pretrained model on your custom dataset using either the [train command used to build that model](https://github.com/rpryzant/neutralizing-bias#pretrained-model) or follow the [instructions in the src/ directory](https://github.com/rpryzant/neutralizing-bias/tree/master/src#training-in-stages) to write your own training commands.
+
+
 
 
 <!--
